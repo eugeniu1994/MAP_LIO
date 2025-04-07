@@ -663,7 +663,7 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
     Eigen::Vector6d JTr_global = Eigen::Vector6d::Zero();
     double cost_total = 0.;
 
-    std::cout << "Run GN..." << std::endl;
+    std::cout << "Run GN omp ..." << std::endl;
     if (p2plane && p2p)
     {
         std::cout << "Perform both p2p and p2plane" << std::endl;
@@ -678,6 +678,11 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
     }
 
     int num_points = src->points.size();
+    std::cout<<"num_points:"<<num_points<<", reference_localMap_cloud:"<<reference_localMap_cloud->size()<<std::endl;
+    if(reference_localMap_cloud->size() == 0)
+    {
+        throw std::runtime_error("reference_localMap_cloud not init - no points");
+    }
 
 #pragma omp parallel
     {
@@ -1520,7 +1525,8 @@ bool prev_graph_exist = false;
 auto sigma_point = 1; // 100cm standard deviation (3σ ≈ 3m allowed)
 auto sigma_plane = 1; // 100cm standard deviation (3σ ≈ 30cm allowed)
 
-auto sigma_odom = .02;
+//auto sigma_odom = .02; //for relative odometry - tested with skip one scan
+auto sigma_odom = .01; //for relative odometry no scan skip
 auto sigma_prior = 1.0; // not sure about the prior - let it change it
 
 auto point_noise = gtsam::noiseModel::Robust::Create(
@@ -2080,7 +2086,11 @@ double BA_refinement_merge_graph(
 {
     useX = !useX;
     std::cout << "For current graph useX:" << useX << std::endl;
-
+    std::cout<<" reference_localMap_cloud:"<<reference_localMap_cloud->size()<<std::endl;
+    if(reference_localMap_cloud->size() == 0)
+    {
+        throw std::runtime_error("reference_localMap_cloud not init - no points");
+    }
     // Set optimization parameters
     LevenbergMarquardtParams params;
     params.setMaxIterations(100);
