@@ -438,6 +438,8 @@ void DataHandler::Subscribe()
     ros::Publisher point_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/vux_data", 10000);
     ros::Publisher pubOptimizedVUX = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized", 10);
 
+    ros::Publisher pubOptimizedVUX2 = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized2", 10);
+
     ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>("acceleration_marker", 10);
 
     ros::Publisher cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("cloud", 1);
@@ -515,7 +517,8 @@ void DataHandler::Subscribe()
     auto als_to_mls = Sophus::SE3(R_als2mls, als2mls_translation);
 
     pcl::VoxelGrid<VUX_PointType> downSizeFilter_vux;
-    downSizeFilter_vux.setLeafSize(filter_size_surf_min / 2, filter_size_surf_min / 2, filter_size_surf_min / 2);
+    //downSizeFilter_vux.setLeafSize(filter_size_surf_min / 2, filter_size_surf_min / 2, filter_size_surf_min / 2);
+    downSizeFilter_vux.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
 
     M3D Rz;
     double angle = M_PI / 2.0; // 90 degrees in radians
@@ -560,7 +563,7 @@ void DataHandler::Subscribe()
     bool raw_vux_imu_time_aligned = false;
     int segment_id = 0;
     // cylinder buffer for vux
-    std::deque<pcl::PointCloud<VUX_PointType>::Ptr> lines_buffer;
+    std::deque<pcl::PointCloud<VUX_PointType>::Ptr> lines_buffer, original_lines;
     std::deque<Sophus::SE3> line_poses_buffer, refined_line_poses_buffer;
 
     // pcl::KdTreeFLANN<PointType> kdtree;
@@ -574,12 +577,14 @@ void DataHandler::Subscribe()
 
     Sophus::SE3 coarse_delta_T = Sophus::SE3(); // relative correction of the segment
     Sophus::SE3 last_refined_pose;
+
+    #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
     {
         scan_id++;
 
-        if (scan_id < 45100) // this is only for the 0 bag
-            continue;
+        // if (scan_id < 45100) // this is only for the 0 bag
+        //     continue;
 
         ros::spinOnce();
         if (flg_exit || !ros::ok())
@@ -1028,23 +1033,63 @@ void DataHandler::Subscribe()
 
                     publish_ppk_gnss(p_vux_local, msg_time);
 
+                    if(false)
+                    {//just a test to check the convertion to IMU frame - first gnss-imu pose origin 
+
+                        //auto p_in_imu = first_m.se3.inverse() * gnss_vux_data[tmp_index].se3;
+                        //need t cancel the roll and pitch for first_vux_pose
+                        //auto p_in_imu = first_vux_pose.inverse() * gnss_vux_data[tmp_index].se3;
+
+                        Eigen::Matrix3d R = first_vux_pose.so3().matrix();
+                        double yaw = std::atan2(R(1, 0), R(0, 0));
+                        Eigen::Matrix3d R_yaw;
+                        R_yaw = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ());
+
+                        auto ppkgnss_new = Sophus::SE3(Rz, V3D::Zero()) * Sophus::SE3(R_yaw, first_vux_pose.translation()).inverse() * gnss_vux_data[tmp_index].se3;
+                        
+                        //this requires to be transformed to MLS - the 90 degrees is not enough
+
+                        //create the GNSS-IMU trajectory in the first IMU frame
+                        //load the vux-riprocessor map in the same frame 
+
+                        //align that with our mls map 
+                        //that will give us the T to MLS  - so that we do not rely on als2mls anymore
+
+
+                        //do stuff here for a proper extrinsic 
+
+                        publish_refined_ppk_gnss(ppkgnss_new, msg_time);
+                    }   
+
+
+                
                     // publishAccelerationArrow(marker_pub, -gnss_vux_data[tmp_index].acc, msg_time);
 
                     tmp_index++;
                     rate.sleep();
 
+                    ///continue; //remove this later 
+
                     while (readVUX.next(next_line))
                     {
-                        if (next_line->empty())
+                        if (next_line->empty()){
+                            std::cout<<"Break - line empty"<<std::endl;
                             break;
-
+                        }
+                          
                         const auto &cloud_time = next_line->points[0].time;
                         // from the future w.r.t. curr gnss time
-                        if (cloud_time > gnss_vux_data[tmp_index].gps_tod)
-                            break;
+                        //Changed recently - this results in loss of some scans
+                        // if (cloud_time > gnss_vux_data[tmp_index].gps_tod){
+                        //     std::cout<<"\nCloud time in the future - this will drop a scan "<<std::endl;
+                        //     std::cout<<"cloud_time:"<<cloud_time<<", gnss_vux_data:"<<gnss_vux_data[tmp_index].gps_tod<<std::endl;
+                        //     break;
+                        // }
+                            
 
                         some_index++;
-                        if (time_aligned && some_index % 2 == 0) // 10
+  
+                        if (time_aligned ) // && some_index % 2 == 0
                         {
                             pcl::PointCloud<VUX_PointType>::Ptr downsampled_line(new pcl::PointCloud<VUX_PointType>);
                             downSizeFilter_vux.setInputCloud(next_line);
@@ -1232,6 +1277,9 @@ void DataHandler::Subscribe()
                                 line_poses_buffer.push_back(T_to_be_refined);
                                 refined_line_poses_buffer.push_back(T_to_be_refined);
 
+                                #ifdef save_vux_clouds
+                                    original_lines.push_back(next_line);
+                                #endif 
                                 //use prev coarse delta as correction 
                                 //line_poses_buffer.push_back(coarse_delta_T*T_to_be_refined);
                                 //refined_line_poses_buffer.push_back(coarse_delta_T*T_to_be_refined);
@@ -1250,26 +1298,49 @@ void DataHandler::Subscribe()
                                 total_scans = 200; //also good
                                 mid_scan = 150;
 
+                                //double beucase of not skipping lines 
+                                total_scans = 400; //also good
+                                mid_scan = 350;
+                                
+
                                 //total_scans = 60; //also good
                                 //mid_scan = 40;
                                 // std::cout << "lines_buffer:" << lines_buffer.size() << std::endl;
+
+
+                                #define debug_clouds
+
+                                bool const_vel_model = false;// true; //use const vel model for segments
                                 if (lines_buffer.size() >= total_scans) // we have a list of scans
                                 {
+                                    std::cout<<"original_lines:"<<original_lines.size()<<", lines_buffer:"<<lines_buffer.size()<<std::endl;
+
                                     feats_undistort->clear();
                                     // create the initial segment with init guess
                                     // std::vector<V3D> init_georeferenced_segment;
                                     pcl::PointCloud<PointType>::Ptr init_georeferenced_segment(new pcl::PointCloud<PointType>);
 
-                                    //Sophus::SE3 ref_pose = first_segment_aligned ? last_refined_pose : line_poses_buffer[0];
-                                    Sophus::SE3 ref_pose = line_poses_buffer[0];
+                                    //Sophus::SE3 ref_pose = line_poses_buffer[0];  //starting of the segment 
+                                    //ref_pose = refined_line_poses_buffer[0]; //this contains the refined solution,  use that as init guess
+                                    Sophus::SE3 ref_pose = const_vel_model ? refined_line_poses_buffer[0] : line_poses_buffer[0];
 
                                     Sophus::SE3 relative = ref_pose.inverse() * ref_pose; // identity
+                                    
+                                    if(const_vel_model)
+                                    {
+                                        for (int l = mid_scan; l < lines_buffer.size(); l++) 
+                                        {
+                                            refined_line_poses_buffer[l] = coarse_delta_T * refined_line_poses_buffer[l]; 
+                                        }
+                                    }
+
                                     for (int l = 0; l < lines_buffer.size(); l++)         // for each line
                                     {
-                                        const auto &initial_guess = line_poses_buffer[l]; // copy of the init guess
+                                        //const auto &initial_guess = line_poses_buffer[l]; // copy of the init guess
 
                                         if (l > 0)
                                         {
+                                            //take velocity - rel transform from the original odom
                                             relative = line_poses_buffer[l - 1].inverse() * line_poses_buffer[l];
                                         }
                                         ref_pose = ref_pose * relative;
@@ -1298,7 +1369,13 @@ void DataHandler::Subscribe()
 
                                     // init_georeferenced_segment is in the frame of the line_poses_buffer[0]
                                     // shift it to the frame of the prev estimated pose
-
+                                    #ifdef debug_clouds
+                                        publish_frame_debug(pubLaserCloudDebug, init_georeferenced_segment);
+                                        ros::spinOnce();
+                                        rate.sleep();
+                                        std::cout << "Init guess Press Enter to continue..." << std::endl;
+                                        std::cin.get();
+                                    #endif
                                     // publish_frame_debug(pubLaserCloudDebug, feats_undistort);
                                     // ros::spinOnce();
                                     // rate.sleep();
@@ -1328,6 +1405,9 @@ void DataHandler::Subscribe()
                                         // with planes
                                         //max_iterations_ = 50;
                                         //cost_threshold = .02;
+
+
+
                                     }
 
                                     // debug of prev half segment
@@ -1336,7 +1416,7 @@ void DataHandler::Subscribe()
                                     //
                                     bool coarse_register = true;
                                     if(coarse_register ){ //&& !first_segment_aligned
-                                        //#define debug_clouds
+                                        
                                         for (int iter_num = 0; iter_num < max_iterations_; iter_num++)
                                         {
                                             // break; // do not perform init guess refinement
@@ -1363,10 +1443,10 @@ void DataHandler::Subscribe()
                                                                             false, true, false, threshold_nn_);
                                             }
 
-                                            coarse_delta_T = Sophus::SE3(q, t); // from init guess to the map
+                                            
                                             std::cout << "\nIteration " << iter_num << " - Cost: " << current_cost << ", dCost:" << std::abs(prev_cost - current_cost) << " \n\n"
                                                     << std::endl;
-
+                                                coarse_delta_T = Sophus::SE3(q, t); // from init guess to the map
                                             std::cout << "coarse_delta_T:" << coarse_delta_T.log().transpose() << std::endl;
 
     #ifdef debug_clouds
@@ -1399,8 +1479,13 @@ void DataHandler::Subscribe()
                                         feats_undistort->clear();
 
                                         for (int l = 0; l < lines_buffer.size(); l++) // for each line
-                                        {
-                                            refined_line_poses_buffer[l] = coarse_delta_T * line_poses_buffer[l]; // refined pose
+                                        {   
+                                            if(const_vel_model)
+                                            {
+                                                refined_line_poses_buffer[l] = coarse_delta_T * refined_line_poses_buffer[l]; // refined pose
+                                            }else{
+                                                refined_line_poses_buffer[l] = coarse_delta_T * line_poses_buffer[l]; // refined pose
+                                            }
 
                                             const auto &initial_guess = refined_line_poses_buffer[l];
 
@@ -1540,13 +1625,38 @@ void DataHandler::Subscribe()
 
                                             feats_undistort->push_back(p);
                                         }
+                                        #ifdef save_vux_clouds
+                                            auto &original_line = original_lines.front();
+                                            for (int i = 0; i < original_line->size(); i++) // for each point in the line
+                                            {
+                                                V3D p_src(original_line->points[i].x, original_line->points[i].y, original_line->points[i].z);
+                                                V3D p_transformed = T * p_src;
+
+                                                original_line->points[i].x = p_transformed.x();
+                                                original_line->points[i].y = p_transformed.y();
+                                                original_line->points[i].z = p_transformed.z();
+                                            }
+                                            //option to save the line and trajectory here - TODO
+                                            
+                                            if(pubOptimizedVUX2.getNumSubscribers() != 0)
+                                                publishPointCloud_vux(original_line, pubOptimizedVUX2);
+
+                                            original_lines.pop_front();
+                                        #endif 
+                                        
+
+                                        //check all the raw lines  untill mid_scan
+                                        //georeference them and then remove from buffer 
 
                                         lines_buffer.pop_front();
                                         line_poses_buffer.pop_front();
                                         refined_line_poses_buffer.pop_front();
                                     }
+                                    if(pubOptimizedVUX.getNumSubscribers() != 0)
+                                        publish_frame_debug(pubOptimizedVUX, feats_undistort);                                        
 
-                                    publish_frame_debug(pubOptimizedVUX, feats_undistort);
+                                    //publish the time of the optmized values 
+                                    //and the time of the original data 
 
                                     segment_id++;
                                     first_segment_aligned = true;
@@ -1579,8 +1689,12 @@ void DataHandler::Subscribe()
                             publishPointCloud_vux(transformed_cloud, point_cloud_pub);
                         }
 
-                        // ppk gnss = 10Hz same as hesai MLS
-                        // imu also 10 Hz
+                        //added it here to prevent it 
+                        if (cloud_time > gnss_vux_data[tmp_index].gps_tod){
+                            std::cout<<"\nCloud time in the future - this will drop a scan "<<std::endl;
+                            std::cout<<"cloud_time:"<<cloud_time<<", gnss_vux_data:"<<gnss_vux_data[tmp_index].gps_tod<<std::endl;
+                            break;
+                        }
                     }
                 }
             }
