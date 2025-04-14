@@ -90,6 +90,15 @@ void publishJustPoints(const pcl::PointCloud<PointType>::Ptr &cloud_, const ros:
     cloud_pub.publish(cloud_msg);
 }
 
+void publishJustPoints_normals(const pcl::PointCloud<pcl::PointNormal>::Ptr &cloud_, const ros::Publisher &cloud_pub)
+{
+    // --- 1. Publish Point Cloud ---
+    sensor_msgs::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*cloud_, cloud_msg);
+    cloud_msg.header.frame_id = "world";
+    cloud_pub.publish(cloud_msg);
+}
+
 void publish_raw_gnss(const V3D &t, const double &msg_time)
 {
     tf::Transform transformGPS;
@@ -393,6 +402,13 @@ Sophus::SE3 interpolateSE3(const Sophus::SE3 &pose1, const double time1,
 // #include "VoxelHash.hpp"
 
 #include "clean_registration.hpp"
+#include <regex>
+//----------------------------------------------------
+#include <pcl/search/kdtree.h> //used for normal estimation 
+// #include <pcl/features/normal_estimation_omp.h>
+//#include <pcl/features/normal_estimation.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 
 void DataHandler::Subscribe()
 {
@@ -589,6 +605,7 @@ void DataHandler::Subscribe()
     Sophus::SE3 const_vel = Sophus::SE3();
     Sophus::SE3 last_refined_pose;
     double last_refined_pose_time = 0;
+    bool saved_mls2als_transform = false;
 
     int vux_cloud_id = 0;
 
@@ -596,6 +613,175 @@ void DataHandler::Subscribe()
     std::shared_ptr<ALS_Handler> als_ref = std::make_shared<ALS_Handler>(files_path, downsample, closest_N_files, filter_size_surf_min);
 
     Sophus::SE3 anchor_pose, anchor_delta;
+
+//#define get_planes
+
+#ifdef get_planes
+
+    std::string fold = "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/";
+    std::regex filePattern(R"(tile_x_(\d+)_y_(\d+)\.las)");
+    std::smatch match;
+
+    
+
+    int key = 0;
+
+    // Alias for convenience
+    using RefPointType = pcl::PointNormal; //pcl::PointXYZINormal;
+    using RefPointCloudXYZINormal = pcl::PointCloud<RefPointType>;
+
+    pcl::VoxelGrid<RefPointType> Ref_voxel_filter;
+    Ref_voxel_filter.setLeafSize(0.1f, 0.1f, 0.1f); 
+
+    pcl::search::KdTree<RefPointType>::Ptr tree(new pcl::search::KdTree<RefPointType>());
+    
+    // Lambda to estimate normals using radius search
+    auto computeNormals = [&](pcl::PointCloud<RefPointType>::Ptr cloud, double radius)
+    {
+        // pcl::NormalEstimation<PointType, pcl::Normal> normal_estimator;
+        pcl::NormalEstimationOMP<RefPointType, pcl::Normal> ne;
+        ne.setNumberOfThreads(4);
+        ne.setInputCloud(cloud);
+        ne.setSearchMethod(tree);
+        ne.setRadiusSearch(radius);
+
+        pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>());
+        ne.compute(*normals);
+        return normals;
+    };
+
+    const double DEGREE_THRESHOLD = 2.0;
+    const double RAD_TO_DEG = 180.0 / M_PI;
+
+    for (auto &entry : boost::filesystem::directory_iterator(fold))
+    {
+        ros::spinOnce();
+        
+        if (flg_exit || !ros::ok())
+            break;
+
+        std::cout << "\nProcessing " << entry.path().string() << std::endl;
+
+        std::string full_path = entry.path().string();
+        std::istream *ifs = liblas::Open(full_path, std::ios::in | std::ios::binary);
+        if (!ifs)
+        {
+            std::cerr << "Cannot open " << full_path << " for read. Exiting..." << std::endl;
+            throw std::invalid_argument("Cannot open the LAS/LAZ file");
+        }
+
+        if (!ifs->good())
+        {
+            delete ifs;
+            throw std::runtime_error("Reading went wrong!");
+        }
+
+        liblas::ReaderFactory readerFactory;
+        liblas::Reader reader = readerFactory.CreateWithStream(*ifs);
+        const liblas::Header &header = reader.GetHeader();
+        double off_z = header.GetOffsetZ();
+        double off_y = header.GetOffsetY();
+        double off_x = header.GetOffsetX();
+        //std::cout<<" off_x:"<<off_x<<", off_y:"<<off_y<<", off_z:"<<off_z<<std::endl;
+
+        RefPointType point;
+        point.x = 0;
+        point.y = 0;
+        point.z = 0;
+        point.normal_x = 0;
+        point.normal_y = 0;
+        point.normal_z = 0;
+
+        //point.intensity = key;
+        //point.time = 0;
+        key++;
+
+        //PointCloudXYZI::Ptr original_als_cloud(new PointCloudXYZI());
+        RefPointCloudXYZINormal::Ptr original_als_cloud(new RefPointCloudXYZINormal());
+        original_als_cloud->resize(header.GetPointRecordsCount());
+        size_t index = 0;
+        if (reader.ReadNextPoint())
+        {
+            liblas::Point const &p = reader.GetPoint();
+            off_z = p.GetZ();
+            off_y = p.GetY();
+            off_x =  p.GetX();
+        }
+        while (reader.ReadNextPoint())
+        {
+            liblas::Point const &p = reader.GetPoint();
+            point.x = p.GetX() - off_x;
+            point.y = p.GetY() - off_y;
+            point.z = p.GetZ() - off_z;
+
+            original_als_cloud->points[index] = point;
+            index++;
+            if(index < 2){
+                std::cout<<"point: "<<point.x<<", "<<point.y<<", "<<point.z<<std::endl;
+            }
+        }
+
+        //PointCloudXYZI::Ptr downsampled_als_cloud(new PointCloudXYZI());
+        RefPointCloudXYZINormal::Ptr downsampled_als_cloud(new RefPointCloudXYZINormal());
+        if (true)
+        {
+            Ref_voxel_filter.setInputCloud(original_als_cloud);
+            Ref_voxel_filter.filter(*downsampled_als_cloud);
+        }
+        else
+        {
+            *downsampled_als_cloud = *original_als_cloud;
+        }
+
+        std::cout << "downsampled_als_cloud:" << downsampled_als_cloud->size() << std::endl;
+
+        tree->setInputCloud(downsampled_als_cloud);
+
+        // Compute normals with different radii
+        auto normals_smooth = computeNormals(downsampled_als_cloud, .6);
+        auto normals_sharp  = computeNormals(downsampled_als_cloud, .3);
+
+        RefPointCloudXYZINormal::Ptr good_planes(new RefPointCloudXYZINormal());
+        for (size_t i = 0; i < normals_smooth->size(); ++i)
+        {
+            const auto &n10 = normals_smooth->at(i);
+            const auto &n5  = normals_sharp->at(i);
+
+            float dot = n10.normal_x * n5.normal_x + n10.normal_y * n5.normal_y + n10.normal_z * n5.normal_z;
+            float clamped_dot = std::clamp(dot, -1.0f, 1.0f);
+            float angle_deg = std::acos(clamped_dot) * RAD_TO_DEG;
+
+            if (angle_deg <= DEGREE_THRESHOLD ) //&& n10.curvature < 0.1
+            {
+                // Store point and encode info into intensity and time
+                //PointType p = reference_localMap_cloud->points[i];
+                RefPointType p = downsampled_als_cloud->points[i];
+                p.normal_x = n5.normal_x;
+                p.normal_y = n5.normal_y;
+                p.normal_z = n5.normal_z;
+                p.curvature = angle_deg;
+                //p.time = n10.curvature;
+                good_planes->push_back(p);
+            }
+        }
+
+        std::cout<<"Found "<<good_planes->size()<<" good planes"<<std::endl;
+        //publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference);
+        if (point_cloud_pub_reference.getNumSubscribers() != 0)
+            publishJustPoints_normals(downsampled_als_cloud, point_cloud_pub_reference);
+
+        if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
+            debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
+
+        std::cout << " Completed. Press Enter to continue..." << std::endl;
+        std::cin.get();
+
+        rate.sleep();
+    }
+
+#endif
+
+    //return;
 
 #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
@@ -643,6 +829,7 @@ void DataHandler::Subscribe()
             if (scan_id > 1000) // 1400
             {
                 std::cout << "Stop here... enough data" << std::endl;
+                break;
             }
 
             // hesai-mls registration
@@ -876,6 +1063,34 @@ void DataHandler::Subscribe()
 
             als2mls = als_obj->als_to_mls;
 
+            if(!saved_mls2als_transform)
+            {
+                // std::string als2mls_filename = "/home/eugeniu/vux-georeferenced/als2mls.txt";
+                // std::ofstream file(als2mls_filename);
+                // if (!file.is_open()) {
+                //     std::cerr << "Failed to open file " << als2mls_filename << " for writing.\n";
+                //     return;
+                // }
+                // file << std::fixed << std::setprecision(10);  // Set precision 
+                // Eigen::Matrix4d T_als2mls = als2mls.matrix();
+                // Eigen::Matrix4d T_mls2als = als2mls.inverse().matrix();
+
+                // file << "# ALS to MLS\nT_als2mls\n";
+                // for (int i = 0; i < 4; ++i) {
+                //     file << T_als2mls.row(i) << "\n";
+                // }
+
+                // file << "\n# Inverse (MLS to ALS)\nT_mls2als\n";
+                // for (int i = 0; i < 4; ++i) {
+                //     file << T_mls2als.row(i) << "\n";
+                // }
+
+                // file.close();
+                // std::cout << "Transform and inverse saved to " << als2mls_filename << "\n";
+
+                saved_mls2als_transform = true;
+            }
+
             if (!this->downsample) // if it is sparse ALS data from NLS
             {
                 V3D t = als2mls.translation();
@@ -1036,7 +1251,7 @@ void DataHandler::Subscribe()
                 curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
                 curr_mls_time = time_of_day_sec;
 
-                if (do_once ) //&& false
+                if (do_once && false) //&& false
                 {
                     if (false) // this will load the reprocessor generated map
                     {
@@ -1163,7 +1378,7 @@ void DataHandler::Subscribe()
                     tmp_index++;
                     rate.sleep();
 
-                    continue; // remove this later
+                    // continue; // remove this later
 
                     while (readVUX.next(next_line))
                     {
@@ -1355,12 +1570,13 @@ void DataHandler::Subscribe()
                                 }
                             }
 
-                            bool refine_init = false; // true;
-                            bool save_georeferenced_vux = false;  //will be taken in the release mode only 
+                            bool refine_init = true;// false;            // true;
+                            bool save_georeferenced_vux = false;// true; // will be taken in the release mode only
 
-                            bool debug = true;
-                            bool release = false;
-
+                            bool debug = false;
+                            bool release = true;
+                            
+                            int BA_iterations = 2; // 3;
                             if (debug) // I AM ON THIS PART NOW
                             {
                                 // std::cout<<"In Debug..."<<std::endl;
@@ -1669,7 +1885,7 @@ void DataHandler::Subscribe()
                                                     prev_segment,
                                                     kdtree_prev_segment,
                                                     cloud_pub, normals_pub,
-                                                    3, // 2, // run_iterations
+                                                    BA_iterations, // 2, // run_iterations
                                                     flg_exit,
                                                     total_scans - mid_scan,
                                                     threshold_nn_, false, true,
@@ -2008,7 +2224,7 @@ void DataHandler::Subscribe()
                                                 prev_segment,
                                                 kdtree_prev_segment,
                                                 cloud_pub, normals_pub,
-                                                3, // 2, // run_iterations
+                                                BA_iterations, // 2, // run_iterations
                                                 flg_exit,
                                                 total_scans - mid_scan,
                                                 threshold_nn_, false, true);
