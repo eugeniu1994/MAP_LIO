@@ -14,7 +14,11 @@
     #include "p2p/core/VoxelHashMap.hpp"
 #endif
 
-
+struct PlanePrimitive {
+    V3D centroid;
+    V3D normal;
+    float curvature;
+};
 
 class ALS_Handler
 {
@@ -42,11 +46,16 @@ public:
     void getCloud(PointCloudXYZI::Ptr &in_);
     bool Update(const Sophus::SE3 &mls_pose);
 
+    void computePlanes(double leaf_size, double curvature_threshold, int min_points_per_voxel = 5);
+    std::vector<PlanePrimitive> stable_planes;
+
+
     bool refine_als = false, initted_ = false;
     int min_points_per_patch = 0;
     
 
 private:
+
     V3D gps_origin_ENU;
     int closest_N_files = 4;
     double boxSize = 50., leaf_size = 1.0;
