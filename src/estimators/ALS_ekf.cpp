@@ -5,6 +5,7 @@
 // #include <pcl/registration/icp.h>
 #include <pcl/registration/gicp.h>
 
+#include <pcl/filters/voxel_grid_covariance.h> //to convert the als cloud to distributions
 
 using namespace gnss;
 using namespace ekf;
@@ -188,12 +189,12 @@ void ALS_Handler::setupALS_Manager()
     all_las_files->clear();
 
     std::vector<boost::filesystem::path> files_;
-    
+
     for (auto &entry : boost::filesystem::directory_iterator(folder_root))
     {
         files_.push_back(entry.path());
     }
-    
+
     std::stable_sort(files_.begin(), files_.end());
     int x_min = 0, y_min = 0;
     for (const auto &entry : files_)
@@ -264,7 +265,7 @@ bool ALS_Handler::init(const V3D &gps_origin_ENU_, const M3D &init_R_2_mls, cons
     for (const auto &center_point : all_las_files->points)
     {
         distance_sq = std::pow(center_point.x - E, 2) + std::pow(center_point.y - N, 2);
-        std::cout<<"distance_:"<<sqrt(distance_sq)<<", als E:"<<center_point.x<<", N:"<<center_point.y<<std::endl;
+        std::cout << "distance_:" << sqrt(distance_sq) << ", als E:" << center_point.x << ", N:" << center_point.y << std::endl;
         if (distance_sq < max_allowed_distance_sq)
         {
             filename = "tile_x_" + std::to_string(int(center_point.x - c)) + "_y_" + std::to_string(int(center_point.y - c)) + ".las";
@@ -284,9 +285,9 @@ bool ALS_Handler::init(const V3D &gps_origin_ENU_, const M3D &init_R_2_mls, cons
     if (closestFiles.empty())
     {
         std::cout << "No matching files found, closestFiles:" << closestFiles.size() << std::endl;
-        std::cout<<"gps_origin_ENU:"<<gps_origin_ENU.transpose()<<std::endl;
+        std::cout << "gps_origin_ENU:" << gps_origin_ENU.transpose() << std::endl;
         throw std::runtime_error("init - Cannot find the right init file in las/laz for current position");
-        //std::cout<<"Cannot find the right init file in las/laz for current position"<<std::endl;
+        // std::cout<<"Cannot find the right init file in las/laz for current position"<<std::endl;
         found_ALS = false;
         return rv;
     }
@@ -420,7 +421,7 @@ void ALS_Handler::getCloud(PointCloudXYZI::Ptr &in_)
 
 void ALS_Handler::AddPoints_from_file(const std::string &filename)
 {
-    std::cout<<"\nAttempt AddPoints_from_file----------------------------"<<std::endl;
+    std::cout << "\nAttempt AddPoints_from_file----------------------------" << std::endl;
     std::chrono::time_point<std::chrono::system_clock> start, end;
     start = std::chrono::system_clock::now();
     std::istream *ifs = liblas::Open(folder_root + filename, std::ios::in | std::ios::binary);
@@ -450,22 +451,22 @@ void ALS_Handler::AddPoints_from_file(const std::string &filename)
     if (!shift_initted_)
     {
         liblas::Reader mean_reader = readerFactory.CreateWithStream(*ifs);
-        //min_points_per_patch = header.GetPointRecordsCount()/5;
-        min_points_per_patch = 100;// 1000;
+        // min_points_per_patch = header.GetPointRecordsCount()/5;
+        min_points_per_patch = 100; // 1000;
 
-        std::cout<<"min_points_per_patch:"<<min_points_per_patch<<", header.GetPointRecordsCount():"<<header.GetPointRecordsCount()<<std::endl;
-        
+        std::cout << "min_points_per_patch:" << min_points_per_patch << ", header.GetPointRecordsCount():" << header.GetPointRecordsCount() << std::endl;
+
         Eigen::Vector2d ref_gps = gps_origin_ENU.head<2>();
         double dist = 10 * 10; // 10m radius
-        dist = 40 * 40; //take 40m
+        dist = 40 * 40;        // take 40m
         std::vector<double> min_z;
         while (mean_reader.ReadNextPoint())
         {
             liblas::Point const &p = mean_reader.GetPoint();
-            std::cout<<"p.x:"<<p.GetX()<<" p.y:"<<p.GetY()<<std::endl;
-            std::cout<<"ref_gps:"<<ref_gps.transpose()<<std::endl;
+            std::cout << "p.x:" << p.GetX() << " p.y:" << p.GetY() << std::endl;
+            std::cout << "ref_gps:" << ref_gps.transpose() << std::endl;
             auto d = (Eigen::Vector2d(p.GetX(), p.GetY()) - ref_gps).squaredNorm();
-            std::cout<<"distance:"<<sqrt(d)<<std::endl;
+            std::cout << "distance:" << sqrt(d) << std::endl;
             break;
         }
         while (mean_reader.ReadNextPoint()) // collect all z in 10 m radius ball
@@ -519,18 +520,18 @@ void ALS_Handler::AddPoints_from_file(const std::string &filename)
     }
 
     int patch_points = header.GetPointRecordsCount();
-    std::cout<<"ALS patch points:"<<patch_points<<std::endl;
-    if(downsampled_ALS)
+    std::cout << "ALS patch points:" << patch_points << std::endl;
+    if (downsampled_ALS)
     {
-        if(patch_points < min_points_per_patch)
+        if (patch_points < min_points_per_patch)
         {
-            std::cout<<"min_points_per_patch:"<<min_points_per_patch<<",  this has only "<<patch_points<<std::endl;
-            //do not add this patch
+            std::cout << "min_points_per_patch:" << min_points_per_patch << ",  this has only " << patch_points << std::endl;
+            // do not add this patch
             return;
         }
     }
-    
-    PointType point;    
+
+    PointType point;
     point.x = 0;
     point.y = 0;
     point.z = 0;
@@ -650,9 +651,9 @@ void ALS_Handler::RemovePointsFarFromLocation(const V3D &mls_position)
 }
 
 bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
-{   
-    //std::cout<<"Call update: motion:"<<(prev_mls_pos - mls_pose.translation()).norm()<<std::endl;
-    //std::cout<<"boxSize:"<<boxSize<<std::endl;
+{
+    // std::cout<<"Call update: motion:"<<(prev_mls_pos - mls_pose.translation()).norm()<<std::endl;
+    // std::cout<<"boxSize:"<<boxSize<<std::endl;
 
     if ((prev_mls_pos - mls_pose.translation()).norm() > boxSize / 2)
     {
@@ -677,7 +678,7 @@ bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
 
         if (ALS_manager.nearestKSearch(curr_mls_position_enu, closest_N_files, pointIdxNKNSearch, pointNKNSquaredDistance) > 0)
         {
-            double th_sq = (2 * boxSize) * (2 * boxSize) + 2*boxSize; // this is ugly change it
+            double th_sq = (2 * boxSize) * (2 * boxSize) + 2 * boxSize; // this is ugly change it
             std::string closest_file;
             int c = boxSize / 2;
             for (size_t i = 0; i < pointIdxNKNSearch.size(); ++i)
@@ -705,9 +706,70 @@ bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
                 }
             }
         }
-        
-        return true; //there was an update
+
+        return true; // there was an update
     }
 
     return false;
+}
+
+void ALS_Handler::computePlanes(double leaf_size, double curvature_threshold, int min_points_per_voxel)
+{
+    // curvature_threshold
+    // Flat/Planar Region: curvature ≈ 0.001 - 0.05
+    // Edge/Corner: curvature ≈ 0.1 - 0.3
+    // Noisy/Irregular: curvature > 0.3
+
+    stable_planes.clear();
+
+    pcl::VoxelGridCovariance<PointType> vg;
+    vg.setLeafSize(leaf_size, leaf_size, leaf_size);
+
+#if USE_STATIC_KDTREE == 1
+    vg.setInputCloud(als_cloud);
+#else
+    std::cerr << "getPlanes not yet implemented for ikdtree" << std::endl;
+#endif
+
+    vg.filter(true); // The 'true' parameter builds the internal structure
+    // Now vg contains the NDT cells (voxels with mean and covariance)
+
+    const auto &leaf_map = vg.getLeaves();
+    for (const auto &kv : leaf_map)
+    {
+        const auto &leaf = kv.second;
+
+        if (leaf.nr_points < min_points_per_voxel)
+        {
+            //std::cerr << " Drop the voxel it has only " << leaf.nr_points << " points" << std::endl;
+            continue;
+        }
+
+        M3D cov = leaf.getCov();
+
+        // Check if covariance is well-conditioned
+        if (!cov.allFinite())
+            continue;
+
+        Eigen::SelfAdjointEigenSolver<M3D> solver(cov);
+        if (solver.info() != Eigen::Success)
+            continue;
+
+        double lambda0 = solver.eigenvalues()[0];
+        double lambda1 = solver.eigenvalues()[1];
+        double lambda2 = solver.eigenvalues()[2];
+
+        float curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+        if (curvature < curvature_threshold)
+        {
+            PlanePrimitive p;
+
+            V3D normal = solver.eigenvectors().col(0);
+            p.centroid = leaf.getMean();
+            p.normal = normal.normalized();
+            p.curvature = curvature;
+            stable_planes.push_back(p);
+        }
+    }
+    std::cout << "Found " << stable_planes.size() << " stable_planes" << std::endl;
 }

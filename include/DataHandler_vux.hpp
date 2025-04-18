@@ -131,6 +131,7 @@ public:
 
     LiDAR_Type lidar_type = DataHandler::Hesai; // Member variable to hold the LIDAR type
     std::string bag_file = "";
+    std::string vux_eval_path = "";
 
     template <typename T>
     void set_posestamp(T &out)
@@ -146,6 +147,7 @@ public:
         out.pose.orientation.w = q_.coeffs()[3];
     }
 
+    
     DataHandler(ros::NodeHandle &nh_)
     {
         nh = nh_;
@@ -222,6 +224,7 @@ public:
         nh.param<std::string>("als/als_path", folder_root, "");
         nh.param<std::string>("als/postprocessed_gnss_path", postprocessed_gnss_path, "");
 
+        nh.param<std::string>("eval/vux_eval_path", vux_eval_path, "");
 #ifdef SAVE_DATA
         nh.param<bool>("publish/save_clouds", save_clouds, false);
         nh.param<bool>("publish/save_clouds_local", save_clouds_local, false);

@@ -411,9 +411,6 @@ Sophus::SE3 interpolateSE3(const Sophus::SE3 &pose1, const double time1,
 #include <pcl/features/normal_3d.h>
 #include <pcl/features/normal_3d_omp.h>
 
-
-#include <pcl/filters/voxel_grid_covariance.h> //to convert the als cloud to distributions 
-
 void DataHandler::Subscribe()
 {
     std::cout << "Subscribe" << std::endl;
@@ -620,7 +617,7 @@ void DataHandler::Subscribe()
     pcl::PointCloud<VUX_PointType>::Ptr eval_segment(new pcl::PointCloud<VUX_PointType>);
     pcl::KdTreeFLANN<PointType>::Ptr vux_kdtree(new pcl::KdTreeFLANN<PointType>());
 
-    std::string eval_path = "/home/eugeniu/vux-georeferenced/No_refinement/hesai0/";
+    pcl::KdTreeFLANN<PointType> plane_tree;
 
     std::string files_path = "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/";
     std::shared_ptr<ALS_Handler> als_ref = std::make_shared<ALS_Handler>(files_path, downsample, closest_N_files, 0.1f);
@@ -2366,7 +2363,8 @@ void DataHandler::Subscribe()
                             if (eval)
                             {
                                 {
-                                    std::string input_file = eval_path + "vux_" + std::to_string(vux_cloud_next_id) + "_cloud.pcd";
+                                    std::string input_file = vux_eval_path + "vux_" + std::to_string(vux_cloud_next_id) + "_cloud.pcd";
+                                    std::string output_file = vux_eval_path + "surface-eval/vux_surf_eval_" + std::to_string(vux_cloud_next_id) + ".txt"; //this file will contain the evaluation of all the scans
 
                                     pcl::PointCloud<VUX_PointType> cloud;
                                     if (pcl::io::loadPCDFile<VUX_PointType>(input_file, cloud) == -1)
@@ -2380,11 +2378,12 @@ void DataHandler::Subscribe()
                                     Ref_voxel_filter.setInputCloud(segment_cloud_ptr);
                                     Ref_voxel_filter.filter(*down_cloud);
 
-                                    //pcl::copyPointCloud(*down_cloud, *feats_undistort);
+                                    // pcl::copyPointCloud(*down_cloud, *feats_undistort);
                                     feats_undistort->clear(); // Clear existing data if any
-                                    for (const auto& pt : down_cloud->points)
-                                    {   
-                                        if(pt.range < 20){
+                                    for (const auto &pt : down_cloud->points)
+                                    {
+                                        if (pt.range < 20)
+                                        {
                                             PointType new_pt;
                                             new_pt.x = pt.x;
                                             new_pt.y = pt.y;
@@ -2397,6 +2396,7 @@ void DataHandler::Subscribe()
                                     feats_undistort->is_dense = down_cloud->is_dense;
                                     // if (point_cloud_pub_reference.getNumSubscribers() != 0)
 
+                                    RefPointCloudXYZINormal::Ptr good_planes(new RefPointCloudXYZINormal());
                                     if (!als_ref->initted_)
                                         als_ref->init(als2mls);
 
@@ -2405,223 +2405,204 @@ void DataHandler::Subscribe()
                                         als_ref->getCloud(downsampled_als_cloud);
                                         vux_kdtree->setInputCloud(downsampled_als_cloud);
 
-                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference);
+                                        als_ref->computePlanes(.5, .05, 5); // this will create the planes
 
-
-                                        pcl::VoxelGridCovariance<PointType> vg;
-                                        vg.setLeafSize(1.0f, 1.0f, 1.0f);
-                                        vg.setInputCloud(downsampled_als_cloud);
-                                        vg.filter(true);  // The 'true' parameter builds the internal structure
-
-                                        // Now vg contains the NDT cells (voxels with mean and covariance)
-
-
-                                        maybe put this into ALS implementation 
-
-                                        struct PlanePrimitive {
-                                            V3D centroid;
-                                            V3D normal;
-                                            float curvature;
-                                        };
-                                        
-                                        std::vector<PlanePrimitive> stable_planes;
-
-                                        const auto& leaf_map = vg.getLeaves();
-                                        for (const auto& kv : leaf_map)
+                                        const std::vector<PlanePrimitive> &stable_planes = als_ref->stable_planes;
+                                        pcl::PointCloud<PointType>::Ptr plane_centers(new pcl::PointCloud<PointType>);
+                                        for (const auto &p : stable_planes)
                                         {
-                                            const auto& leaf = kv.second;
+                                            PointType point;
+                                            point.x = p.centroid.x();
+                                            point.y = p.centroid.y();
+                                            point.z = p.centroid.z();
+                                            point.intensity = 0;
+                                            point.time = 0;
 
-                                            if (leaf.nr_points < 5)
-                                                continue;
+                                            plane_centers->push_back(point);
 
-                                            Eigen::Matrix3d cov = leaf.getCov();
-
-                                            // Check if covariance is well-conditioned
-                                            if (!cov.allFinite())
-                                                continue;
-
-                                            //Eigen::Vector3d mean = leaf.getMean();
-                                            
-                                            Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
-
-                                            if (solver.info() != Eigen::Success)
-                                                continue;
-
-                                            Eigen::Vector3d normal = solver.eigenvectors().col(0);
-                                            double lambda0 = solver.eigenvalues()[0];
-                                            double lambda1 = solver.eigenvalues()[1];
-                                            double lambda2 = solver.eigenvalues()[2];
-
-                                            float curvature = lambda0 / (lambda0 + lambda1 + lambda2);
-                                            if (curvature < .02) {
-                                                PlanePrimitive p;
-                                                p.centroid = leaf.getMean();
-                                                p.normal = normal.normalized();
-                                                p.curvature = curvature;
-                                                stable_planes.push_back(p);
-                                            }
+                                            RefPointType pl;
+                                            pl.x = p.centroid[0];
+                                            pl.y = p.centroid[1];
+                                            pl.z = p.centroid[2];
+                                            pl.normal_x = p.normal[0];
+                                            pl.normal_y = p.normal[1];
+                                            pl.normal_z = p.normal[2];
+                                            pl.curvature = p.curvature;
+                                            good_planes->push_back(pl);
                                         }
-                                        std::cout<<"Found "<<stable_planes.size()<<" stable_planes"<<std::endl;
-                                        
-                                        
-                                        
-                                        
-                                    
-
-                                        /*
-                                        
+                                        std::cout << "plane_centers:" << plane_centers->size();
                                         // Build kd-tree from centroids of stable planes
-                                        pcl::PointCloud<pcl::PointXYZ>::Ptr plane_centers(new pcl::PointCloud<pcl::PointXYZ>);
-                                        for (const auto& p : stable_planes) {
-                                            plane_centers->emplace_back(p.centroid.x(), p.centroid.y(), p.centroid.z());
-                                        }
-                                        pcl::KdTreeFLANN<pcl::PointXYZ> plane_tree;
                                         plane_tree.setInputCloud(plane_centers);
 
-                                        // For each point in your undistorted scan
-                                        for (const auto& src_pt : feats_undistort->points) {
-                                            pcl::PointXYZ query(src_pt.x, src_pt.y, src_pt.z);
-                                            std::vector<int> nn_indices;
-                                            std::vector<float> nn_dists;
+                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference); //original density
+                                        //publishPointCloud(plane_centers, point_cloud_pub_reference);
 
-                                            if (plane_tree.nearestKSearch(query, 1, nn_indices, nn_dists) > 0) {
-                                                const auto& plane = stable_planes[nn_indices[0]];
-                                                Eigen::Vector3d pt(src_pt.x, src_pt.y, src_pt.z);
-                                                double dist = fabs((pt - plane.centroid).dot(plane.normal));
+                                        //debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
 
-                                                // Save result or accumulate stats
-                                                src_pt.intensity = dist; // or whatever you want
-                                            } else {
-                                                src_pt.intensity = -1; // no nearby plane
-                                            }
-                                        }
-                                        */
-
-
+                                        //std::cout << "Show ref map, press enter..." << std::endl;
+                                        //std::cin.get();
                                     }
 
                                     double good_plan = .2;
-                                    RefPointCloudXYZINormal::Ptr good_planes(new RefPointCloudXYZINormal());
+
+                                    bool use_prebuilt_planes = false;
+                                    //const std::vector<PlanePrimitive> &stable_planes = als_ref->stable_planes;
+
+                                    float radius = 1.0; //for NN planes
 
                                     for (int i = 0; i < feats_undistort->size(); i++)
                                     {
                                         const auto &search_point = feats_undistort->points[i];
-                                        double error = -1; //means no neighbours found for this point 
+
+                                        double error = -1; // means no neighbours found for this point
                                         double furtherst_d = -1, closest_d = -1;
-                                        float radius = 1.0; 
-                                        //const int neighbours = 10;
+                                        
+                                        float curvature = -1; //curvature of the NN plane 
+                                        // const int neighbours = 10;
+                                        int neighbours = -1;
 
-                                        std::vector<int> point_idx;//(neighbours);
-                                        std::vector<float> point_dist;//(neighbours);
+                                        V3D source_point(search_point.x, search_point.y, search_point.z);
+                                        std::vector<int> point_idx;    //(neighbours);
+                                        std::vector<float> point_dist; //(neighbours);
 
-                                        //if (vux_kdtree->nearestKSearch(search_point, neighbours, point_idx, point_dist) > 0) //the data is sparse 
-                                        if(vux_kdtree->radiusSearch(search_point, radius, point_idx, point_dist) > 3)
+                                        if (use_prebuilt_planes)
                                         {
-                                            closest_d = sqrt(point_dist.front());
-                                            furtherst_d = sqrt(point_dist.back());
+                                            // if (plane_tree.nearestKSearch(search_point, 1, point_idx, point_dist) > 0)
+                                            // {
+                                            //     if (point_dist[0] > 4)
+                                            //     {
+                                            //         const auto &plane = stable_planes[point_idx[0]];
+                                            //         error = fabs((source_point - plane.centroid).dot(plane.normal));
 
-                                            int neighbours = point_idx.size();
-                                            
-                                            V3D source_point(search_point.x,search_point.y,search_point.z);
-
-                                            //if (point_dist[4] < radius)
-                                            if(false)
-                                            {
-                                                V3D target_point(downsampled_als_cloud->points[point_idx[0]].x,
-                                                    downsampled_als_cloud->points[point_idx[0]].y,downsampled_als_cloud->points[point_idx[0]].z);
-
-                                                    
-                                                Eigen::Matrix<double, Eigen::Dynamic, 3> matA0(neighbours, 3);
-                                                Eigen::Matrix<double, Eigen::Dynamic, 1> matB0 = -1.0 * Eigen::Matrix<double, Eigen::Dynamic, 1>::Ones(neighbours);
-
-                                                for (int j = 0; j < neighbours; j++)
-                                                {
-                                                    matA0(j, 0) = downsampled_als_cloud->points[point_idx[j]].x;
-                                                    matA0(j, 1) = downsampled_als_cloud->points[point_idx[j]].y;
-                                                    matA0(j, 2) = downsampled_als_cloud->points[point_idx[j]].z;
-                                                }
-                                                V3D norm = matA0.colPivHouseholderQr().solve(matB0);
-                                                double negative_OA_dot_norm = 1 / norm.norm();
-                                                norm.normalize();
-
-                                                bool planeValid = true;
-                                                for (int j = 0; j < neighbours; j++)
-                                                {
-                                                    if (fabs(norm(0) * downsampled_als_cloud->points[point_idx[j]].x +
-                                                             norm(1) * downsampled_als_cloud->points[point_idx[j]].y +
-                                                             norm(2) * downsampled_als_cloud->points[point_idx[j]].z + negative_OA_dot_norm) > good_plan)
-                                                    {
-                                                        planeValid = false;
-                                                        break;
-                                                    }
-                                                }
-                                                if (planeValid)
-                                                {
-                                                    error = fabs((source_point - target_point).dot(norm));
-
-                                                    RefPointType p;
-                                                    p.x = downsampled_als_cloud->points[point_idx[0]].x;
-                                                    p.y = downsampled_als_cloud->points[point_idx[0]].y;
-                                                    p.z = downsampled_als_cloud->points[point_idx[0]].z;
-                                                    p.normal_x = norm(0);
-                                                    p.normal_y = norm(1);
-                                                    p.normal_z = norm(2);
-                                                    p.curvature = error;
-                                                    // p.time = n10.curvature;
-                                                    good_planes->push_back(p);
-                                                }
-                                            }
-                                            else
-                                            {
-                                                pcl::PointCloud<PointType>::Ptr neighborhood_cloud(new pcl::PointCloud<PointType>);
-                                                for (int j = 0; j < neighbours; j++) {
-                                                    neighborhood_cloud->points.emplace_back(downsampled_als_cloud->points[point_idx[j]]);
-                                                }
-
-                                                // Fit plane using PCA
-                                                Eigen::Matrix3f cov;
-                                                Eigen::Vector4f centroid;
-                                                pcl::computeMeanAndCovarianceMatrix(*neighborhood_cloud, cov, centroid);
-
-                                                Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(cov);
-                                                Eigen::Vector3f norm = eigen_solver.eigenvectors().col(0); // norm = smallest eigenvalue direction
-                                                norm.normalize();
-
-                                                float lambda0 = eigen_solver.eigenvalues()[0];
-                                                float lambda1 = eigen_solver.eigenvalues()[1];
-                                                float lambda2 = eigen_solver.eigenvalues()[2];
-                                                float curvature = lambda0 / (lambda0 + lambda1 + lambda2);
-
-                                                //Flat/Planar Region: curvature ≈ 0.001 - 0.05
-                                                //Edge/Corner: curvature ≈ 0.1 - 0.3
-                                                //Noisy/Irregular: curvature > 0.3
-
-                                                if (curvature < .01) { // this is good planarity check
-                                                    V3D target_point(centroid[0], centroid[1], centroid[2]);
-
-                                                    error = fabs((source_point - target_point).dot(norm.cast<double>()));
-
-                                                    RefPointType p;
-                                                    p.x = centroid[0];
-                                                    p.y = centroid[1];
-                                                    p.z = centroid[2];
-                                                    p.normal_x = norm[0];
-                                                    p.normal_y = norm[1];
-                                                    p.normal_z = norm[2];
-                                                    p.curvature = error;
-                                                    good_planes->push_back(p);
-                                                }
-                                            }
+                                            //         RefPointType p;
+                                            //         p.x = plane.centroid[0];
+                                            //         p.y = plane.centroid[1];
+                                            //         p.z = plane.centroid[2];
+                                            //         p.normal_x = plane.normal[0];
+                                            //         p.normal_y = plane.normal[1];
+                                            //         p.normal_z = plane.normal[2];
+                                            //         p.curvature = error;
+                                            //         good_planes->push_back(p);
+                                            //     }
+                                            // }
                                         }
                                         else
                                         {
-                                            // std::cout << "No neighbors found within radius." << std::endl;
+                                            // if (vux_kdtree->nearestKSearch(search_point, neighbours, point_idx, point_dist) > 0) //the data is sparse
+                                            if (vux_kdtree->radiusSearch(search_point, radius, point_idx, point_dist) > 3)
+                                            {
+                                                closest_d = sqrt(point_dist.front());
+                                                furtherst_d = sqrt(point_dist.back());
+
+                                                neighbours = point_idx.size();
+
+                                                // if (point_dist[4] < radius)
+                                                if (false)
+                                                {
+                                                    V3D target_point(downsampled_als_cloud->points[point_idx[0]].x,
+                                                                     downsampled_als_cloud->points[point_idx[0]].y, downsampled_als_cloud->points[point_idx[0]].z);
+
+                                                    Eigen::Matrix<double, Eigen::Dynamic, 3> matA0(neighbours, 3);
+                                                    Eigen::Matrix<double, Eigen::Dynamic, 1> matB0 = -1.0 * Eigen::Matrix<double, Eigen::Dynamic, 1>::Ones(neighbours);
+
+                                                    for (int j = 0; j < neighbours; j++)
+                                                    {
+                                                        matA0(j, 0) = downsampled_als_cloud->points[point_idx[j]].x;
+                                                        matA0(j, 1) = downsampled_als_cloud->points[point_idx[j]].y;
+                                                        matA0(j, 2) = downsampled_als_cloud->points[point_idx[j]].z;
+                                                    }
+                                                    V3D norm = matA0.colPivHouseholderQr().solve(matB0);
+                                                    double negative_OA_dot_norm = 1 / norm.norm();
+                                                    norm.normalize();
+
+                                                    bool planeValid = true;
+                                                    for (int j = 0; j < neighbours; j++)
+                                                    {
+                                                        if (fabs(norm(0) * downsampled_als_cloud->points[point_idx[j]].x +
+                                                                 norm(1) * downsampled_als_cloud->points[point_idx[j]].y +
+                                                                 norm(2) * downsampled_als_cloud->points[point_idx[j]].z + negative_OA_dot_norm) > good_plan)
+                                                        {
+                                                            planeValid = false;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (planeValid)
+                                                    {
+                                                        error = fabs((source_point - target_point).dot(norm));
+
+                                                        RefPointType p;
+                                                        p.x = downsampled_als_cloud->points[point_idx[0]].x;
+                                                        p.y = downsampled_als_cloud->points[point_idx[0]].y;
+                                                        p.z = downsampled_als_cloud->points[point_idx[0]].z;
+                                                        p.normal_x = norm(0);
+                                                        p.normal_y = norm(1);
+                                                        p.normal_z = norm(2);
+                                                        p.curvature = error;
+                                                        // p.time = n10.curvature;
+                                                        good_planes->push_back(p);
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    pcl::PointCloud<PointType>::Ptr neighborhood_cloud(new pcl::PointCloud<PointType>);
+                                                    for (int j = 0; j < neighbours; j++)
+                                                    {
+                                                        neighborhood_cloud->points.emplace_back(downsampled_als_cloud->points[point_idx[j]]);
+                                                    }
+
+                                                    // Fit plane using PCA
+                                                    Eigen::Matrix3f cov;
+                                                    Eigen::Vector4f centroid;
+                                                    pcl::computeMeanAndCovarianceMatrix(*neighborhood_cloud, cov, centroid);
+
+                                                    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(cov);
+                                                    Eigen::Vector3f norm = eigen_solver.eigenvectors().col(0); // norm = smallest eigenvalue direction
+                                                    norm.normalize();
+
+                                                    float lambda0 = eigen_solver.eigenvalues()[0];
+                                                    float lambda1 = eigen_solver.eigenvalues()[1];
+                                                    float lambda2 = eigen_solver.eigenvalues()[2];
+                                                    curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+
+                                                    // Flat/Planar Region: curvature ≈ 0.001 - 0.05
+                                                    // Edge/Corner: curvature ≈ 0.1 - 0.3
+                                                    // Noisy/Irregular: curvature > 0.3
+
+                                                    if (curvature < .01)
+                                                    { // this is good planarity check
+                                                        V3D target_point(centroid[0], centroid[1], centroid[2]);
+
+                                                        error = fabs((source_point - target_point).dot(norm.cast<double>()));
+
+                                                        RefPointType p;
+                                                        p.x = centroid[0];
+                                                        p.y = centroid[1];
+                                                        p.z = centroid[2];
+                                                        p.normal_x = norm[0];
+                                                        p.normal_y = norm[1];
+                                                        p.normal_z = norm[2];
+                                                        p.curvature = error;
+                                                        good_planes->push_back(p);
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         feats_undistort->points[i].intensity = error;
 
-                                        //take the file path as a parameter from config yaml 
-                                        //save the data into a text file - names accordingly to the input file 
+                                        // save the data into a text file - names accordingly to the input file
+
+                                        if(true)
+                                        {
+                                            std::ofstream ofs(output_file, std::ios::app); // 'app' mode to append
+                                            if (!ofs.is_open()) {
+                                                std::cerr << "Failed to open output file: " << output_file << "\n";
+                                                return;
+                                            }
+                                            
+                                            // cloud id, p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball 
+                                            ofs << std::to_string(vux_cloud_next_id) <<" "<< error << " " << furtherst_d << " " << closest_d << " " << curvature <<" "<<neighbours << "\n";
+                                        }
                                     }
 
                                     publish_frame_debug(pubOptimizedVUX, feats_undistort);
@@ -2631,13 +2612,14 @@ void DataHandler::Subscribe()
                                     ros::spinOnce();
                                     rate.sleep();
 
-                                    std::cout<<"Found "<<good_planes->size()<<"/"<< feats_undistort->size() <<" good_planes"<<std::endl;
+                                    std::cout << "Found " << good_planes->size() << "/" << feats_undistort->size() << " good_planes" << std::endl;
                                     if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
                                         debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
                                 }
 
                                 vux_cloud_next_id++;
-                                if (vux_cloud_next_id > 20699)
+                                if (vux_cloud_next_id > 1000)
+                                //if (vux_cloud_next_id > 20699)
                                 {
                                     std::cout << "THe end of the georeferenced files..." << std::endl;
                                     throw std::runtime_error("Stop here.");
