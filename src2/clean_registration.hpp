@@ -663,6 +663,12 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
     Eigen::Vector6d JTr_global = Eigen::Vector6d::Zero();
     double cost_total = 0.;
 
+    bool test_point_to_mesh = true;
+    if(test_point_to_mesh)
+    {
+        std::cout<<"Testing point to mesh cost function "<<std::endl;
+    }
+
     std::cout << "Run GN omp ..." << std::endl;
     if (p2plane && p2p)
     {
@@ -702,7 +708,69 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
             search_point.x = p_transformed.x();
             search_point.y = p_transformed.y();
             search_point.z = p_transformed.z();
+            
+            // //it works----------------------------
+            // if(test_point_to_mesh)
+            // {
+            //     std::vector<int> point_idx(3);
+            //     std::vector<float> point_dist(3);
+            //     if (refference_kdtree->nearestKSearch(search_point, 3, point_idx, point_dist) > 0)
+            //     {
+            //         if (point_dist[2] < threshold_nn) // not too far
+            //         {
+            //             // 3 nearest neighbors
+            //             const auto &p1 = reference_localMap_cloud->points[point_idx[0]];
+            //             const auto &p2 = reference_localMap_cloud->points[point_idx[1]];
+            //             const auto &p3 = reference_localMap_cloud->points[point_idx[2]];
 
+            //             Eigen::Vector3d v1(p1.x, p1.y, p1.z);
+            //             Eigen::Vector3d v2(p2.x, p2.y, p2.z);
+            //             Eigen::Vector3d v3(p3.x, p3.y, p3.z);
+
+            //             // Compute normal of the triangle (mesh)
+            //             V3D norm = (v2 - v1).cross(v3 - v1);
+            //             double area = norm.norm() * 0.5;
+            //             norm.normalize();
+
+            //             bool planeValid = (area > 1e-6); // reject degenerate triangles
+
+            //             //if (planeValid)
+            //             { 
+            //                 //use the p2plane - since projected point already uses the normal to get its value
+            //                 Eigen::Vector6d J_r;                               // 6x1
+            //                 J_r.block<3, 1>(0, 0) = norm;                      // df/dt
+            //                 J_r.block<3, 1>(3, 0) = p_transformed.cross(norm); // df/dR
+
+            //                 double residual = (p_transformed - v1).dot(norm);
+
+            //                 double w = Weight(residual * residual);
+            //                 JTJ_private.noalias() += J_r * w * J_r.transpose();
+            //                 JTr_private.noalias() += J_r * w * residual;
+
+            //                 cost_private += w * residual * residual; 
+
+
+            //                 // Project pt onto the plane
+            //                 // double distance = norm.dot(p_transformed - v1);
+            //                 // V3D target_point = p_transformed - distance * norm;
+
+            //                 // Eigen::Matrix3_6d J_r;
+            //                 // const V3D residual = p_transformed - target_point;
+            //                 // J_r.block<3, 3>(0, 0) = Eye3d;                                  // df/dt
+            //                 // J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(p_transformed); // df/dR
+            //                 // double w = Weight(residual.squaredNorm());
+            //                 // JTJ_private.noalias() += J_r.transpose() * w * J_r;
+            //                 // JTr_private.noalias() += J_r.transpose() * w * residual;
+
+            //                 // cost_private += w * residual.squaredNorm();
+            //             }
+            //         }
+            //     }
+            
+            // }
+            
+            // else
+            
             if (p2p && p2plane) // both
             {
                 std::vector<int> point_idx(5);
@@ -836,6 +904,7 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
                         }
                     }
                 }
+            
             }
             else if (p2p) // only p2p
             {

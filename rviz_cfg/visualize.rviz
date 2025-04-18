@@ -136,8 +136,8 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 31.595090866088867
-            Min Value: -4.05302619934082
+            Max Value: 30.66175079345703
+            Min Value: -4.021385669708252
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -473,7 +473,7 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 1
+    - Alpha: 0.10000000149011612
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
         Max Value: 30.405000686645508
@@ -574,17 +574,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 58.34165573120117
-        Y: 56.266876220703125
-        Z: -2.7928559575229883e-05
+        X: 19.52949333190918
+        Y: 64.1895751953125
+        Z: -2.3023276298772544e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.8897968530654907
+      Pitch: 1.0997968912124634
       Target Frame: global
-      Yaw: 0.5203988552093506
+      Yaw: 1.1253985166549683
     Saved: ~
 Window Geometry:
   Displays:

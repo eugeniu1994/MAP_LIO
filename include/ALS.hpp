@@ -40,7 +40,7 @@ public:
     bool init(const V3D &gps_origin_ENU_, const M3D &init_R_2_mls, const PointCloudXYZI::Ptr &mls_cloud_full);
     bool init(const Sophus::SE3 &known_als2mls);
     void getCloud(PointCloudXYZI::Ptr &in_);
-    void Update(const Sophus::SE3 &mls_pose);
+    bool Update(const Sophus::SE3 &mls_pose);
 
     bool refine_als = false, initted_ = false;
     int min_points_per_patch = 0;
