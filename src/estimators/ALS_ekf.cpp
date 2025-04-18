@@ -649,7 +649,7 @@ void ALS_Handler::RemovePointsFarFromLocation(const V3D &mls_position)
     std::cout << "ALS RemovePointsFarFromLocation took " << elapsed_seconds.count() << " (s), and " << duration_milliseconds << " (ms)" << std::endl;
 }
 
-void ALS_Handler::Update(const Sophus::SE3 &mls_pose)
+bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
 {   
     //std::cout<<"Call update: motion:"<<(prev_mls_pos - mls_pose.translation()).norm()<<std::endl;
     //std::cout<<"boxSize:"<<boxSize<<std::endl;
@@ -705,5 +705,9 @@ void ALS_Handler::Update(const Sophus::SE3 &mls_pose)
                 }
             }
         }
+        
+        return true; //there was an update
     }
+
+    return false;
 }

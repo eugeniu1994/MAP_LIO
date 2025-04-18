@@ -539,6 +539,8 @@ bool DataHandler::sync_packages(MeasureGroup &meas)
         lidar_end_time = time_buffer.front() + meas.lidar->points.back().time;
         meas.lidar_end_time = lidar_end_time;
 
+        //std::cout<<"meas.lidar:"<<meas.lidar->size()<<std::endl;
+
         lidar_pushed = true;
 #ifdef SAVE_DATA
         meas.lidar_msg = lidar_msg_buffer.front();
