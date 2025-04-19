@@ -2404,8 +2404,9 @@ void DataHandler::Subscribe()
                                     {
                                         als_ref->getCloud(downsampled_als_cloud);
                                         vux_kdtree->setInputCloud(downsampled_als_cloud);
+                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference); //original density
 
-                                        als_ref->computePlanes(.5, .05, 5); // this will create the planes
+                                        /*als_ref->computePlanes(.5, .05, 5); // this will create the planes
 
                                         const std::vector<PlanePrimitive> &stable_planes = als_ref->stable_planes;
                                         pcl::PointCloud<PointType>::Ptr plane_centers(new pcl::PointCloud<PointType>);
@@ -2434,13 +2435,12 @@ void DataHandler::Subscribe()
                                         // Build kd-tree from centroids of stable planes
                                         plane_tree.setInputCloud(plane_centers);
 
-                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference); //original density
                                         //publishPointCloud(plane_centers, point_cloud_pub_reference);
 
                                         //debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
 
                                         //std::cout << "Show ref map, press enter..." << std::endl;
-                                        //std::cin.get();
+                                        //std::cin.get();*/
                                     }
 
                                     double good_plan = .2;
@@ -2456,9 +2456,7 @@ void DataHandler::Subscribe()
 
                                         double error = -1; // means no neighbours found for this point
                                         double furtherst_d = -1, closest_d = -1;
-                                        
                                         float curvature = -1; //curvature of the NN plane 
-                                        // const int neighbours = 10;
                                         int neighbours = -1;
 
                                         V3D source_point(search_point.x, search_point.y, search_point.z);
@@ -2489,7 +2487,7 @@ void DataHandler::Subscribe()
                                         else
                                         {
                                             // if (vux_kdtree->nearestKSearch(search_point, neighbours, point_idx, point_dist) > 0) //the data is sparse
-                                            if (vux_kdtree->radiusSearch(search_point, radius, point_idx, point_dist) > 3)
+                                            if (vux_kdtree->radiusSearch(search_point, radius, point_idx, point_dist) >= 5)
                                             {
                                                 closest_d = sqrt(point_dist.front());
                                                 furtherst_d = sqrt(point_dist.back());
@@ -2544,25 +2542,54 @@ void DataHandler::Subscribe()
                                                 }
                                                 else
                                                 {
-                                                    pcl::PointCloud<PointType>::Ptr neighborhood_cloud(new pcl::PointCloud<PointType>);
+                                                    // pcl::PointCloud<PointType>::Ptr neighborhood_cloud(new pcl::PointCloud<PointType>);
+                                                    // for (int j = 0; j < neighbours; j++)
+                                                    // {
+                                                    //     neighborhood_cloud->points.push_back(downsampled_als_cloud->points[point_idx[j]]);
+                                                    // }
+                                                    // Eigen::Matrix3f cov;
+                                                    // Eigen::Vector4f centroid;
+                                                    // pcl::computeMeanAndCovarianceMatrix(*neighborhood_cloud, cov, centroid);
+                                                    
+                                                    // Fit plane using PCA --------------------------
+                                                    V3D centroid = V3D::Zero();
                                                     for (int j = 0; j < neighbours; j++)
                                                     {
-                                                        neighborhood_cloud->points.emplace_back(downsampled_als_cloud->points[point_idx[j]]);
+                                                        centroid += V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y,downsampled_als_cloud->points[point_idx[j]].z);
                                                     }
+                                                    centroid /= static_cast<double>(neighbours);
 
-                                                    // Fit plane using PCA
-                                                    Eigen::Matrix3f cov;
-                                                    Eigen::Vector4f centroid;
-                                                    pcl::computeMeanAndCovarianceMatrix(*neighborhood_cloud, cov, centroid);
+                                                    M3D cov = M3D::Zero();
+                                                    for (int j = 0; j < neighbours; j++)
+                                                    {
+                                                        V3D centered_pt = V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y,downsampled_als_cloud->points[point_idx[j]].z) - centroid;
+                                                        cov += centered_pt * centered_pt.transpose(); // Outer product
+                                                    }
+                                                    cov /= static_cast<double>(neighbours); // Normalize by number of points
 
-                                                    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(cov);
-                                                    Eigen::Vector3f norm = eigen_solver.eigenvectors().col(0); // norm = smallest eigenvalue direction
+                                                    Eigen::SelfAdjointEigenSolver<M3D> eigen_solver(cov);
+                                                    V3D norm = eigen_solver.eigenvectors().col(0); // norm = smallest eigenvalue direction
                                                     norm.normalize();
 
-                                                    float lambda0 = eigen_solver.eigenvalues()[0];
-                                                    float lambda1 = eigen_solver.eigenvalues()[1];
-                                                    float lambda2 = eigen_solver.eigenvalues()[2];
+                                                    double lambda0 = eigen_solver.eigenvalues()[0];
+                                                    double lambda1 = eigen_solver.eigenvalues()[1];
+                                                    double lambda2 = eigen_solver.eigenvalues()[2];
                                                     curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+                                                                                                 
+                                                    // Check for invalid or degenerate cases
+                                                    if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6) {
+                                                        std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
+                                                        std::cerr<<"curvature is : "<<curvature<<std::endl;
+                                                        std::cout<<"lambda0:"<<lambda0<<", lambda1:"<<lambda1<<", lambda2:"<<lambda2<<std::endl;
+                                                        //throw std::runtime_error("Handle this...");
+                                                        continue;
+                                                    }
+
+                                                    // Colinear: if the two smallest eigenvalues are close to zero
+                                                    if ((lambda1 / lambda2) < 1e-3) {
+                                                        std::cerr << "Colinear structure detected. Skipping...\n";
+                                                        continue;
+                                                    }
 
                                                     // Flat/Planar Region: curvature ≈ 0.001 - 0.05
                                                     // Edge/Corner: curvature ≈ 0.1 - 0.3
@@ -2570,9 +2597,8 @@ void DataHandler::Subscribe()
 
                                                     if (curvature < .01)
                                                     { // this is good planarity check
-                                                        V3D target_point(centroid[0], centroid[1], centroid[2]);
 
-                                                        error = fabs((source_point - target_point).dot(norm.cast<double>()));
+                                                        error = fabs((source_point - centroid).dot(norm));
 
                                                         RefPointType p;
                                                         p.x = centroid[0];
@@ -2590,8 +2616,6 @@ void DataHandler::Subscribe()
 
                                         feats_undistort->points[i].intensity = error;
 
-                                        // save the data into a text file - names accordingly to the input file
-
                                         if(true)
                                         {
                                             std::ofstream ofs(output_file, std::ios::app); // 'app' mode to append
@@ -2600,8 +2624,8 @@ void DataHandler::Subscribe()
                                                 return;
                                             }
                                             
-                                            // cloud id, p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball 
-                                            ofs << std::to_string(vux_cloud_next_id) <<" "<< error << " " << furtherst_d << " " << closest_d << " " << curvature <<" "<<neighbours << "\n";
+                                            //p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball 
+                                            ofs << error << " " << furtherst_d << " " << closest_d << " " << curvature <<" "<<neighbours << "\n";
                                         }
                                     }
 
@@ -2618,8 +2642,8 @@ void DataHandler::Subscribe()
                                 }
 
                                 vux_cloud_next_id++;
-                                if (vux_cloud_next_id > 1000)
-                                //if (vux_cloud_next_id > 20699)
+                                //if (vux_cloud_next_id > 1000)
+                                if (vux_cloud_next_id > 20699)
                                 {
                                     std::cout << "THe end of the georeferenced files..." << std::endl;
                                     throw std::runtime_error("Stop here.");
