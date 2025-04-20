@@ -57,6 +57,8 @@ publish:
     poseSavePath: "/media/eugeniu/T7/roamer/mls-gt/"     #where to save the trajectory
 
 eval:
-    vux_eval_path: "/home/eugeniu/vux-georeferenced/No_refinement/gnss-imu0/"
-    #vux_eval_path: "/home/eugeniu/vux-georeferenced/BA-3_iterations/gnss-imu1/"
-
+    #vux_eval_path: "/home/eugeniu/vux-georeferenced/No_refinement/hesai0/"
+    
+    vux_eval_path: "/home/eugeniu/vux-georeferenced/vux_save_clouds/"
+    
+    #vux_eval_path: "/home/eugeniu/vux-georeferenced/BA-3_iterations/hesai3/"
