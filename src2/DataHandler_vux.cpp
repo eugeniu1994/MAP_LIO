@@ -2640,8 +2640,11 @@ void DataHandler::Subscribe()
                                     if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
                                         debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
                                 }
+                                std::cout<<"vux_cloud_next_id:"<<vux_cloud_next_id<<std::endl;
 
+                                
                                 vux_cloud_next_id++;
+                                
                                 //if (vux_cloud_next_id > 1000)
                                 if (vux_cloud_next_id > 20699)
                                 {
