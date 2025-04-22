@@ -57,11 +57,13 @@ void publishPointCloud(pcl::PointCloud<PointType>::Ptr &cloud, const ros::Publis
 void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros::Publisher &point_cloud_pub)
 {
     if (point_cloud_pub.getNumSubscribers() == 0)
+    {
         return;
+    }   
 
     if (cloud->empty())
     {
-        // std::cerr << "VUX Point cloud is empty. Skipping publish.\n";
+        std::cerr << "VUX Point cloud is empty. Skipping publish.\n";
         return;
     }
 
@@ -78,7 +80,7 @@ void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros
 
     point_cloud_pub.publish(cloud_msg);
 
-    // std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
+    std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
 }
 
 void publishJustPoints(const pcl::PointCloud<PointType>::Ptr &cloud_, const ros::Publisher &cloud_pub)
@@ -519,6 +521,7 @@ void DataHandler::Subscribe()
     int tmp_index = 0, init_guess_index = 0;
 
     // ros::Rate rate(250);
+
     ros::Rate rate(500);
 
     bool time_aligned = false;
@@ -788,6 +791,26 @@ void DataHandler::Subscribe()
     }
 
 #endif
+
+    // if (true)
+    // {
+    //     readVUX.got_first_gnss = true;
+    //     while (readVUX.next(next_line) || true)
+    //     {
+    //         if (flg_exit || !ros::ok())
+    //             break;
+
+    //         publishPointCloud_vux(next_line, point_cloud_pub);
+
+    //         ros::spinOnce();
+    //         rate.sleep();
+
+    //         // std::cout << "Published one scan, press enter..." << std::endl;
+    //         // std::cin.get();
+    //     }
+    // }
+
+    // return ; //------------------------------------------------------------
 
 #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
@@ -1404,7 +1427,6 @@ void DataHandler::Subscribe()
 
                         if (time_aligned) // && some_index % 2 == 0
                         {
-
                             pcl::PointCloud<VUX_PointType>::Ptr downsampled_line(new pcl::PointCloud<VUX_PointType>);
                             downSizeFilter_vux.setInputCloud(next_line);
                             downSizeFilter_vux.filter(*downsampled_line);
@@ -1582,7 +1604,8 @@ void DataHandler::Subscribe()
 
                             bool debug = false;
                             bool release = false;
-                            bool eval = true;
+
+                            bool eval = false;
 
                             int BA_iterations = 2; // 3;
                             if (debug)             // I AM ON THIS PART NOW
@@ -2364,7 +2387,7 @@ void DataHandler::Subscribe()
                             {
                                 {
                                     std::string input_file = vux_eval_path + "vux_" + std::to_string(vux_cloud_next_id) + "_cloud.pcd";
-                                    std::string output_file = vux_eval_path + "surface-eval/vux_surf_eval_" + std::to_string(vux_cloud_next_id) + ".txt"; //this file will contain the evaluation of all the scans
+                                    std::string output_file = vux_eval_path + "surface-eval/vux_surf_eval_" + std::to_string(vux_cloud_next_id) + ".txt"; // this file will contain the evaluation of all the scans
 
                                     pcl::PointCloud<VUX_PointType> cloud;
                                     if (pcl::io::loadPCDFile<VUX_PointType>(input_file, cloud) == -1)
@@ -2404,7 +2427,7 @@ void DataHandler::Subscribe()
                                     {
                                         als_ref->getCloud(downsampled_als_cloud);
                                         vux_kdtree->setInputCloud(downsampled_als_cloud);
-                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference); //original density
+                                        publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference); // original density
 
                                         /*als_ref->computePlanes(.5, .05, 5); // this will create the planes
 
@@ -2446,9 +2469,9 @@ void DataHandler::Subscribe()
                                     double good_plan = .2;
 
                                     bool use_prebuilt_planes = false;
-                                    //const std::vector<PlanePrimitive> &stable_planes = als_ref->stable_planes;
+                                    // const std::vector<PlanePrimitive> &stable_planes = als_ref->stable_planes;
 
-                                    float radius = 1.0; //for NN planes
+                                    float radius = 1.0; // for NN planes
 
                                     for (int i = 0; i < feats_undistort->size(); i++)
                                     {
@@ -2456,7 +2479,7 @@ void DataHandler::Subscribe()
 
                                         double error = -1; // means no neighbours found for this point
                                         double furtherst_d = -1, closest_d = -1;
-                                        float curvature = -1; //curvature of the NN plane 
+                                        float curvature = -1; // curvature of the NN plane
                                         int neighbours = -1;
 
                                         V3D source_point(search_point.x, search_point.y, search_point.z);
@@ -2550,19 +2573,19 @@ void DataHandler::Subscribe()
                                                     // Eigen::Matrix3f cov;
                                                     // Eigen::Vector4f centroid;
                                                     // pcl::computeMeanAndCovarianceMatrix(*neighborhood_cloud, cov, centroid);
-                                                    
+
                                                     // Fit plane using PCA --------------------------
                                                     V3D centroid = V3D::Zero();
                                                     for (int j = 0; j < neighbours; j++)
                                                     {
-                                                        centroid += V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y,downsampled_als_cloud->points[point_idx[j]].z);
+                                                        centroid += V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y, downsampled_als_cloud->points[point_idx[j]].z);
                                                     }
                                                     centroid /= static_cast<double>(neighbours);
 
                                                     M3D cov = M3D::Zero();
                                                     for (int j = 0; j < neighbours; j++)
                                                     {
-                                                        V3D centered_pt = V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y,downsampled_als_cloud->points[point_idx[j]].z) - centroid;
+                                                        V3D centered_pt = V3D(downsampled_als_cloud->points[point_idx[j]].x, downsampled_als_cloud->points[point_idx[j]].y, downsampled_als_cloud->points[point_idx[j]].z) - centroid;
                                                         cov += centered_pt * centered_pt.transpose(); // Outer product
                                                     }
                                                     cov /= static_cast<double>(neighbours); // Normalize by number of points
@@ -2575,18 +2598,20 @@ void DataHandler::Subscribe()
                                                     double lambda1 = eigen_solver.eigenvalues()[1];
                                                     double lambda2 = eigen_solver.eigenvalues()[2];
                                                     curvature = lambda0 / (lambda0 + lambda1 + lambda2);
-                                                                                                 
+
                                                     // Check for invalid or degenerate cases
-                                                    if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6) {
+                                                    if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6)
+                                                    {
                                                         std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
-                                                        std::cerr<<"curvature is : "<<curvature<<std::endl;
-                                                        std::cout<<"lambda0:"<<lambda0<<", lambda1:"<<lambda1<<", lambda2:"<<lambda2<<std::endl;
-                                                        //throw std::runtime_error("Handle this...");
+                                                        std::cerr << "curvature is : " << curvature << std::endl;
+                                                        std::cout << "lambda0:" << lambda0 << ", lambda1:" << lambda1 << ", lambda2:" << lambda2 << std::endl;
+                                                        // throw std::runtime_error("Handle this...");
                                                         continue;
                                                     }
 
                                                     // Colinear: if the two smallest eigenvalues are close to zero
-                                                    if ((lambda1 / lambda2) < 1e-3) {
+                                                    if ((lambda1 / lambda2) < 1e-3)
+                                                    {
                                                         std::cerr << "Colinear structure detected. Skipping...\n";
                                                         continue;
                                                     }
@@ -2616,16 +2641,17 @@ void DataHandler::Subscribe()
 
                                         feats_undistort->points[i].intensity = error;
 
-                                        if(true)
+                                        if (true)
                                         {
                                             std::ofstream ofs(output_file, std::ios::app); // 'app' mode to append
-                                            if (!ofs.is_open()) {
+                                            if (!ofs.is_open())
+                                            {
                                                 std::cerr << "Failed to open output file: " << output_file << "\n";
                                                 return;
                                             }
-                                            
-                                            //p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball 
-                                            ofs << error << " " << furtherst_d << " " << closest_d << " " << curvature <<" "<<neighbours << "\n";
+
+                                            // p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball
+                                            ofs << error << " " << furtherst_d << " " << closest_d << " " << curvature << " " << neighbours << "\n";
                                         }
                                     }
 
@@ -2640,12 +2666,11 @@ void DataHandler::Subscribe()
                                     if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
                                         debug_CloudWithNormals(good_planes, cloud_pub, normals_pub);
                                 }
-                                std::cout<<"vux_cloud_next_id:"<<vux_cloud_next_id<<std::endl;
+                                std::cout << "vux_cloud_next_id:" << vux_cloud_next_id << std::endl;
 
-                                
                                 vux_cloud_next_id++;
-                                
-                                //if (vux_cloud_next_id > 1000)
+
+                                // if (vux_cloud_next_id > 1000)
                                 if (vux_cloud_next_id > 20699)
                                 {
                                     std::cout << "THe end of the georeferenced files..." << std::endl;

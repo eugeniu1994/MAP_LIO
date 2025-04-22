@@ -6,22 +6,29 @@ from scipy.stats import linregress
 import matplotlib.patches as mpatches
 
 colors = ['lightblue', 'lightgoldenrodyellow', 'skyblue', 'lightcoral', 'lightgreen', 'khaki', 'plum', 'lightgray', 'orange', 'skyblue', 'lightcoral']
+colors = ['tab:blue', 'tab:orange', 'tab:red', 'tab:purple', 'tab:cyan', 'tab:brown', 'skyblue', 'lightgoldenrodyellow', ]
 
 
+plt.rcParams.update({'font.size': 16})
 sns.set(style="whitegrid")
+sns.set_context("notebook", font_scale=1.3)  # 1.6 × base font size (~10 by default)
 
 # p2plane error, furtherst_d, closest_d, curvature, neighbours in a radius ball 
 methods = {
-    'GNSS-IMU0': '/home/eugeniu/vux-georeferenced/No_refinement/gnss-imu0/surface-eval',
-    'GNSS-IMU1': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu1/surface-eval",
-    'GNSS-IMU2': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu2/surface-eval",
-    'GNSS-IMU3': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu3/surface-eval",
+    'GNSS-IMU 0': '/home/eugeniu/vux-georeferenced/No_refinement/gnss-imu0/surface-eval',
+    'GNSS-IMU 1': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu1/surface-eval",
+    'GNSS-IMU 2': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu2/surface-eval",
+    'GNSS-IMU 3': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu3/surface-eval",
 
-    'Hesai0': '/home/eugeniu/vux-georeferenced/No_refinement/hesai0/surface-eval',
-    'Hesai1': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai1/surface-eval",
-    'Hesai2': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai2/surface-eval",
-    'Hesai3': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai3/surface-eval",
+    'Hesai 0': '/home/eugeniu/vux-georeferenced/No_refinement/hesai0/surface-eval',
+    'Hesai 1': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai1/surface-eval",
+    'Hesai 2': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai2/surface-eval",
+    'Hesai 3': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai3/surface-eval",
+    
 
+
+
+    
     # 'GNSS-IMU1_2BA': "/home/eugeniu/vux-georeferenced/BA-2_iterations/gnss-imu1/surface-eval",
     # 'Hesai1_2BA': "/home/eugeniu/vux-georeferenced/BA-2_iterations/hesai1/surface-eval",
 
@@ -39,6 +46,7 @@ methods = {
 
     # 'GNSS-IMU3_3BA': "/home/eugeniu/vux-georeferenced/BA-3_iterations/gnss-imu3/surface-eval",
     # 'Hesai3_3BA': "/home/eugeniu/vux-georeferenced/BA-3_iterations/hesai3/surface-eval",
+    
 }
 
 
@@ -65,16 +73,25 @@ WE STICK WITH 2BA METHOD
 
 '''
 
+# Bootstrap parameters
+n_bootstrap = 10000
+rng = np.random.default_rng(seed=42)  # reproducible
 
 data = {}
 for label, folder in methods.items():
     all_data = []
+    scans = 500
     for fname in sorted(os.listdir(folder)):
         if fname.endswith('.txt'):
             file_path = os.path.join(folder, fname)
             scan_data = np.loadtxt(file_path)
             valid_rows = (scan_data[:, 0] >= 0) # Filter out invalid rows (p2plane_error == -1)
             all_data.append(scan_data[valid_rows])
+
+            # scans-=1
+            # if scans < 0:
+            #     break
+
     data[label] = np.vstack(all_data)
 
     print(label,": has", np.shape(data[label]))
@@ -83,7 +100,7 @@ for label, folder in methods.items():
 metrics = {
     'Point-to-surface error': 0,
     #'Curvature': 3,
-    'Number of neighbours in a 1 m radius ball': 4
+    'Neighbours in a 1 m radius ball': 4
 }
 
 def compute_stats(arr):
@@ -104,10 +121,8 @@ def show_stats():
         labels = list(data.keys())
         values = [data[label][:, col_idx] for label in labels]
 
-        # Create boxplot
-        box = plt.boxplot(values, patch_artist=True, showmeans=True, showfliers=False)
+        box = plt.boxplot(values, patch_artist=True, showmeans=True, meanline=True, showfliers=False, notch=False) #, 
 
-        # Customize box colors and legend
         legend_handles = []
         for patch, color, label in zip(box['boxes'], colors, labels):
             patch.set_facecolor(color)
@@ -115,26 +130,27 @@ def show_stats():
             patch.set_linewidth(1.2)
             legend_handles.append(mpatches.Patch(color=color, label=label))
 
-        # Customize mean and median
-        for mean_line in box['means']:
-            mean_line.set(color='darkblue', linewidth=2, linestyle='--')
-
         for median_line in box['medians']:
-            median_line.set(color='black', linewidth=2)
+            median_line.set_alpha(0)  # or median_line.set_visible(False)
+            #median_line.set(color='grey', linewidth=2, linestyle='dotted')
 
-        #Customize whiskers and caps (min/max lines)
+        for mean_line in box['means']:
+            mean_line.set(color='black', linewidth=2, linestyle='--')
+
         for line in box['whiskers'] + box['caps']:
             line.set(color='black', linewidth=1.2)
 
-        # Axes and layout
         plt.ylabel(metric_name)
-        plt.title(f'Distribution of {metric_name}')
+        #plt.title(f'Distribution of {metric_name}')
         plt.xticks(np.arange(1, len(labels) + 1), labels)
         plt.legend(handles=legend_handles, title="Method")
-        plt.grid(True, linestyle='--', alpha=0.5)
+        #plt.grid(True, linestyle='--', alpha=0.5)
         plt.tight_layout()
+        plt.xticks(rotation=90)
+        plt.xticks([])
         plt.draw()
-        break
+
+        #break
 
     plt.draw()
 
@@ -154,14 +170,15 @@ def show_stats():
             print(label, ':', values)
 
         plt.ylabel(metric_name)
-        plt.title(f'Statistics for {metric_name}')
+        #plt.title(f'Statistics for {metric_name}')
         plt.xticks(x, stat_keys)
-        plt.legend()
+        plt.legend(title="Method")
         plt.tight_layout()
-        plt.grid(True)
+        #plt.grid(True)
         plt.draw()
         #plt.show()
 
+    
     # # KDE plots for distribution
     # print('draw KDE')
     # for metric_name, col_idx in metrics.items():
@@ -171,7 +188,7 @@ def show_stats():
     #     plt.title(f'Distribution of {metric_name}')
     #     plt.xlabel(metric_name)
     #     plt.ylabel("Density")
-    #     plt.legend()
+    #     plt.legend(title="Method")
     #     plt.grid(True)
     #     plt.tight_layout()
     #     plt.draw()
@@ -189,11 +206,11 @@ def show_stats():
             cdf = np.linspace(0, 1, len(values))
             plt.plot(values, cdf, label=label)
 
-        plt.title(f'Cumulative Distribution of {metric_name}')
+        #plt.title(f'Cumulative Distribution of {metric_name}')
         plt.xlabel(metric_name)
         plt.ylabel("Cumulative Probability")
-        plt.legend()
-        plt.grid(True)
+        plt.legend(title="Method")
+        #plt.grid(True)
         plt.tight_layout()
         plt.draw()
 
@@ -201,39 +218,76 @@ def show_stats():
 
 def show_correlation():
     print('show_correlation')
-    plt.figure(figsize=(10, 6))
+    
     #Pearson correlation coefficient matrix between x and y. 1 (perfect positive correlation), 0.1 – 0.3	Weak positive correlation
     #WE WANT TO SHOW THAT THERE IS NO CORRELATION - BETWEEN THE CURVATURE AND THE POINT TO PLANE ERROR 
+    
+    color_index = 0
     for label, d in data.items():
-        #x = d[:, 3]  # Curvature
-        #y = d[:, 0]  # Point-to-plane error
+        #print('color_index:',color_index,",  colors:", np.shape(colors))
+        c = colors[color_index]
+        color_index += 1
+        #plt.figure(figsize=(10, 6))
+        errors = d[:, 0]  # Point-to-plane error 
 
-        x = d[::100, 3]  # Curvature
-        y = d[::100, 0]  # Point-to-plane error
+        # # Bootstrap resampling
+        # bootstrap_means = np.array([
+        #     rng.choice(errors, size=int(len(errors)/100), replace=True).mean()
+        #     for _ in range(n_bootstrap)
+        # ])
 
-        plt.scatter(x, y, s=1, alpha=0.5, label=f'{label} (r={np.corrcoef(x, y)[0,1]:.2f})')
+        # # 95% confidence interval (change percentiles as needed)
+        # lower = np.percentile(bootstrap_means, 2.5)
+        # upper = np.percentile(bootstrap_means, 97.5)
+        # mean = np.mean(errors)
+        # ci_half_width = (upper - lower) / 2
 
-        # Plot horizontal line: mean error
-        mean_error = np.mean(y)
-        plt.axhline(mean_error, linestyle='--',  linewidth=5, alpha=1)
-        plt.text(np.max(x)*0.95, mean_error, f"mean={mean_error:.3f}", va='bottom', ha='right', fontsize=14, color='black')
+        # print(f"Mean: {mean:.4f}, 95% CI: ({lower:.4f}, {upper:.4f})")
+        # print(f"Mean: {mean:.4f} ± {ci_half_width:.4f} (95% CI)")
 
-        # Optional: Fit a line (linear regression)
-        slope, intercept, r_value, _, _ = linregress(x, y)
-        x_fit = np.linspace(np.min(x), np.max(x), 500)
-        y_fit = slope * x_fit + intercept
-        plt.plot(x_fit, y_fit, linestyle='-', linewidth=5, label=f'{label} fit (slope={slope:.2e})')
+        x = d[::30, 0]  # Point-to-plane error 
+        y = d[::30, 3]  # Curvature
 
-        plt.title('Point-to-Plane Error vs Curvature')
-        plt.xlabel('Curvature')
-        plt.ylabel('Point-to-Plane Error')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
+        
+        pearson = np.corrcoef(x, y)[0,1]
+        print('{} correlation {}'.format(label, pearson))
+        # plt.scatter(x, y, s=1, c=c, alpha=0.5, label=f'{label} (r={pearson:.2f})')
+
+        # # Plot horizontal line: mean error
+        # mean_error = np.mean(y)
+        # # plt.axhline(mean_error, linestyle='--', color = 'black', linewidth=2, alpha=1)
+        # # plt.text(np.max(x)*0.95, mean_error, f"mean={mean_error:.3f}", va='bottom', ha='right', fontsize=14, color='black')
+
+        # # Optional: Fit a line (linear regression)
+        # # slope, intercept, r_value, _, _ = linregress(x, y)
+        # # x_fit = np.linspace(np.min(x), np.max(x), 500)
+        # # y_fit = slope * x_fit + intercept
+        # # plt.plot(x_fit, y_fit, linestyle='-', linewidth=5, label=f'{label} fit (slope={slope:.2e})')
+
+        # #plt.title('Curvature vs Point-to-surface error')
+        # plt.xlabel('Point-to-surface error')
+        # plt.ylabel('Curvature')
+        # plt.legend(title="Method")
+        # #plt.grid(True)
+        # plt.tight_layout()
+        # plt.draw()
+
+
+        plt.figure(figsize=(10, 6))
+        # 2D histogram
+        plt.hist2d(x, y, bins=100)
+        plt.colorbar(label=f'Bins for {label} (r={pearson:.2f})')
+
+        # Add correlation in the title or label if desired
+        r = np.corrcoef(x, y)[0, 1]
+        #plt.title(f'{label} (r = {r:.2f})')
+        #plt.legend(title="Method")
+        plt.xlabel('Point-to-plane error')
+        plt.ylabel('Curvature')
         plt.draw()
 
 show_stats()
-plt.show()
+plt.draw()
 
-#show_correlation()
-#plt.show()
+show_correlation()
+plt.show()

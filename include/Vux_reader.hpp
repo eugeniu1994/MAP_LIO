@@ -28,7 +28,7 @@ namespace vux
         string type_id;
         string serial;
 
-        bool got_first_gnss = false;
+        
         uint32_t TOWseconds = 0;
         bool line_read, gnss_read;
         pcl::PointCloud<VUX_PointType>::Ptr cloud_line;
@@ -41,6 +41,7 @@ namespace vux
         float time_unit = 0, time_unit_hi_prec = 0;
 
     public:
+        bool got_first_gnss = false;
         unsigned long line;
         double max_range;
         std::shared_ptr<basic_rconnection> rc;
@@ -173,6 +174,8 @@ namespace vux
         void on_hk_gps_hr(const hk_gps_hr<iterator_type> &arg)
         {
             pointcloud::on_hk_gps_hr(arg);
+
+            std::cout<<"on_hk_gps_hr-----------------------"<<std::endl;
 
             std::string sync_status = "not synchronized";
             if (arg.SYNC_STATUS == 1)
