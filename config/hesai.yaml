@@ -59,6 +59,5 @@ publish:
 eval:
     #vux_eval_path: "/home/eugeniu/vux-georeferenced/No_refinement/hesai0/"
     
-    vux_eval_path: "/home/eugeniu/vux-georeferenced/vux_save_clouds/"
+    vux_eval_path: "/home/eugeniu/vux_save_clouds/"
     
-    #vux_eval_path: "/home/eugeniu/vux-georeferenced/BA-3_iterations/hesai3/"
