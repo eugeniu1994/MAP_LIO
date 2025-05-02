@@ -51,7 +51,7 @@ void publishPointCloud(pcl::PointCloud<PointType>::Ptr &cloud, const ros::Publis
 
     point_cloud_pub.publish(cloud_msg);
 
-    std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
+    //std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
 }
 
 void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros::Publisher &point_cloud_pub)
@@ -80,7 +80,7 @@ void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros
 
     point_cloud_pub.publish(cloud_msg);
 
-    std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
+    //std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
 }
 
 void publishJustPoints(const pcl::PointCloud<PointType>::Ptr &cloud_, const ros::Publisher &cloud_pub)
@@ -404,7 +404,11 @@ Sophus::SE3 interpolateSE3(const Sophus::SE3 &pose1, const double time1,
 // #include "vux_registration.hpp"
 // #include "VoxelHash.hpp"
 
-#include "clean_registration.hpp"
+//#include "clean_registration.hpp" //this was used for prev tests
+
+#include "clean_registration2.hpp"
+
+
 #include <regex>
 //----------------------------------------------------
 #include <pcl/search/kdtree.h> //used for normal estimation
@@ -458,7 +462,7 @@ std::vector<Tree_> readTreeFile(const std::string &filename, const Sophus::SE3 &
 
         if (true) // put in mls
         {
-            t.pos = als2mls * t.pos;
+            t.pos = als2mls * t.pos;            
             t.x = t.pos[0];
             t.y = t.pos[1];
         }
@@ -960,6 +964,15 @@ void DataHandler::Subscribe()
     Sophus::SE3 T_mls2als(R_mls2als, t_mls2als);  // Construct the SE3 transformation
     //T_mls2als = T_mls2als.inverse();
 
+    
+    M3D R_prev;
+    R_prev << -0.7835042222 ,     -0.6213649391  ,     0.0051716842,
+                0.6210372458,      -0.7833157670 ,     -0.0270027488,
+                0.0208296231 ,    -0.0179449592 ,     0.9996219812;
+
+    V3D t_prev(4528728.4617895531, 5068372.1667804578, 113330.7366873509);
+    Sophus::SE3 T_als2mls_prev(R_prev, t_prev); 
+    
 
 #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
@@ -1241,13 +1254,20 @@ void DataHandler::Subscribe()
 
             als2mls = als_obj->als_to_mls;
 
-            if (load_trees)
+            // als2mls = T_als2mls_prev;
+            // als_obj->als_to_mls = T_als2mls_prev;
+            
+            if (load_trees && false)
             {
                 load_trees = false;
-                //trees = readTreeFile(tree_file, als2mls);
-                trees = readTreeFile(tree_file, T_mls2als.inverse());
                 
+                trees = readTreeFile(tree_file, als2mls);
+                
+                //trees = readTreeFile(tree_file, T_mls2als.inverse());
+                
+                trees = readTreeFile(tree_file, T_als2mls_prev);
 
+                
                 // Tree_ t1;
                 // t1.x = 1.0;
                 // t1.y = 25.0;
@@ -1468,6 +1488,10 @@ void DataHandler::Subscribe()
                 {
                     if (true) // this will load the reprocessor generated map
                     {
+                        std::cout<<"just a test of the transformations..."<<std::endl;
+                        std::cout<<"als2mls:\n"<<als2mls.matrix()<<std::endl;
+                        std::cout<<"als2mls.inverse():\n"<<als2mls.inverse().matrix()<<std::endl;
+
                         do_once = false;
                         // work with sensor B
                         std::string f1 = "/media/eugeniu/T7/roamer/09_Export/VUX-1HA-22-2022-B/240725_092351_v12.las";
@@ -1507,10 +1531,15 @@ void DataHandler::Subscribe()
                             liblas::Point const &p = reader.GetPoint();
 
                             // V3D cloudPoint = V3D(p.GetX(), p.GetY(), p.GetZ()) - offset_;
-                            V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            //V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
 
-                            if (cloudPoint.squaredNorm() > max_length)
-                                continue;
+                            //V3D cloudPoint = T_mls2als.inverse() * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            V3D cloudPoint = T_als2mls_prev * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+
+
+                            
+                            //if (cloudPoint.squaredNorm() > max_length)
+                            //    continue;
 
                             point.x = cloudPoint.x();
                             point.y = cloudPoint.y();
@@ -1563,16 +1592,16 @@ void DataHandler::Subscribe()
                 // bool use_mls_ref = true;
                 // if (use_mls_ref)
                 //{
-                std::cout << "kdtree set input MLS points: " << laserCloudSurfMap->size() << std::endl;
-                kdtree->setInputCloud(laserCloudSurfMap); // take this from mls
-                const auto &refference_kdtree = kdtree;
-                const auto &reference_localMap_cloud = laserCloudSurfMap;
+                // std::cout << "kdtree set input MLS points: " << laserCloudSurfMap->size() << std::endl;
+                // kdtree->setInputCloud(laserCloudSurfMap); // take this from mls
+                // const auto &refference_kdtree = kdtree;
+                // const auto &reference_localMap_cloud = laserCloudSurfMap;
                 // }
                 // else
                 // {
-                // std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
-                // const auto &refference_kdtree = estimator_.localKdTree_map; // we can re-use this, no need to recreate it
-                // const auto &reference_localMap_cloud = als_obj->als_cloud;
+                std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
+                const auto &refference_kdtree = estimator_.localKdTree_map; // we can re-use this, no need to recreate it
+                const auto &reference_localMap_cloud = als_obj->als_cloud;
                 // }
 
                 while (gnss_vux_data[tmp_index].gps_tod <= time_of_day_sec && tmp_index < gnss_vux_data.size())
@@ -1633,7 +1662,7 @@ void DataHandler::Subscribe()
                             Sophus::SE3 pose4georeference = als2mls * interpolated_pose_ppk * vux2imu_extrinsics; // this does not have the extrinsics for mls
 
                             // MLS pose as init guess ---- first extrinsics, then georeference  // mls pose
-                            pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
+                            //pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
 
                             publish_refined_ppk_gnss(pose4georeference, cloud_time);
 
@@ -1786,15 +1815,18 @@ void DataHandler::Subscribe()
                                 }
                             }
 
-                            bool refine_init = false;            // false;            // true;
+                            bool refine_init = true;            // false;            // true;
                             bool save_georeferenced_vux = false; // true; // will be taken in the release mode only
 
-                            bool debug = false;
+                            bool debug = true;
                             bool release = false;
 
-                            bool eval = true;
+                            bool eval = false;
 
-                            int BA_iterations = 2; // 3;
+                            int BA_iterations = 2; 
+
+                            //BA_iterations = 3;
+
                             if (debug)             // I AM ON THIS PART NOW
                             {
                                 // std::cout<<"In Debug..."<<std::endl;
@@ -1855,7 +1887,7 @@ void DataHandler::Subscribe()
                                     // mid_scan = total_scans; //this will not do anything
                                     mid_scan = 75;
                                     mid_scan = 50; // if (l >= mid_scan) prev scan
-
+ 
                                     total_scans = 200; // also good
                                     mid_scan = 150;
 
@@ -1864,9 +1896,10 @@ void DataHandler::Subscribe()
                                     mid_scan = 350;    // 12.5% overlapp
                                     mid_scan = 300;    // 25%
 
+                                    //mid_scan = 350;// 12 % overlap - just a test now 
                                     //  std::cout << "lines_buffer:" << lines_buffer.size() << std::endl;
 
-                                    bool const_vel_model = false; // true; // use const vel model for segments
+                                    bool const_vel_model = true; // use const vel model for segments
 #define debug_clouds
 
                                     if (lines_buffer.size() >= total_scans) // we have a list of scans
@@ -2065,7 +2098,7 @@ void DataHandler::Subscribe()
                                             std::cin.get();
                                         }
 
-                                        bool BA_refine = false;
+                                        bool BA_refine = true;// false;
                                         if (BA_refine) // pose graph here
                                         {
                                             std::cout << "Start BA refinement..." << std::endl;

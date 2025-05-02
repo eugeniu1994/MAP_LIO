@@ -127,7 +127,7 @@ add_definitions(-DWITHOUT_NUMPY) #for matplotlib
 set(USE_EKF TRUE)
 set(USE_STATIC_KDTREE TRUE) # or FALSE to disable
 
-add_definitions(-DADAPTIVE_KERNEL=1)
+#add_definitions(-DADAPTIVE_KERNEL=1)
 add_definitions(-DUSE_ALS)
 
 #------------------------------------------------------------------------
