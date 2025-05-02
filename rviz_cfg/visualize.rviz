@@ -164,8 +164,8 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 30.665559768676758
-            Min Value: -4.010335445404053
+            Max Value: 30.99110984802246
+            Min Value: -3.9775030612945557
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -189,7 +189,7 @@ Visualization Manager:
           Use Fixed Frame: true
           Use rainbow: true
           Value: true
-        - Alpha: 1
+        - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: false
           Autocompute Value Bounds:
             Max Value: 77.4544448852539
@@ -513,7 +513,7 @@ Visualization Manager:
       Color: 255; 0; 0
       Color Transformer: AxisColor
       Decay Time: 0
-      Enabled: false
+      Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Max Intensity: 83
@@ -530,7 +530,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: false
+      Value: true
     - Angle Tolerance: 0.009999999776482582
       Class: rviz/Odometry
       Covariance:
@@ -630,7 +630,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 97.03211975097656
+      Distance: 134.75820922851562
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -638,17 +638,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 33.647605895996094
-        Y: 57.452266693115234
+        X: 3.674680233001709
+        Y: 67.56891632080078
         Z: -9.489617696090136e-06
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.0097966194152832
+      Pitch: 1.4397962093353271
       Target Frame: global
-      Yaw: 0.7904024124145508
+      Yaw: 1.64040207862854
     Saved: ~
 Window Geometry:
   Displays:
