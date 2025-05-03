@@ -213,8 +213,6 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
     Eigen::Vector6d JTr_global = Eigen::Vector6d::Zero();
     double cost_total = 0.;
 
-    
-
     std::cout << "Run GN omp ..." << std::endl;
     if (p2plane && p2p)
     {
@@ -500,6 +498,58 @@ void debug_CloudWithNormals(const pcl::PointCloud<pcl::PointNormal>::Ptr &cloud_
     }
 }
 
+using namespace gtsam;
+using gtsam::symbol_shorthand::A; // for anchor
+using gtsam::symbol_shorthand::X; // Pose symbols
+using gtsam::symbol_shorthand::Z; // prev Pose symbols
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr extractTranslations(const gtsam::Values &values)
+{
+    auto cloud = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+
+    for (const gtsam::Key &key : values.keys())
+    {
+        if (values.exists<gtsam::Pose3>(key))
+        {
+            gtsam::Pose3 pose = values.at<gtsam::Pose3>(key);
+            gtsam::Point3 t = pose.translation();
+            cloud->points.emplace_back(t.x(), t.y(), t.z());
+        }
+    }
+
+    cloud->width = cloud->points.size();
+    cloud->height = 1;
+    cloud->is_dense = true;
+    return cloud;
+}
+
+void publishBACloud(ros::Publisher &pub, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const std_msgs::Header &header)
+{
+    sensor_msgs::PointCloud2 msg;
+    pcl::toROSMsg(*cloud, msg);
+    msg.header = header;
+    pub.publish(msg);
+}
+
+void debugGraphs(const gtsam::Values &prev_values, const gtsam::Values &curr_values,
+                 ros::Publisher &prev_pub, ros::Publisher &curr_pub)
+{
+    // ros::Publisher prev_pub = nh.advertise<sensor_msgs::PointCloud2>("prev_graph_cloud", 1);
+    // ros::Publisher curr_pub = nh.advertise<sensor_msgs::PointCloud2>("curr_graph_cloud", 1);
+
+    auto prev_cloud = extractTranslations(prev_values);
+    auto curr_cloud = extractTranslations(curr_values);
+
+    std::cout << "prev_cloud:" << prev_cloud->size() << ", curr_cloud:" << curr_cloud->size() << std::endl;
+
+    std_msgs::Header header;
+    header.stamp = ros::Time::now();
+    header.frame_id = "world";
+
+    publishBACloud(prev_pub, prev_cloud, header);
+    publishBACloud(curr_pub, curr_cloud, header);
+}
+
 struct landmark_
 {
     int map_point_index;         // index of the point from the reference map
@@ -742,11 +792,6 @@ std::unordered_map<int, landmark_> get_Correspondences(
     return landmarks_map;
 }
 
-using namespace gtsam;
-using gtsam::symbol_shorthand::A; // for anchor
-using gtsam::symbol_shorthand::X; // Pose symbols
-using gtsam::symbol_shorthand::Z; // prev Pose symbols
-
 double GM_robust_kernel(const double &residual2)
 {
     double kernel_ = 1.0;
@@ -853,7 +898,7 @@ auto sigma_point = 1; // 100cm standard deviation (3σ ≈ 3m allowed)
 auto sigma_plane = 1; // 100cm standard deviation (3σ ≈ 30cm allowed)
 
 // auto sigma_odom = .02; //for relative odometry - tested with skip one scan
-auto sigma_odom = .01;  // for relative odometry no scan skip
+auto sigma_odom = .005; // .01;  // for relative odometry no scan skip
 auto sigma_prior = 1.0; // not sure about the prior - let it change it
 
 auto point_noise = gtsam::noiseModel::Robust::Create(
@@ -872,7 +917,71 @@ auto prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
     (gtsam::Vector6() << gtsam::Vector3::Constant(sigma_prior), gtsam::Vector3::Constant(sigma_prior)).finished());
 
 auto tight_noise = noiseModel::Diagonal::Sigmas(
-    (Vector6() << .0001, .0001, .0001, .001, .001, .001).finished());
+    (Vector6() << .0001, .0001, .0001, .0001, .0001, .0001).finished());
+
+void updatePriorUncertainty(gtsam::NonlinearFactorGraph &graph,
+                            gtsam::Key prior_key,
+                            const gtsam::SharedNoiseModel &new_prior_noise)
+{
+    // Find and remove the existing prior factor
+    for (size_t i = 0; i < graph.size(); ++i)
+    {
+        if (auto prior_factor = dynamic_cast<gtsam::PriorFactor<gtsam::Pose3> *>(graph[i].get()))
+        {
+            if (prior_factor->key() == prior_key)
+            {
+                // // Remove the old factor
+                // graph.erase(graph.begin() + i);
+
+                // // Add new factor with updated noise model
+                // graph.addPrior(prior_key, prior_factor->prior(), new_prior_noise);
+
+                // Remove the old factor
+                std::cout << "\n[DEBUG] Replacing prior factor for key: "
+                          << gtsam::DefaultKeyFormatter(prior_key) << std::endl;
+                std::cout << " - Old noise model sigmas: ";
+                if (prior_factor->noiseModel())
+                {
+                    auto diagonal = dynamic_cast<const gtsam::noiseModel::Diagonal *>(prior_factor->noiseModel().get());
+                    if (diagonal)
+                    {
+                        std::cout << diagonal->sigmas().transpose() << std::endl;
+                    }
+                    else
+                    {
+                        std::cout << "(non-diagonal noise model)" << std::endl;
+                    }
+                }
+                else
+                {
+                    std::cout << "(no noise model)" << std::endl;
+                }
+
+                graph.erase(graph.begin() + i);
+                std::cout << " - Removed old prior factor at index " << i << std::endl;
+
+                // Add new factor with updated noise model
+                std::cout << " - New noise model sigmas: ";
+                if (auto diagonal = dynamic_cast<const gtsam::noiseModel::Diagonal *>(new_prior_noise.get()))
+                {
+                    std::cout << diagonal->sigmas().transpose() << std::endl;
+                }
+                else
+                {
+                    std::cout << "(non-diagonal noise model)" << std::endl;
+                }
+
+                graph.addPrior(prior_key, prior_factor->prior(), new_prior_noise);
+                std::cout << " - Successfully added new prior factor with tighter uncertainty\n"
+                          << std::endl;
+
+                return;
+            }
+        }
+    }
+
+    throw std::runtime_error("Prior factor not found in graph");
+}
 
 void mergeXandZGraphs(NonlinearFactorGraph &merged_graph, Values &merged_values,
                       const NonlinearFactorGraph &prev_graph, const Values &prev_values,
@@ -903,6 +1012,27 @@ void mergeXandZGraphs(NonlinearFactorGraph &merged_graph, Values &merged_values,
         merged_graph.push_back(factor);
     }
 
+    if (true)
+    {
+        // (x, y, z, roll, pitch, yaw)
+        gtsam::Vector6 new_prior_sigmas;
+        new_prior_sigmas << .001, .001, .001, .001, .001, .001;
+
+        auto new_prior_noise = gtsam::noiseModel::Diagonal::Sigmas(new_prior_sigmas);
+
+        // Update the prior uncertainty
+        //  X(0) or Z(0)
+        Key prev_prior_key = symbol(prev_uses_x, 0);
+        std::cout << "\n updatePriorUncertainty prev_prior_key: " << prev_prior_key << std::endl;
+        // Decode and print
+        gtsam::Symbol s(prev_prior_key);
+        std::cout << "Prior node: Key: " << s.chr() << s.index() << std::endl;
+
+        updatePriorUncertainty(merged_graph, prev_prior_key, new_prior_noise);
+
+        // updatePriorNoise(merged_graph, merged_values,prev_prior_key, new_prior_noise);
+    }
+
     // 2. Add current graph components
     // std::cout << "\nAdd current graph components" << std::endl;
     merged_values.insert(curr_values);
@@ -923,7 +1053,7 @@ void mergeXandZGraphs(NonlinearFactorGraph &merged_graph, Values &merged_values,
         // if(i==0)
         {
             // Use Symbol to get the symbol corresponding to the Key
-            Symbol symbol_prev(prev_key), symbol_curr(curr_key);
+            // Symbol symbol_prev(prev_key), symbol_curr(curr_key);
             // std::cout << "\nsymbol_prev: " << symbol_prev << " symbol_curr: " << symbol_curr << std::endl;
         }
 
@@ -1115,7 +1245,7 @@ void buildGraph(
                 Point3 plane_norm(land.norm.x(), land.norm.y(), land.norm.z());
                 bool use_alternative_method = false; // true;
 
-                use_alternative_method = true;
+                //use_alternative_method = true; //test this without this seems a bit better
 
                 graph.emplace_shared<PointToPlaneFactor>(useX ? X(pose_idx) : Z(pose_idx), measured_point, plane_norm, target_point, land.negative_OA_dot_norm,
                                                          land.re_proj_error, use_alternative_method, plane_noise);
@@ -1129,6 +1259,8 @@ void buildGraph(
 }
 
 double BA_refinement_merge_graph(
+    ros::Publisher &prev_pub, ros::Publisher &curr_pub,
+
     const std::deque<pcl::PointCloud<VUX_PointType>::Ptr> &lidar_lines,
     std::deque<Sophus::SE3> &line_poses,
     const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
@@ -1151,9 +1283,9 @@ double BA_refinement_merge_graph(
     }
     // Set optimization parameters
     LevenbergMarquardtParams params;
-    params.setMaxIterations(100);
-    params.setRelativeErrorTol(1e-3);
-    params.setVerbosity("ERROR");
+    params.setMaxIterations(100);     // 100
+    params.setRelativeErrorTol(1e-3); // 1e-3
+    params.setVerbosity("ERROR"); //TERMINATION  ERROR
 
     bool rv = 0.;
 
@@ -1202,12 +1334,15 @@ double BA_refinement_merge_graph(
         NonlinearFactorGraph graph;
         Values initial_values;
 
+        // to be solved
+        // this will optimize only the curr values - not the prev ones too
+
         for (int iter = 0; iter < run_iterations; iter++)
         {
             if (flg_exit)
                 break;
 
-            std::cout << "Run iteration " << iter << std::endl;
+            std::cout << "Run iteration:" << iter << std::endl;
             graph.resize(0);        // Clears all factors from the graph
             initial_values.clear(); // Clears all values
 
@@ -1227,6 +1362,9 @@ double BA_refinement_merge_graph(
                              graph, initial_values,
                              useX, overlap_size, total_poses);
 
+            // for debugging
+            debugGraphs(prev_optimized_values, initial_values, prev_pub, curr_pub);
+
             // Optimize the graph
             LevenbergMarquardtOptimizer optimizer(merged_graph, merged_values, params); //
             Values optimized_values = optimizer.optimize();
@@ -1234,7 +1372,7 @@ double BA_refinement_merge_graph(
             // optimized_values.print("Optimized Results:\n");
             //  Retrieve optimized poses
 
-            // Values re_optimized_prev;
+            Values re_optimized_prev;
             for (size_t i = 0; i < total_poses; i++)
             {
                 gtsam::Key curr_pose_key = useX ? X(i) : Z(i);
@@ -1249,19 +1387,20 @@ double BA_refinement_merge_graph(
                     std::cerr << "Optimized pose not found for key: " << symbol_key << std::endl;
                 }
 
-                // gtsam::Key prev_pose_key = useX ? Z(i) : X(i);
-                // if (optimized_values.exists(curr_pose_key))
-                // {
-                //     Pose3 prev_optimized_pose = optimized_values.at<Pose3>(prev_pose_key);
-                //     re_optimized_prev.insert(prev_pose_key, prev_optimized_pose);
-                // }
-                // else
-                // {
-                //     Symbol symbol_key(prev_pose_key);
-                //     std::cerr << "Re-Optimized pose not found for key: " << symbol_key << std::endl;
-                // }
+                // for the prev segment use the reoptimized values------------------------------
+                gtsam::Key prev_pose_key = useX ? Z(i) : X(i);
+                if (optimized_values.exists(curr_pose_key))
+                {
+                    Pose3 prev_optimized_pose = optimized_values.at<Pose3>(prev_pose_key);
+                    re_optimized_prev.insert(prev_pose_key, prev_optimized_pose);
+                }
+                else
+                {
+                    Symbol symbol_key(prev_pose_key);
+                    std::cerr << "Re-Optimized pose not found for key: " << symbol_key << std::endl;
+                }
             }
-            // prev_optimized_values = re_optimized_prev;
+            prev_optimized_values = re_optimized_prev;
 
             // std::cout << "\bIteraion:" << iter << ", error:" << optimizer.error() << std::endl;
             rv = optimizer.error();

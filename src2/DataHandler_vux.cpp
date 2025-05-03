@@ -51,7 +51,7 @@ void publishPointCloud(pcl::PointCloud<PointType>::Ptr &cloud, const ros::Publis
 
     point_cloud_pub.publish(cloud_msg);
 
-    //std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
+    // std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
 }
 
 void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros::Publisher &point_cloud_pub)
@@ -80,7 +80,7 @@ void publishPointCloud_vux(pcl::PointCloud<VUX_PointType>::Ptr &cloud, const ros
 
     point_cloud_pub.publish(cloud_msg);
 
-    //std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
+    // std::cout << "\nPublished " << cloud->size() << " points" << ", Header time: " << first_point_time_ros << std::endl;
 }
 
 void publishJustPoints(const pcl::PointCloud<PointType>::Ptr &cloud_, const ros::Publisher &cloud_pub)
@@ -404,10 +404,9 @@ Sophus::SE3 interpolateSE3(const Sophus::SE3 &pose1, const double time1,
 // #include "vux_registration.hpp"
 // #include "VoxelHash.hpp"
 
-//#include "clean_registration.hpp" //this was used for prev tests
+// #include "clean_registration.hpp" //this was used for prev tests
 
 #include "clean_registration2.hpp"
-
 
 #include <regex>
 //----------------------------------------------------
@@ -458,17 +457,17 @@ std::vector<Tree_> readTreeFile(const std::string &filename, const Sophus::SE3 &
 
         t.dbh *= 3;
 
-        std::cout << "\n before:"<< t.x << ", " << t.y << ", " << t.dbh << std::endl;
+        std::cout << "\n before:" << t.x << ", " << t.y << ", " << t.dbh << std::endl;
 
         if (true) // put in mls
         {
-            t.pos = als2mls * t.pos;            
+            t.pos = als2mls * t.pos;
             t.x = t.pos[0];
             t.y = t.pos[1];
         }
 
         trees.push_back(t);
-        std::cout << "\n after:"<< t.x << ", " << t.y << ", " << t.dbh << std::endl;
+        std::cout << "\n after:" << t.x << ", " << t.y << ", " << t.dbh << std::endl;
     }
 
     return trees;
@@ -501,7 +500,7 @@ void publishMarkers(const std::vector<Tree_> &trees, ros::Publisher &pub, ros::P
 
         marker.pose.position.x = trees[i].x;
         marker.pose.position.y = trees[i].y;
-        marker.pose.position.z = trees[i].z + 0.5; 
+        marker.pose.position.z = trees[i].z + 0.5;
 
         // Orientation (identity quaternion for upright cylinders)
         marker.pose.orientation.w = 1.0;
@@ -509,13 +508,13 @@ void publishMarkers(const std::vector<Tree_> &trees, ros::Publisher &pub, ros::P
         // Scale (dbh is diameter, so use for x/y dimensions)
         marker.scale.x = trees[i].dbh; // Diameter (x-axis)
         marker.scale.y = trees[i].dbh; // Diameter (y-axis)
-        marker.scale.z = .5;          // Height (z-axis)
+        marker.scale.z = .5;           // Height (z-axis)
 
         // Color (green for trees)
         marker.color.r = 0.0;
         marker.color.g = 1.0;
         marker.color.b = 0.0;
-        marker.color.a = 1.0;// 0.8; // Slightly transparent
+        marker.color.a = 1.0; // 0.8; // Slightly transparent
 
         // Marker lifetime (0 means never auto-delete)
         marker.lifetime = ros::Duration();
@@ -529,7 +528,7 @@ void publishMarkers(const std::vector<Tree_> &trees, ros::Publisher &pub, ros::P
         pcl::PointXYZ pt;
         pt.x = trees[i].x;
         pt.y = trees[i].y;
-        pt.z = trees[i].z + 1.; 
+        pt.z = trees[i].z + 1.;
         cloud->points.push_back(pt);
     }
     std::cout << "published trees: " << trees.size() << std::endl;
@@ -546,6 +545,129 @@ void publishMarkers(const std::vector<Tree_> &trees, ros::Publisher &pub, ros::P
     cloud_msg.header.frame_id = "world";
     cloudPub.publish(cloud_msg);
 }
+
+namespace serialize_some_data
+{
+
+    void saveScanData(int scan_id, const Sophus::SO3 &R, const V3D &t, double lidar_end_time,
+                      const PointCloudXYZI::Ptr &feats_undistort, const std::string &folder_path)
+    {
+        std::string txt_file = folder_path + "/scan_" + std::to_string(scan_id) + ".txt";
+        std::string pcd_file = folder_path + "/scan_" + std::to_string(scan_id) + ".pcd";
+
+        std::ofstream ofs(txt_file);
+        if (ofs.is_open())
+        {
+            ofs << std::fixed << std::setprecision(9);
+            ofs << "timestamp " << lidar_end_time << "\n";
+            ofs << "rotation " << R.log().transpose() << "\n"; // Save SO(3) log vector
+            ofs << "translation " << t.transpose() << "\n";    // Save translation
+            ofs.close();
+        }
+
+        pcl::io::savePCDFileBinary(pcd_file, *feats_undistort);
+        std::cerr << "saved: " << txt_file << std::endl;
+    }
+
+    bool loadScanData(int scan_id, Sophus::SO3 &R, V3D &t, double &lidar_end_time,
+                      PointCloudXYZI::Ptr &feats_undistort, const std::string &folder_path)
+    {
+        std::string txt_file = folder_path + "/scan_" + std::to_string(scan_id) + ".txt";
+        std::string pcd_file = folder_path + "/scan_" + std::to_string(scan_id) + ".pcd";
+
+        std::cerr << "load: " << txt_file << std::endl;
+
+        std::ifstream ifs(txt_file);
+        if (!ifs.is_open())
+            return false;
+
+        std::string line, dummy;
+
+        // Read timestamp
+        std::getline(ifs, line);
+        std::istringstream iss_time(line);
+        iss_time >> dummy >> lidar_end_time;
+
+        // Read SO3 log vector
+        std::getline(ifs, line);
+        std::istringstream iss_rot(line);
+        V3D so3_log;
+        iss_rot >> dummy >> so3_log(0) >> so3_log(1) >> so3_log(2);
+        R = Sophus::SO3::exp(so3_log);
+
+        // Read translation vector
+        std::getline(ifs, line);
+        std::istringstream iss_trans(line);
+        iss_trans >> dummy >> t(0) >> t(1) >> t(2);
+
+        ifs.close();
+
+        // Load point cloud
+        feats_undistort.reset(new PointCloudXYZI);
+        if (pcl::io::loadPCDFile<PointType>(pcd_file, *feats_undistort) == -1)
+            return false;
+
+        return true;
+    }
+
+    bool writeSE3ToFile(const std::string &filename, const Sophus::SE3 &transform)
+    {
+        std::ofstream file(filename);
+        if (!file.is_open())
+        {
+            std::cerr << "Failed to open file " << filename << " for writing.\n";
+            return false;
+        }
+
+        file << std::fixed << std::setprecision(10);
+        Eigen::Matrix4d mat = transform.matrix();
+
+        file << "# ALS to MLS\nT_als2mls\n";
+        for (int i = 0; i < 4; ++i)
+        {
+            file << mat.row(i) << "\n";
+        }
+
+        file.close();
+        std::cout << "Transform saved to " << filename << "\n";
+        return true;
+    }
+
+    bool readSE3FromFile(const std::string& filename, Sophus::SE3& transform_out) {
+        std::ifstream file(filename);
+        if (!file.is_open()) {
+            std::cerr << "Failed to open file " << filename << " for reading.\n";
+            return false;
+        }
+    
+        std::string line;
+        Eigen::Matrix4d mat;
+        int row = 0;
+    
+        while (std::getline(file, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            if (line.find("T_als2mls") != std::string::npos) continue;
+    
+            std::istringstream iss(line);
+            for (int col = 0; col < 4; ++col) {
+                iss >> mat(row, col);
+            }
+            ++row;
+            if (row == 4) break;
+        }
+    
+        if (row != 4) {
+            std::cerr << "Failed to read full 4x4 matrix from " << filename << "\n";
+            return false;
+        }
+    
+        transform_out = Sophus::SE3(mat.block<3,3>(0,0), mat.block<3,1>(0,3));
+        return true;
+    }
+
+};
+
+using namespace serialize_some_data;
 
 void DataHandler::Subscribe()
 {
@@ -953,26 +1075,32 @@ void DataHandler::Subscribe()
     bool load_trees = true;
 
     Eigen::Matrix3d R_mls2als;
-    R_mls2als << -0.7835042222,  0.6210372458,  0.0208296231,
-         -0.6213649391, -0.7833157670, -0.0179449592,
-          0.0051716842, -0.0270027488,  0.9996219812;
+    R_mls2als << -0.7835042222, 0.6210372458, 0.0208296231,
+        -0.6213649391, -0.7833157670, -0.0179449592,
+        0.0051716842, -0.0270027488, 0.9996219812;
 
     Eigen::Vector3d t_mls2als(398269.3431620710,
-                      6786162.6317833420,
-                      150.9315546684);
+                              6786162.6317833420,
+                              150.9315546684);
 
-    Sophus::SE3 T_mls2als(R_mls2als, t_mls2als);  // Construct the SE3 transformation
-    //T_mls2als = T_mls2als.inverse();
+    Sophus::SE3 T_mls2als(R_mls2als, t_mls2als); // Construct the SE3 transformation
+    // T_mls2als = T_mls2als.inverse();
 
-    
     M3D R_prev;
-    R_prev << -0.7835042222 ,     -0.6213649391  ,     0.0051716842,
-                0.6210372458,      -0.7833157670 ,     -0.0270027488,
-                0.0208296231 ,    -0.0179449592 ,     0.9996219812;
+    R_prev << -0.7835042222, -0.6213649391, 0.0051716842,
+        0.6210372458, -0.7833157670, -0.0270027488,
+        0.0208296231, -0.0179449592, 0.9996219812;
 
     V3D t_prev(4528728.4617895531, 5068372.1667804578, 113330.7366873509);
-    Sophus::SE3 T_als2mls_prev(R_prev, t_prev); 
-    
+    Sophus::SE3 T_als2mls_prev(R_prev, t_prev);
+    std::string folder_path_save_state = "/home/eugeniu/x_vux-georeferenced-final/_Hesai";
+    std::string als2mls_filename = folder_path_save_state + "/als2mls.txt";
+
+
+    ros::Publisher prev_pub = nh.advertise<sensor_msgs::PointCloud2>("prev_graph_cloud", 1);
+    ros::Publisher curr_pub = nh.advertise<sensor_msgs::PointCloud2>("curr_graph_cloud", 1);
+
+
 
 #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
@@ -1017,12 +1145,13 @@ void DataHandler::Subscribe()
         {
             scan_id++;
             std::cout << "scan_id:" << scan_id << std::endl;
-            if (scan_id > 1310) // 1000 before tests done with 1000
+            if (scan_id > 1837) // 1310 1000 before tests done with 1000
             {
                 std::cout << "Stop here... enough data" << std::endl;
                 break;
             }
 
+            perform_mls_registration = false;// true;
             // hesai-mls registration
             if (perform_mls_registration)
             {
@@ -1244,30 +1373,87 @@ void DataHandler::Subscribe()
                 double t11 = omp_get_wtime();
                 std::cout << "Mapping time(ms):  " << (t11 - t00) * 1000 << ", feats_down_size: " << feats_down_size << ", lidar_end_time:" << lidar_end_time << "\n"
                           << std::endl;
+
+                //this was used to save the data and then load it
+                //saveScanData(scan_id, state_point.rot, state_point.pos, lidar_end_time, laserCloudSurfMap, folder_path_save_state);
+            }
+            else
+            {
+                loadScanData(scan_id, state_point.rot, state_point.pos, lidar_end_time, laserCloudSurfMap, folder_path_save_state);
+
+                std::cout << "\nstate_point.pos:" << state_point.pos.transpose() << ", lidar_end_time:" << lidar_end_time << std::endl;
+
+                if (!als_obj->initted_)
+                {
+                    readSE3FromFile(als2mls_filename, als_to_mls);
+                    std::cout<<"Read ALS2MLS:\n"<<als_to_mls.matrix()<<std::endl;
+                    als_obj->init(als_to_mls);
+                    gnss_obj->updateExtrinsic(als_obj->R_to_mls);
+                }
+
+                gnss_obj->Process(gps_buffer, lidar_end_time, state_point.pos);
+
+                als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
+
+                if (pubLaserALSMap.getNumSubscribers() != 0)
+                {
+                    als_obj->getCloud(featsFromMap);
+                    publish_map(pubLaserALSMap);
+                }
+
+                publish_odometry(pubOdomAftMapped);
+
+                if (pubLaserCloudMap.getNumSubscribers() != 0)
+                {
+                    *featsFromMap = *laserCloudSurfMap;
+                    publish_map(pubLaserCloudMap);
+                }
             }
 
             Sophus::SE3 als2mls = als_to_mls;
 
-            // //put it back later
+            // put it back later
             if (!gnss_obj->GNSS_extrinsic_init)
                 continue;
 
             als2mls = als_obj->als_to_mls;
 
+            //uncomment this to save the als2mls transform 
+            // if (!saved_mls2als_transform && perform_mls_registration)
+            // {
+            //     writeSE3ToFile(als2mls_filename, als2mls);
+            //     saved_mls2als_transform = true;
+            // }
+
+            /*
+            --To perform the MLS only once - using the dense ALS as reference
+                --save the current SE3, and time in a text file
+                --save the current voxelized map
+                --add an option to read them afterwards
+                --HOW ABOUT SAVING THE ALS2MLS POSE AND SAVING THE LOCAL MAP ALWAYS
+
+
+            for reference Hesai and ALS
+                that one will be done from another code
+                and save the clouds as .pcd or something
+            */
+
+            //----------------------------------------------------------------
+            //continue;
+
             // als2mls = T_als2mls_prev;
             // als_obj->als_to_mls = T_als2mls_prev;
-            
+
             if (load_trees && false)
             {
                 load_trees = false;
-                
+
                 trees = readTreeFile(tree_file, als2mls);
-                
-                //trees = readTreeFile(tree_file, T_mls2als.inverse());
-                
+
+                // trees = readTreeFile(tree_file, T_mls2als.inverse());
+
                 trees = readTreeFile(tree_file, T_als2mls_prev);
 
-                
                 // Tree_ t1;
                 // t1.x = 1.0;
                 // t1.y = 25.0;
@@ -1294,34 +1480,6 @@ void DataHandler::Subscribe()
                 publishMarkers(trees, pub_trees, pub_tree_center);
                 ros::spinOnce();
                 rate.sleep();
-            }
-
-            if (!saved_mls2als_transform)
-            {
-                // std::string als2mls_filename = "/home/eugeniu/vux-georeferenced/als2mls.txt";
-                // std::ofstream file(als2mls_filename);
-                // if (!file.is_open()) {
-                //     std::cerr << "Failed to open file " << als2mls_filename << " for writing.\n";
-                //     return;
-                // }
-                // file << std::fixed << std::setprecision(10);  // Set precision
-                // Eigen::Matrix4d T_als2mls = als2mls.matrix();
-                // Eigen::Matrix4d T_mls2als = als2mls.inverse().matrix();
-
-                // file << "# ALS to MLS\nT_als2mls\n";
-                // for (int i = 0; i < 4; ++i) {
-                //     file << T_als2mls.row(i) << "\n";
-                // }
-
-                // file << "\n# Inverse (MLS to ALS)\nT_mls2als\n";
-                // for (int i = 0; i < 4; ++i) {
-                //     file << T_mls2als.row(i) << "\n";
-                // }
-
-                // file.close();
-                // std::cout << "Transform and inverse saved to " << als2mls_filename << "\n";
-
-                saved_mls2als_transform = true;
             }
 
             if (!this->downsample) // if it is sparse ALS data from NLS
@@ -1488,15 +1646,17 @@ void DataHandler::Subscribe()
                 {
                     if (true) // this will load the reprocessor generated map
                     {
-                        std::cout<<"just a test of the transformations..."<<std::endl;
-                        std::cout<<"als2mls:\n"<<als2mls.matrix()<<std::endl;
-                        std::cout<<"als2mls.inverse():\n"<<als2mls.inverse().matrix()<<std::endl;
+                        std::cout << "just a test of the transformations..." << std::endl;
+                        std::cout << "als2mls:\n"
+                                  << als2mls.matrix() << std::endl;
+                        std::cout << "als2mls.inverse():\n"
+                                  << als2mls.inverse().matrix() << std::endl;
 
                         do_once = false;
                         // work with sensor B
                         std::string f1 = "/media/eugeniu/T7/roamer/09_Export/VUX-1HA-22-2022-B/240725_092351_v12.las";
 
-                        //our example of generated vux
+                        // our example of generated vux
                         f1 = "/media/eugeniu/T7/a_georeferenced_vux_tests/merged/config_1/segment_1.las";
 
                         std::istream *ifs = liblas::Open(f1, std::ios::in | std::ios::binary);
@@ -1531,15 +1691,13 @@ void DataHandler::Subscribe()
                             liblas::Point const &p = reader.GetPoint();
 
                             // V3D cloudPoint = V3D(p.GetX(), p.GetY(), p.GetZ()) - offset_;
-                            //V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            // V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
 
-                            //V3D cloudPoint = T_mls2als.inverse() * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            // V3D cloudPoint = T_mls2als.inverse() * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
                             V3D cloudPoint = T_als2mls_prev * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
 
-
-                            
-                            //if (cloudPoint.squaredNorm() > max_length)
-                            //    continue;
+                            // if (cloudPoint.squaredNorm() > max_length)
+                            //     continue;
 
                             point.x = cloudPoint.x();
                             point.y = cloudPoint.y();
@@ -1589,6 +1747,7 @@ void DataHandler::Subscribe()
                     }
                 }
 
+                {
                 // bool use_mls_ref = true;
                 // if (use_mls_ref)
                 //{
@@ -1599,10 +1758,24 @@ void DataHandler::Subscribe()
                 // }
                 // else
                 // {
-                std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
-                const auto &refference_kdtree = estimator_.localKdTree_map; // we can re-use this, no need to recreate it
-                const auto &reference_localMap_cloud = als_obj->als_cloud;
+                // std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
+                // const auto &refference_kdtree = estimator_.localKdTree_map; // we can re-use this, no need to recreate it
+                // const auto &reference_localMap_cloud = als_obj->als_cloud;
                 // }
+                }
+
+                //set the current map to kdtree----------------------------------------
+                // std::cout << "kdtree set input MLS points: " << laserCloudSurfMap->size() << std::endl;
+                // const auto &reference_localMap_cloud = laserCloudSurfMap;
+                
+                std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
+                const auto &reference_localMap_cloud = als_obj->als_cloud;
+
+                
+
+                //------------------------------------------------------------------------
+                estimator_.localKdTree_map->setInputCloud(reference_localMap_cloud);
+                const auto &refference_kdtree = estimator_.localKdTree_map;
 
                 while (gnss_vux_data[tmp_index].gps_tod <= time_of_day_sec && tmp_index < gnss_vux_data.size())
                 {
@@ -1662,7 +1835,7 @@ void DataHandler::Subscribe()
                             Sophus::SE3 pose4georeference = als2mls * interpolated_pose_ppk * vux2imu_extrinsics; // this does not have the extrinsics for mls
 
                             // MLS pose as init guess ---- first extrinsics, then georeference  // mls pose
-                            //pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
+                            // pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
 
                             publish_refined_ppk_gnss(pose4georeference, cloud_time);
 
@@ -1815,7 +1988,7 @@ void DataHandler::Subscribe()
                                 }
                             }
 
-                            bool refine_init = true;            // false;            // true;
+                            bool refine_init = true;             // false;            // true;
                             bool save_georeferenced_vux = false; // true; // will be taken in the release mode only
 
                             bool debug = true;
@@ -1823,11 +1996,9 @@ void DataHandler::Subscribe()
 
                             bool eval = false;
 
-                            int BA_iterations = 2; 
+                            int BA_iterations = 2;
 
-                            //BA_iterations = 3;
-
-                            if (debug)             // I AM ON THIS PART NOW
+                            if (debug) // I AM ON THIS PART NOW
                             {
                                 // std::cout<<"In Debug..."<<std::endl;
                                 //  std::cout << "Segment:" << segment_id << " distance:" << (prev_mls.translation() - curr_mls.translation()).norm() << " m" << std::endl;
@@ -1887,7 +2058,7 @@ void DataHandler::Subscribe()
                                     // mid_scan = total_scans; //this will not do anything
                                     mid_scan = 75;
                                     mid_scan = 50; // if (l >= mid_scan) prev scan
- 
+
                                     total_scans = 200; // also good
                                     mid_scan = 150;
 
@@ -1896,8 +2067,8 @@ void DataHandler::Subscribe()
                                     mid_scan = 350;    // 12.5% overlapp
                                     mid_scan = 300;    // 25%
 
-                                    //mid_scan = 350;// 12 % overlap - just a test now 
-                                    //  std::cout << "lines_buffer:" << lines_buffer.size() << std::endl;
+                                    // mid_scan = 350;// 12 % overlap - just a test now
+                                    //   std::cout << "lines_buffer:" << lines_buffer.size() << std::endl;
 
                                     bool const_vel_model = true; // use const vel model for segments
 #define debug_clouds
@@ -2098,8 +2269,8 @@ void DataHandler::Subscribe()
                                             std::cin.get();
                                         }
 
-                                        bool BA_refine = true;// false;
-                                        if (BA_refine) // pose graph here
+                                        bool BA_refine = true; // false;
+                                        if (BA_refine)         // pose graph here
                                         {
                                             std::cout << "Start BA refinement..." << std::endl;
                                             // only 1 iteration for now
@@ -2128,6 +2299,8 @@ void DataHandler::Subscribe()
 
                                                 std::cout << "BA_refinement_merge_graph" << std::endl;
                                                 current_cost = BA_refinement_merge_graph(
+                                                    prev_pub,curr_pub,
+
                                                     lines_buffer,
                                                     refined_line_poses_buffer,
                                                     refference_kdtree,
@@ -2470,6 +2643,8 @@ void DataHandler::Subscribe()
                                             // threshold_nn_ = .5 * .5; // make is smaller for refinement
 
                                             current_cost = BA_refinement_merge_graph(
+                                                prev_pub,curr_pub,
+                                                
                                                 lines_buffer,
                                                 refined_line_poses_buffer,
                                                 refference_kdtree,
@@ -2641,12 +2816,12 @@ void DataHandler::Subscribe()
                                     feats_undistort->is_dense = down_cloud->is_dense;
                                     // if (point_cloud_pub_reference.getNumSubscribers() != 0)
 
-                                    //added now
+                                    // added now
                                     publish_frame_debug(pubOptimizedVUX, feats_undistort);
-                                    
-                                    if(false) //do not compute the errors
-                                    { 
-                                        //here the main point to plane evaluation is happening
+
+                                    if (false) // do not compute the errors
+                                    {
+                                        // here the main point to plane evaluation is happening
                                         RefPointCloudXYZINormal::Ptr good_planes(new RefPointCloudXYZINormal());
                                         if (!als_ref->initted_)
                                             als_ref->init(als2mls);
@@ -2749,7 +2924,7 @@ void DataHandler::Subscribe()
                                                     if (false)
                                                     {
                                                         V3D target_point(downsampled_als_cloud->points[point_idx[0]].x,
-                                                                        downsampled_als_cloud->points[point_idx[0]].y, downsampled_als_cloud->points[point_idx[0]].z);
+                                                                         downsampled_als_cloud->points[point_idx[0]].y, downsampled_als_cloud->points[point_idx[0]].z);
 
                                                         Eigen::Matrix<double, Eigen::Dynamic, 3> matA0(neighbours, 3);
                                                         Eigen::Matrix<double, Eigen::Dynamic, 1> matB0 = -1.0 * Eigen::Matrix<double, Eigen::Dynamic, 1>::Ones(neighbours);
@@ -2768,8 +2943,8 @@ void DataHandler::Subscribe()
                                                         for (int j = 0; j < neighbours; j++)
                                                         {
                                                             if (fabs(norm(0) * downsampled_als_cloud->points[point_idx[j]].x +
-                                                                    norm(1) * downsampled_als_cloud->points[point_idx[j]].y +
-                                                                    norm(2) * downsampled_als_cloud->points[point_idx[j]].z + negative_OA_dot_norm) > good_plan)
+                                                                     norm(1) * downsampled_als_cloud->points[point_idx[j]].y +
+                                                                     norm(2) * downsampled_als_cloud->points[point_idx[j]].z + negative_OA_dot_norm) > good_plan)
                                                             {
                                                                 planeValid = false;
                                                                 break;
@@ -2895,8 +3070,6 @@ void DataHandler::Subscribe()
                                         // publishPointCloud_vux(down_cloud, pubOptimizedVUX);
                                         // publishPointCloud_vux(down_cloud, pubLaserCloudDebug);
 
-                                        
-
                                         std::cout << "Found " << good_planes->size() << "/" << feats_undistort->size() << " good_planes" << std::endl;
 
                                         if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
@@ -2904,7 +3077,7 @@ void DataHandler::Subscribe()
                                     }
 
                                     ros::spinOnce();
-                                        rate.sleep();
+                                    rate.sleep();
                                 }
                                 std::cout << "vux_cloud_next_id:" << vux_cloud_next_id << std::endl;
 
