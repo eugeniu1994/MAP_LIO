@@ -671,11 +671,83 @@ void debug_CloudWithNormals(const pcl::PointCloud<pcl::PointNormal>::Ptr &cloud_
     }
 }
 
+void debug_CloudWithNormals2(const pcl::PointCloud<pcl::PointNormal>::Ptr &cloud_with_normals,
+                             const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub)
+{
+    // --- 1. Publish Point Cloud ---
+    sensor_msgs::PointCloud2 cloud_msg;
+    pcl::toROSMsg(*cloud_with_normals, cloud_msg);
+    cloud_msg.header.frame_id = "world";
+
+    // --- 2. Publish Normals as Markers ---
+    visualization_msgs::Marker normals_marker;
+    normals_marker.header.frame_id = "world";
+    normals_marker.type = visualization_msgs::Marker::LINE_LIST;
+    normals_marker.action = visualization_msgs::Marker::ADD;
+    normals_marker.scale.x = 0.05; // Line width
+    normals_marker.color.a = 1.0;  // Full opacity
+    double normal_length = 2.;     // 5.;     // Length of normal lines
+
+    for (const auto &point : cloud_with_normals->points)
+    {
+        geometry_msgs::Point p1, p2;
+
+        // Start of normal (point)
+        p1.x = point.x;
+        p1.y = point.y;
+        p1.z = point.z;
+        normals_marker.points.push_back(p1);
+
+        if (point.curvature > 0)
+        {
+            normal_length = 2.;
+        }
+        else
+        {
+            normal_length = 3.;
+        }
+        // End of normal (point + normal * length)
+        p2.x = point.x + normal_length * point.normal_x;
+        p2.y = point.y + normal_length * point.normal_y;
+        p2.z = point.z + normal_length * point.normal_z;
+        normals_marker.points.push_back(p2);
+
+        std_msgs::ColorRGBA color;
+        if (point.curvature > 0) // blue seen multiple times, included in optimization
+        {
+            color.r = 1.0; // Full red
+            color.g = 1.0; // Full green
+            color.b = 0.0; // No blue
+        }
+        else
+        {
+            color.r = 0.0;
+            color.g = 1.0; // Green for high curvature
+            color.b = 0.0;
+        }
+        color.a = .98; // Full opacity
+
+        normals_marker.colors.push_back(color); // Color for start point
+        normals_marker.colors.push_back(color); // Color for end point
+    }
+
+    if (cloud_pub.getNumSubscribers() != 0)
+    {
+        cloud_pub.publish(cloud_msg);
+    }
+
+    if (normals_pub.getNumSubscribers() != 0)
+    {
+        normals_pub.publish(normals_marker);
+    }
+}
+
 using namespace gtsam;
 using gtsam::symbol_shorthand::A; // for anchor
+
+using gtsam::symbol_shorthand::L; // Landmark symbols
 using gtsam::symbol_shorthand::X; // Pose symbols
 using gtsam::symbol_shorthand::Z; // prev Pose symbols
-using gtsam::symbol_shorthand::L; // Landmark symbols
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr extractTranslations(const gtsam::Values &values)
 {
@@ -733,6 +805,7 @@ struct landmark_
     double re_proj_error;
     std::vector<int> line_idx; // from which line is seen
     std::vector<int> scan_idx; // from which which point index of the line_idx it is seen
+    int landmark_key;
 };
 
 // only planes for now
@@ -1748,6 +1821,29 @@ void CubicSpline::evaluate(double t, SE3Type &P) const //, SE3DerivType &P_prim,
 
 //----------------------------------------------------------------------------------------------
 
+#include <Eigen/Dense>
+#include <functional>
+#include <unordered_map>
+
+struct Vector3dHash
+{
+    std::size_t operator()(const Eigen::Vector3d &point) const
+    {
+        std::size_t h1 = std::hash<double>()(point.x());
+        std::size_t h2 = std::hash<double>()(point.y());
+        std::size_t h3 = std::hash<double>()(point.z());
+        return h1 ^ (h2 << 1) ^ (h3 << 2);
+    }
+};
+
+struct Vector3dEqual
+{
+    bool operator()(const Eigen::Vector3d &a, const Eigen::Vector3d &b) const
+    {
+        return a.isApprox(b, 1e-6); // Adjust tolerance as needed
+    }
+};
+
 auto plane_noise_cauchy = gtsam::noiseModel::Robust::Create(
     gtsam::noiseModel::mEstimator::Cauchy::Create(.2), // Less aggressive than Tukey
     gtsam::noiseModel::Isotropic::Sigma(1, sigma_plane));
@@ -1762,14 +1858,16 @@ auto odometry_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
 
 NonlinearFactorGraph reference_graph;
 Values reference_values;
-int key = 0, max_size = 200; // 1000;
+int key = 0, landmark_id_counter = 0, max_size = 200; // 1000;
 bool doneFirstOpt = false;
 bool systemInitialized = false;
 
 Pose3 prevPose_;
 gtsam::ISAM2 isam;
 
-std::unordered_map<int, landmark_> prev_landmarks_map; // persistent variable
+// persistent variable
+// Map: V3D (point) → int (landmark key)
+std::unordered_map<V3D, landmark_, Vector3dHash, Vector3dEqual> global_seen_landmarks;
 
 bool optimize_landmarks = true;
 
@@ -1807,13 +1905,6 @@ void debugPoint(const V3D &t, ros::Publisher &pub)
     pub.publish(msg);
 }
 
-void resetParams()
-{
-    std::cout << "===================resetParams==================" << std::endl;
-    doneFirstOpt = false;
-    systemInitialized = false;
-}
-
 void resetOptimization()
 {
     gtsam::ISAM2Params optParameters;
@@ -1826,9 +1917,13 @@ void resetOptimization()
 
     gtsam::Values NewGraphValues;
     reference_values = NewGraphValues;
+
+    global_seen_landmarks.clear();
+    landmark_id_counter = 0; // Reset to initial value (e.g., 0 or 1)
 }
 
-std::unordered_map<int, landmark_> get_Landmarks(
+// std::unordered_map<int, landmark_>
+std::unordered_map<V3D, landmark_, Vector3dHash, Vector3dEqual> get_Landmarks(
     const pcl::PointCloud<VUX_PointType>::Ptr &scan,                 // scan in sensor frame
     const Sophus::SE3 &T,                                            // init guess
     const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,       // reference kdtree
@@ -1836,9 +1931,10 @@ std::unordered_map<int, landmark_> get_Landmarks(
     double threshold_nn = 1.0)
 {
 
-    std::unordered_map<int, landmark_> landmarks_map; // key is index of the point from the map
+    // std::unordered_map<int, landmark_> landmarks_map; // key is index of the point from the map
+    std::unordered_map<V3D, landmark_, Vector3dHash, Vector3dEqual> landmarks_map;
 
-    // return landmarks_map; // no landmarks TEST WITHOUT PLANES
+    // //return landmarks_map; // no landmarks TEST WITHOUT PLANES
 
     for (int i = 0; i < scan->size(); i++)
     {
@@ -1925,27 +2021,31 @@ std::unordered_map<int, landmark_> get_Landmarks(
                 {
                     for (int j = 0; j < BA_NEIGH; j++) // all the points share the same normal
                     {
-                        auto planes_iterator = landmarks_map.find(point_idx[j]);
-                        if (planes_iterator == landmarks_map.end()) // does not exist - add
+                        V3D point_3d(reference_localMap_cloud->points[point_idx[j]].x, reference_localMap_cloud->points[point_idx[j]].y, reference_localMap_cloud->points[point_idx[j]].z);
+                        auto planes_iterator = landmarks_map.find(point_3d); // Search by 3D point instead of index
+                        // auto planes_iterator = landmarks_map.find(point_idx[j]);
+
+                        if (planes_iterator == landmarks_map.end()) // Does not exist → add new landmark
                         {
                             landmark_ tgt;
-                            tgt.map_point_index = point_idx[j];              // index of the point from the map
-                            tgt.norm = norm;                                 // plane normal
-                            tgt.negative_OA_dot_norm = negative_OA_dot_norm; // d of the plane
-                            tgt.seen = 1;                                    // first time seen
+                            tgt.map_point_index = point_idx[j]; // Optional: Keep original index if needed
+                            tgt.norm = norm;
+                            tgt.negative_OA_dot_norm = negative_OA_dot_norm;
+                            tgt.seen = 1;
                             tgt.re_proj_error = curvature;
-                            tgt.line_idx.push_back(0); // seen from line l
-                            tgt.scan_idx.push_back(i); // and point i from this line l
+                            tgt.line_idx.push_back(0); // Seen from line l
+                            tgt.scan_idx.push_back(i); // Seen at point i in line l
 
-                            landmarks_map[point_idx[j]] = tgt;
+                            landmarks_map.emplace(point_3d, tgt); // Insert with 3D point as key
+                            // landmarks_map[point_idx[j]] = tgt;
                         }
-                        else // Already exists - update the normal if a better was found
+                        else // Already exists → update if better
                         {
                             if (planes_iterator->second.re_proj_error > curvature)
                             {
                                 planes_iterator->second.norm = norm;
                                 planes_iterator->second.negative_OA_dot_norm = negative_OA_dot_norm;
-                                planes_iterator->second.re_proj_error = point_dist[j];
+                                planes_iterator->second.re_proj_error = curvature; // Fixed: Use curvature (not point_dist[j])
                             }
                         }
 
@@ -2025,82 +2125,111 @@ Sophus::SE3 updateReferenceGraph(
 
         if (true)
         {
-            // add the landmakrs
-            const std::unordered_map<int, landmark_> &landmarks_map = get_Landmarks(
+            // add the landmarks
+            // const std::unordered_map<int, landmark_> &landmarks_map
+            const std::unordered_map<V3D, landmark_, Vector3dHash, Vector3dEqual> &landmarks_map = get_Landmarks(
                 scan, T, refference_kdtree, reference_localMap_cloud);
 
             std::cout << "Number of items in landmarks_map: " << landmarks_map.size() << std::endl;
-
-            if (normals_pub.getNumSubscribers() != 0)
-            {
-                pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointNormal>());
-                for (const auto &[index, land] : landmarks_map)
-                {
-                    pcl::PointNormal pt;
-                    pt.x = reference_localMap_cloud->points[land.map_point_index].x;
-                    pt.y = reference_localMap_cloud->points[land.map_point_index].y;
-                    pt.z = reference_localMap_cloud->points[land.map_point_index].z;
-
-                    pt.normal_x = land.norm.x();
-                    pt.normal_y = land.norm.y();
-                    pt.normal_z = land.norm.z();
-
-                    // pt.curvature = land.seen;
-                    pt.curvature = land.re_proj_error;
-                    // pt.curvature = land.line_idx.size();
-
-                    cloud_with_normals->push_back(pt);
-                }
-
-                debug_CloudWithNormals(cloud_with_normals, cloud_pub, normals_pub);
-            }
 
             int added_constraints = 0;
             if (landmarks_map.size() > 5) // at least 5 planes
             {
                 if (optimize_landmarks)
-                {   
+                {
+                    int constraints_existing = 0, constraints_new = 0;
                     // 2. Add plane landmarks ( as optimizable variables!)
-                    for (const auto &[landmark_id, land] : landmarks_map)
+                    for (const auto &[point, land] : landmarks_map)
                     {
-                        // if (land.seen > 1) // if the landmark is seen from multiple measurements
+                        // Check if the landmark is already tracked
+                        auto it = global_seen_landmarks.find(point);
+                        if (it != global_seen_landmarks.end())
                         {
+                            // Existing landmark: retrieve its key and add constraints
+                            constraints_existing++;
+                            int l_key = it->second.landmark_key;
+
+                            // std::cout << "Existing landmark L(" << l_key << ") " << std::endl;
+
                             for (int i = 0; i < land.scan_idx.size(); i++)
                             {
+                                added_constraints++;
+
+                                const auto &p_idx = land.scan_idx[i]; // at index p_idx from that scan
+                                const auto &raw_point = scan->points[p_idx];
+
+                                Point3 measured_point(raw_point.x, raw_point.y, raw_point.z); // measured_landmark_in_sensor_frame
+                                // // Initial guess for landmark position
+                                // Point3 landmark_point = Point3(reference_localMap_cloud->points[land.map_point_index].x,
+                                //                                reference_localMap_cloud->points[land.map_point_index].y,
+                                //                                reference_localMap_cloud->points[land.map_point_index].z);
+                                gtsam::Unit3 plane_norm(land.norm.x(), land.norm.y(), land.norm.z());
+
+                                // reference_graph.emplace_shared<PointToPlaneFactor>(X(key), measured_point, plane_norm, landmark_point, land.negative_OA_dot_norm,
+                                //                                                     land.re_proj_error, true, plane_noise_cauchy);
+
+                                // --- Existing Landmark ---
+                                // Retrieve its current estimate from GTSAM's values
+                                // gtsam::Point3 existing_landmark = reference_values.at<gtsam::Point3>(L(l_key));
+
+                                // Add constraints(e.g., point - to - plane factors)
+                                reference_graph.emplace_shared<PlaneFactor>(
+                                    X(key),            // Current pose key
+                                    L(l_key),          // Existing landmark key
+                                    measured_point,    // Measured point in sensor frame
+                                    plane_norm,        // Plane normal
+                                    plane_noise_cauchy // Noise model
+                                );
+
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // New landmark: assign key and add to graph
+                            // std::cout << "New landmark at: " << point.transpose() << std::endl;
+                            int l_key = landmark_id_counter++;
+                            constraints_new++;
+                            // std::cout << "New landmark L(" << l_key << ") " << std::endl;
+                            auto new_land = land;
+                            new_land.landmark_key = l_key;
+                            global_seen_landmarks[point] = new_land;
+
+                            for (int i = 0; i < land.scan_idx.size(); i++)
+                            {
+                                added_constraints++;
                                 const auto &p_idx = land.scan_idx[i]; // at index p_idx from that scan
                                 const auto &raw_point = scan->points[p_idx];
 
                                 Point3 sensor_point(raw_point.x, raw_point.y, raw_point.z); // measured_landmark_in_sensor_frame
+                                // Initial guess for landmark position
                                 Point3 landmark_point = Point3(reference_localMap_cloud->points[land.map_point_index].x,
-                                                             reference_localMap_cloud->points[land.map_point_index].y,
-                                                             reference_localMap_cloud->points[land.map_point_index].z);
+                                                               reference_localMap_cloud->points[land.map_point_index].y,
+                                                               reference_localMap_cloud->points[land.map_point_index].z);
 
-                                //gtsam::Point3 landmark_point = target_point; // Initial guess for landmark position
                                 gtsam::Unit3 landmark_normal(land.norm.x(), land.norm.y(), land.norm.z()); // Plane normal (fixed or optimized)
-                                
-                                int l_key = land.map_point_index * landmarks_map.size();
 
+                                //std::cout << "Adding L(" << l_key << ") landmark\n"<< std::endl;
                                 // Add prior on landmark (optional, to anchor the first landmark)
                                 reference_graph.addPrior(L(l_key), landmark_point, gtsam::noiseModel::Isotropic::Sigma(3, 1));
 
-                                // 5. Add point-to-plane factors (linking poses and landmarks)
+                                // Add point-to-plane factors (linking poses and landmarks)
                                 reference_graph.emplace_shared<PlaneFactor>(
-                                    X(key),                         // Pose key
-                                    L(l_key),      // Landmark key
+                                    X(key),   // Pose key
+                                    L(l_key), // Landmark key
                                     sensor_point,
                                     landmark_normal,
-                                    plane_noise_cauchy
-                                );
+                                    plane_noise_cauchy);
 
-                                // 6. Initialize values (poses + landmarks)
+                                // Initialize values (poses + landmarks)
                                 reference_values.insert(L(l_key), landmark_point); // Landmark is now part of optimization!
-                                
-                                added_constraints++;
+
+                                break;
                             }
                         }
                     }
-
-                    
+                    std::cout << "constraints_existing:" << constraints_existing << ", constraints_new:" << constraints_new << std::endl;
+                    debugPoint(absolute_gtsam_pose.translation(), _pub_prev);
                 }
                 else
                 {
@@ -2126,7 +2255,6 @@ Sophus::SE3 updateReferenceGraph(
                                 //     error = plane_normal_.dot(p_transformed) + negative_OA_dot_norm_;
 
                                 bool use_alternative_method = false;
-                                
                                 use_alternative_method = true; // this works
 
                                 reference_graph.emplace_shared<PointToPlaneFactor>(X(key), measured_point, plane_norm, target_point, land.negative_OA_dot_norm,
@@ -2136,15 +2264,58 @@ Sophus::SE3 updateReferenceGraph(
                             }
                         }
                     }
+
+                    debugGraph(reference_values, _pub_prev);
+
+                    TODO HERE ---------------------------
+
+                    SAVE THE PREV LANDMARKS FROM THE PREV SCAN
+                    GET THE ITNERSECTION  
+                    ADD CONNECTION FROM CURR SCAN TO PREV SCANS-LANDMARKS THAT ARE IN THE INTERSECTION
+                    ADD CONNECTION FROM PREV SCAN TO CURR SCANS-LANDMARKS THAT ARE IN THE INTERSECTION 
                 }
             }
 
             std::cout << "added_constraints:" << added_constraints << std::endl;
-            // Update for next iteration
-            // prev_landmarks_map = landmarks_map;
-        }
 
-        debugGraph(reference_values, _pub_prev);
+            if (normals_pub.getNumSubscribers() != 0)
+            {
+                pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointNormal>());
+                // add the map landmarks
+                for (const auto &[index, land] : global_seen_landmarks)
+                {
+                    pcl::PointNormal pt;
+                    pt.x = reference_localMap_cloud->points[land.map_point_index].x;
+                    pt.y = reference_localMap_cloud->points[land.map_point_index].y;
+                    pt.z = reference_localMap_cloud->points[land.map_point_index].z;
+
+                    pt.normal_x = land.norm.x();
+                    pt.normal_y = land.norm.y();
+                    pt.normal_z = land.norm.z();
+
+                    pt.curvature = 1; // <0 plotted as blue
+                    cloud_with_normals->push_back(pt);
+                }
+                // add the new landmarks
+                for (const auto &[index, land] : landmarks_map)
+                {
+                    pcl::PointNormal pt;
+                    pt.x = reference_localMap_cloud->points[land.map_point_index].x;
+                    pt.y = reference_localMap_cloud->points[land.map_point_index].y;
+                    pt.z = reference_localMap_cloud->points[land.map_point_index].z;
+
+                    pt.normal_x = land.norm.x();
+                    pt.normal_y = land.norm.y();
+                    pt.normal_z = land.norm.z();
+
+                    pt.curvature = -1;
+
+                    cloud_with_normals->push_back(pt);
+                }
+
+                debug_CloudWithNormals2(cloud_with_normals, cloud_pub, normals_pub);
+            }
+        }
 
         // this ca be done every k iteration
         //  LevenbergMarquardtParams params_;
