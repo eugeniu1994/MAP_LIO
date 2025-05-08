@@ -459,12 +459,12 @@ std::vector<Tree_> readTreeFile(const std::string &filename, const Sophus::SE3 &
 
         std::cout << "\n before:" << t.x << ", " << t.y << ", " << t.dbh << std::endl;
 
-        if (true) // put in mls
-        {
-            t.pos = als2mls * t.pos;
-            t.x = t.pos[0];
-            t.y = t.pos[1];
-        }
+        // if (true) // put in mls
+        // {
+        //     t.pos = als2mls * t.pos;
+        //     t.x = t.pos[0];
+        //     t.y = t.pos[1];
+        // }
 
         trees.push_back(t);
         std::cout << "\n after:" << t.x << ", " << t.y << ", " << t.dbh << std::endl;
@@ -676,6 +676,54 @@ namespace serialize_some_data
 };
 
 using namespace serialize_some_data;
+
+void estimateCurvature(pcl::PointCloud<VUX_PointType>::Ptr &cloud, int neighbor_count = 1)
+{
+    int N = cloud->size();
+    if (cloud->size() < 2 * neighbor_count + 1) {
+        std::cerr << "Not enough points for curvature estimation!" << std::endl;
+        return;
+    }
+
+    // Compute curvature for each point
+    #pragma omp parallel for
+    for (size_t i = neighbor_count; i < N - neighbor_count; ++i) {
+        const VUX_PointType& curr_point = cloud->points[i];
+        float sum_diff = 0.0;
+
+        // Sum distances to neighbors (LOAM-style smoothness)
+        for (int j = -neighbor_count; j <= neighbor_count; ++j) {
+            if (j == 0) continue; // Skip the point itself
+            const VUX_PointType& neighbor = cloud->points[i + j];
+            sum_diff += (neighbor.getVector3fMap() - curr_point.getVector3fMap()).norm();
+        }
+
+        // Normalize by distance to avoid scale dependency
+        float avg_diff = sum_diff / (2 * neighbor_count);
+        cloud->points[i].reflectance = avg_diff / curr_point.getVector3fMap().norm(); // LOAM-like curvature
+        
+        //cloud->points[i].reflectance = i;
+    }
+
+    // // Classify edge and surface features
+    std::vector<size_t> sorted_indices(cloud->size());
+    for (size_t i = 0; i < cloud->size(); ++i) sorted_indices[i] = i;
+
+    // Sort points by curvature (descending)
+    std::sort(sorted_indices.begin(), sorted_indices.end(),
+        [&cloud](size_t i, size_t j) { return cloud->points[i].reflectance > cloud->points[j].reflectance; });
+
+    // Select top 5% as edges, bottom 90% as surfaces 
+    int num_edge = 0.05 * cloud->size();
+    int num_surface = 0.90 * cloud->size();
+
+    for (int i = 0; i < num_edge; ++i) {
+        cloud->points[sorted_indices[i]].reflectance = 255.0; // Edge (high intensity)
+    }
+    for (int i = cloud->size() - num_surface; i < cloud->size(); ++i) {
+        cloud->points[sorted_indices[i]].reflectance = 50.0; // Surface (low intensity)
+    }
+}
 
 void DataHandler::Subscribe()
 {
@@ -898,6 +946,8 @@ void DataHandler::Subscribe()
     using RefPointType = pcl::PointNormal; // pcl::PointXYZINormal;
     using RefPointCloudXYZINormal = pcl::PointCloud<RefPointType>;
 
+    pcl::PointCloud<PointType>::Ptr original_als_cloud(new pcl::PointCloud<PointType>);
+
 #ifdef get_planes
 
     std::string fold = "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/";
@@ -1111,7 +1161,7 @@ void DataHandler::Subscribe()
 
     Sophus::SE3 als2mls; // = als_to_mls;
 
-    Sophus::SE3 prev_pose, optimized_pose, relative_optimized_pose = Sophus::SE3();
+    Sophus::SE3 prev_pose, optimized_pose;
 #define save_vux_clouds
     for (const rosbag::MessageInstance &m : view)
     {
@@ -1155,7 +1205,7 @@ void DataHandler::Subscribe()
         {
             scan_id++;
             std::cout << "scan_id:" << scan_id << std::endl;
-            if (scan_id > 1310) // 1310 1837-we have georeferenced data for this 1000 before tests done with 1000
+            if (scan_id > 550) // 1310 1837-we have georeferenced data for this 1000 before tests done with 1000
             {
                 std::cout << "Stop here... enough data" << std::endl;
                 break;
@@ -1407,16 +1457,19 @@ void DataHandler::Subscribe()
 
                 if (!als_obj->initted_)
                 {
+                    state_point.offset_R_L_I = Sophus::SO3(Lidar_R_wrt_IMU);
+                    state_point.offset_T_L_I = Lidar_T_wrt_IMU;
+
                     Sophus::SE3 known_als2mls;
                     readSE3FromFile(als2mls_filename, known_als2mls);
 
                     if (!this->downsample) // if it is sparse ALS data from NLS
                     {
                         V3D t = known_als2mls.translation();
-                        t.z() += +20.;
-                        Sophus::SE3 als2mla_for_sparse_ALS = Sophus::SE3(known_als2mls.so3().matrix(), t);
+                        t.z() += 20.;
+                        Sophus::SE3 als2mls_for_sparse_ALS = Sophus::SE3(known_als2mls.so3().matrix(), t);
                         std::cout << "Init ALS from known T map refinement" << std::endl;
-                        als_obj->init(als2mla_for_sparse_ALS, laserCloudSurfMap); // with refinement
+                        als_obj->init(als2mls_for_sparse_ALS, laserCloudSurfMap); // with refinement
                     }
                     else
                     {
@@ -1428,7 +1481,7 @@ void DataHandler::Subscribe()
 
                     gnss_obj->updateExtrinsic(als_obj->R_to_mls);
 
-                    als2mls = known_als2mls;
+                    als2mls = known_als2mls; //the first one 
                 }
 
                 als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
@@ -1440,6 +1493,15 @@ void DataHandler::Subscribe()
                 }
 
                 publish_odometry(pubOdomAftMapped);
+                if (scan_pub_en)
+                {
+                    if (pubLaserCloudFull.getNumSubscribers() != 0)
+                    {
+                        *feats_undistort = *Measures.lidar;
+                        *feats_down_body = *Measures.lidar;
+                        publish_frame_world(pubLaserCloudFull);
+                    }
+                }
 
                 if (pubLaserCloudMap.getNumSubscribers() != 0)
                 {
@@ -1470,9 +1532,6 @@ void DataHandler::Subscribe()
             //----------------------------------------------------------------
             // continue;
 
-            // als2mls = T_als2mls_prev;
-            // als_obj->als_to_mls = T_als2mls_prev;
-
             if (load_trees && false)
             {
                 load_trees = false;
@@ -1481,7 +1540,7 @@ void DataHandler::Subscribe()
 
                 // trees = readTreeFile(tree_file, T_mls2als.inverse());
 
-                trees = readTreeFile(tree_file, T_als2mls_prev);
+                // trees = readTreeFile(tree_file, T_als2mls_prev);
 
                 // Tree_ t1;
                 // t1.x = 1.0;
@@ -1666,7 +1725,7 @@ void DataHandler::Subscribe()
 
                 if (do_once) //&& false
                 {
-                    if (true) // this will load the reprocessor generated map
+                    if (false) // this will load the reprocessor generated map
                     {
                         std::cout << "just a test of the transformations..." << std::endl;
                         std::cout << "als2mls:\n"
@@ -1679,7 +1738,7 @@ void DataHandler::Subscribe()
                         std::string f1 = "/media/eugeniu/T7/roamer/09_Export/VUX-1HA-22-2022-B/240725_092351_v12.las";
 
                         // our example of generated vux
-                        f1 = "/media/eugeniu/T7/a_georeferenced_vux_tests/merged/config_1/segment_1.las";
+                        f1 = "/home/eugeniu/x_vux-georeferenced-final/georeferenced/a2/segment_0.las";
 
                         std::istream *ifs = liblas::Open(f1, std::ios::in | std::ios::binary);
                         if (!ifs)
@@ -1703,7 +1762,7 @@ void DataHandler::Subscribe()
                         std::cout << "GetPointRecordsCount:" << header.GetPointRecordsCount() << std::endl;
 
                         PointType point;
-                        pcl::PointCloud<PointType>::Ptr original_als_cloud(new pcl::PointCloud<PointType>);
+                        // pcl::PointCloud<PointType>::Ptr original_als_cloud(new pcl::PointCloud<PointType>);
                         original_als_cloud->resize(header.GetPointRecordsCount());
                         size_t index = 0;
                         double max_length = 150 * 150;
@@ -1713,13 +1772,15 @@ void DataHandler::Subscribe()
                             liblas::Point const &p = reader.GetPoint();
 
                             // V3D cloudPoint = V3D(p.GetX(), p.GetY(), p.GetZ()) - offset_;
-                            // V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            //  V3D cloudPoint = als2mls * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
 
                             // V3D cloudPoint = T_mls2als.inverse() * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
-                            V3D cloudPoint = T_als2mls_prev * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
+                            // V3D cloudPoint = T_als2mls_prev * V3D(p.GetX(), p.GetY(), p.GetZ()); // align to als
 
                             // if (cloudPoint.squaredNorm() > max_length)
                             //     continue;
+
+                            V3D cloudPoint = V3D(p.GetX(), p.GetY(), p.GetZ());
 
                             point.x = cloudPoint.x();
                             point.y = cloudPoint.y();
@@ -1752,20 +1813,23 @@ void DataHandler::Subscribe()
                     }
                     else
                     { // get the data from the reference set
-                      // do_once = false;
-                      // if (point_cloud_pub_reference.getNumSubscribers() != 0)
-                      // {
-                      //     if (!als_ref->initted_)
-                      //         als_ref->init(als2mls);
+                        // do_once = false;
+                        if (point_cloud_pub_reference.getNumSubscribers() != 0)
+                        {
+                            if (!als_ref->initted_)
+                                als_ref->init(als2mls);
 
-                        //     als_ref->Update(Sophus::SE3(state_point.rot, state_point.pos));
+                            if (als_ref->Update(Sophus::SE3(state_point.rot, state_point.pos)))
+                            {
+                                // als_ref->getCloud(downsampled_als_cloud);
+                                als_ref->getCloud(original_als_cloud);
+                                downSizeFilterSurf.setInputCloud(original_als_cloud);
+                                downSizeFilterSurf.filter(*downsampled_als_cloud);
+                                // do one icp here just for refinement to put ref into evaluation or other way arround
 
-                        //     als_ref->getCloud(downsampled_als_cloud);
-
-                        //     // do one icp here just for refinement to put ref into evaluation or other way arround
-
-                        //     publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference);
-                        // }
+                                publishPointCloud(downsampled_als_cloud, point_cloud_pub_reference);
+                            }
+                        }
                     }
                 }
 
@@ -1839,6 +1903,9 @@ void DataHandler::Subscribe()
                             downSizeFilter_vux.setInputCloud(next_line);
                             downSizeFilter_vux.filter(*downsampled_line);
 
+                            //estimate curvature
+                            //estimateCurvature(downsampled_line);
+
                             pcl::PointCloud<VUX_PointType>::Ptr transformed_cloud(new pcl::PointCloud<VUX_PointType>);
                             *transformed_cloud = *downsampled_line;
 
@@ -1855,7 +1922,7 @@ void DataHandler::Subscribe()
                             Sophus::SE3 pose4georeference = als2mls * interpolated_pose_ppk * vux2imu_extrinsics; // this does not have the extrinsics for mls
 
                             // MLS pose as init guess ---- first extrinsics, then georeference  // mls pose
-                            // pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
+                            //pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
 
                             publish_refined_ppk_gnss(pose4georeference, cloud_time);
 
@@ -2008,8 +2075,8 @@ void DataHandler::Subscribe()
                                 }
                             }
 
-                            bool refine_init = true;             // false;            // true;
-                            bool save_georeferenced_vux = false; // true; // will be taken in the release mode only
+                            bool refine_init =  true;             // false;            // true;
+                            bool save_georeferenced_vux = true; // true; // true; // will be taken in the release mode only
 
                             bool debug = false; // true;
                             bool release = false;
@@ -2145,8 +2212,7 @@ void DataHandler::Subscribe()
                                             buildReferenceGraph(
                                                 prev_pub,
                                                 lines_buffer, refined_line_poses_buffer,
-                                                refference_kdtree, reference_localMap_cloud
-                                            );
+                                                refference_kdtree, reference_localMap_cloud);
 
                                             std::cout << "Segment:" << segment_id << " distance:" << (refined_line_poses_buffer.front().translation() - refined_line_poses_buffer.back().translation()).norm() << " m" << std::endl;
                                             std::cout << "Segment  " << segment_id << " completed. Press Enter to continue..." << std::endl;
@@ -2159,30 +2225,34 @@ void DataHandler::Subscribe()
                                         lines_buffer.clear();
                                         refined_line_poses_buffer.clear();
                                         line_poses_buffer.clear();
+
+                                        //THIS SHOULD BE DONE ONLY WHEN THE GNSS-IMU INIT IS USED 
+                                        //coarse_delta_T = Sophus::SE3(M3D::Identity(), coarse_delta_T.translation());
                                     }
                                 }
                                 else
                                 {
-                                    auto curr_refined_pose = coarse_delta_T * T_to_be_refined;   //absolute init guess
-                                    auto refined_odom = prev_pose.inverse() * curr_refined_pose; //relative init guess
-                                    prev_pose = curr_refined_pose;
+                                    //uncomment only for gnss imu
+                                    coarse_delta_T = Sophus::SE3(); //this solved the issue,  do not do that 
 
-                                    Sophus::SE3 absolute_init_guess_T = curr_refined_pose; //only from GNSS-IMU
-                                    //absolute_init_guess_T = relative_optimized_pose * absolute_init_guess_T;
+                                    if (!refine_init)
+                                    {
+                                        optimized_pose = T_to_be_refined; // do nothing - keep the original pose
+                                    }
+                                    else
+                                    {
+                                        auto absolute_init_guess_T = coarse_delta_T * T_to_be_refined;   // absolute init guess
+                                        auto refined_odom = prev_pose.inverse() * absolute_init_guess_T; // relative init guess
+                                        prev_pose = absolute_init_guess_T;
 
-                                    optimized_pose = updateReferenceGraph(
-                                        prev_pub, curr_pub, 
-                                        cloud_pub, normals_pub,
-                                        downsampled_line,                       // scan in sensor frame
-                                        absolute_init_guess_T,                      // absolute T
-                                        refined_odom,                           // odometry 
-                                        refference_kdtree, reference_localMap_cloud
-                                    );
-
-                                    // Estimate the relative motion (delta transform) - correction applied to init guess
-                                    //relative_optimized_pose = absolute_init_guess_T.inverse() * optimized_pose;
-                                    // Compute the relative correction between guess and optimized
-                                    relative_optimized_pose = optimized_pose * absolute_init_guess_T.inverse();
+                                        optimized_pose = updateReferenceGraph(
+                                            prev_pub, curr_pub,
+                                            cloud_pub, normals_pub,
+                                            downsampled_line,      // scan in sensor frame
+                                            absolute_init_guess_T, // absolute T
+                                            refined_odom,          // odometry
+                                            refference_kdtree, reference_localMap_cloud);
+                                    }
 
                                     if (pubOptimizedVUX.getNumSubscribers() != 0)
                                     {
@@ -2202,26 +2272,55 @@ void DataHandler::Subscribe()
                                         publish_frame_debug(pubOptimizedVUX, feats_down_body);
                                     }
 
-                                    if (pubOptimizedVUX2.getNumSubscribers() != 0)
+                                    if (pubOptimizedVUX2.getNumSubscribers() != 0 || save_georeferenced_vux)
                                     {
-                                        for (int i = 0; i < next_line->size(); i++) // for each point in the line
-                                        {
-                                            V3D p_src(next_line->points[i].x, next_line->points[i].y, next_line->points[i].z);
-                                            V3D p_transformed = optimized_pose * p_src;
+                                        TransformPoints(optimized_pose, next_line);
 
-                                            next_line->points[i].x = p_transformed.x();
-                                            next_line->points[i].y = p_transformed.y();
-                                            next_line->points[i].z = p_transformed.z();
+                                        if (save_georeferenced_vux)
+                                        {
+                                            std::string filename = "/home/eugeniu/x_vux-georeferenced-final/test/vux_" + std::to_string(vux_cloud_id) + "_cloud.pcd";
+                                            std::string debug_fule = "/home/eugeniu/x_vux-georeferenced-final/test/_debug_.txt";
+                                            std::string filename_als = "/home/eugeniu/x_vux-georeferenced-final/test/als_vux_" + std::to_string(vux_cloud_id) + "_cloud.pcd";
+
+                                            std::ofstream ofs(debug_fule, std::ios::app);
+                                            ofs << std::fixed << std::setprecision(10); 
+                                            if (!ofs.is_open())
+                                            {
+                                                std::cerr << "Failed to open output file: " << debug_fule << "\n";
+                                                return;
+                                            }
+                                            auto t = optimized_pose.translation();
+                                            // scan_id hesai_time, hesai_t, vux_time, vux_t
+                                            ofs << scan_id << " " << Measures.lidar_end_time << " " << state_point.pos.x() << " " << state_point.pos.y() << " " << state_point.pos.z() << " " << cloud_time << " " << t.x() << " " << t.y() << " " << t.z() << "\n";
+
+                                            if (!saved_mls2als_transform)
+                                            {
+                                                als2mls_filename = "/home/eugeniu/x_vux-georeferenced-final/test/als2mls.txt";
+                                                writeSE3ToFile(als2mls_filename, als2mls);
+                                                saved_mls2als_transform = true;
+                                            }
+
+                                            if(vux_cloud_id % 500 == 0)
+                                            {
+                                                pcl::io::savePCDFile(filename_als, *reference_localMap_cloud, true);
+                                            }
+
+                                            pcl::io::savePCDFile(filename, *next_line, true); // Binary format
+
+                                            std::cout << "Saved cloud " << filename << std::endl;
+                                            vux_cloud_id++;
                                         }
 
-                                        publishPointCloud_vux(next_line, pubOptimizedVUX2);
+                                        if (pubOptimizedVUX2.getNumSubscribers() != 0)
+                                            publishPointCloud_vux(next_line, pubOptimizedVUX2);
                                     }
 
                                     std::cout << " Line added - Press Enter to continue..." << std::endl;
                                     ros::spinOnce();
                                     rate.sleep();
 
-                                    std::cin.get();
+                                    // this is for debug only
+                                    //std::cin.get();
                                 }
                                 /*
                                 ---after this take the coarse_delta_T
@@ -2234,22 +2333,22 @@ void DataHandler::Subscribe()
                                 ---add the rel_T to graph
                                 ---add the scan to map as point to plane cost function
                                 --optimize (this can be called every 10'th scan for example)
-                                --    get the optimized pose 
+                                --    get the optimized pose
                                 --publish the optimized poses and the scans too
                                 --whe too big - cut it off
 
                                 for each scan - search the stable normals (landmarks)
                                 option:
-                                    --fit independently point to plane for each scan 
-                                    
-                                    use the prev scan landmarks and assiciate only planes seen from prev and curr scan
+                                    --fit independently point to plane for each scan
 
-                                    do this for the last 5 scans 
+                                    --use the prev scan landmarks and assiciate only planes seen from prev and curr scan
+
+                                    --do this for the last 5 scans
 
                                 integrate the IMU preintregration factors here too
                                     this will be done later
 
-                                maybe include landmarks into optimization 
+                                ---maybe include landmarks into optimization
                                 */
                             }
 

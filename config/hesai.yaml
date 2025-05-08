@@ -34,11 +34,12 @@ mapping:
     #also the message times are in global frame,  while point times should be relative, starting from zero to .1 s or something 
 
 als:
-    closest_N_files: 5 # 4 #number of closest files
-    downsample: false 
-    als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
-    #als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
-    
+    closest_N_files: 3 # 5 # 4 #number of closest files
+    downsample: true 
+    #als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/"   # this is reference from Jesse
+    #als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
+    als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
+
     use_gnss: false
     #if this is not empty we'll use the postprocessed GNSS solution 
     postprocessed_gnss_path: "" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"  
@@ -51,13 +52,13 @@ publish:
     #for the next make sure that the code is compiled with save option true
     save_clouds: false           #if this is true it will save the point clouds and their pose
     save_clouds_local: false    #if this is true the clouds will be in sensor frame otherwise in global frame
-    save_clouds_path: "/media/eugeniu/T7/test/clouds2/"        #put here the path to save the clouds 
+    save_clouds_path: "/home/eugeniu/x_vux-georeferenced-final/_Hesai_ref/"        #put here the path to save the clouds 
 
     save_poses: false
-    poseSavePath: "/home/eugeniu/x_test/"     #where to save the trajectory
+    poseSavePath: "/home/eugeniu/x_vux-georeferenced-final/_Hesai_ref/"     #where to save the trajectory
 
 eval:
-    tree_file: "/media/eugeniu/T7/a_georeferenced_vux_tests/merged/config_1/results/Results/Stem_curves/Found_stem_tree_attributes.txt"
+    tree_file: "/media/eugeniu/T7/_georeferenced_latest/Ref_ALS_Hesai_fused/results/Results/Stem_curves/Found_stem_tree_attributes.txt"
     
     vux_eval_path: "/home/eugeniu/vux-georeferenced/No_refinement/hesai0/"
     

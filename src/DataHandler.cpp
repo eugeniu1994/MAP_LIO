@@ -663,17 +663,12 @@ void DataHandler::BagHandler()
             //if (scan_id < 45100) // this is only for the 0 bag
             //continue;
 
-            //seq 03 - 584 <= scan_id <= 1483  around 2 mins 
-            //seq 02 - scan_id <= 
-            //seq 01 - scan_id <=
-            //seq 00 - scan_id <=
-
             std::cout << "scan_id:" << scan_id << std::endl;
-            // if (scan_id > 1000) // 1400
-            // {
-            //     std::cout << "Stop here... enough data" << std::endl;
-            //     break;
-            // }
+            if (scan_id > 1310) // 1400
+            {
+                std::cout << "Stop here... enough data" << std::endl;
+                break;
+            }
 
             std::cout<<"scan_id:"<<scan_id<<", travelled_distance:"<<travelled_distance<<std::endl;
 
@@ -850,7 +845,8 @@ void DataHandler::BagHandler()
                 {
                     std::cout << "\n------------------ ALS update failed --------------------------------" << std::endl;
                     // TODO check here why -  there is not enough als data
-                    throw std::runtime_error("NO points -> There is no ALS data for this");
+                    
+                    //throw std::runtime_error("NO points -> There is no ALS data for this");
 
                 }
                 else

@@ -396,6 +396,7 @@ void IMU_Class::Process(const MeasureGroup &meas, Estimator &kf_state, PointClou
 }
 
 #ifdef SAVE_DATA
+double saved_scan = 0;
 // Explicit template instantiation - required by the linker
 // otherwise I have to implement them in the header file
 template pcl::PointCloud<hesai_ros::Point> IMU_Class::DeSkewOriginalCloud<hesai_ros::Point>(const sensor_msgs::PointCloud2::ConstPtr &cloud_msg, const state &imu_state, bool save_clouds_local);
@@ -495,10 +496,14 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
                               for (int i = r.begin(); i < r.end(); ++i)
                               {
                                   pcl_out.points[i].timestamp -= first_point_time;
+                                  V3D P_i(pcl_out.points[i].x, pcl_out.points[i].y, pcl_out.points[i].z);
+                                  pcl_out.points[i].range = P_i.norm();
                               }
                           });
-
-        std::cout << "Deskew for Hesai, IMU_Buffer:" << IMU_Buffer.size() << std::endl;
+                        
+        //first_point_time = std::fmod(first_point_time, 3600); //not sure about this - added to decrease the absolute value of time
+        std::cout << "Deskew for Hesai, IMU_Buffer:" << IMU_Buffer.size()<<", first_point_time:"<<first_point_time << std::endl;
+        
         for (auto it_kp = IMU_Buffer.end() - 1; it_kp != IMU_Buffer.begin(); it_kp--)
         {
             auto head = it_kp - 1;
@@ -542,6 +547,17 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
                                   }
                               });
         }
+
+        saved_scan ++;
+        tbb::parallel_for(tbb::blocked_range<int>(0, pcl_out.size()),
+                          [&](const tbb::blocked_range<int> &r)
+                          {
+                              for (int i = r.begin(); i < r.end(); ++i)
+                              {
+                                  //pcl_out.points[i].timestamp += first_point_time; //put the time back 
+                                  pcl_out.points[i].timestamp += (saved_scan * .1); //10Hz
+                              }
+                          });
     }
     else
     {

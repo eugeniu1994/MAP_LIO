@@ -108,8 +108,8 @@ Visualization Manager:
         - Alpha: 0.6000000238418579
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 31.943450927734375
-            Min Value: -2.369847297668457
+            Max Value: 15.790114402770996
+            Min Value: -2.9499971866607666
             Value: true
           Axis: Z
           Channel Name: z
@@ -231,7 +231,7 @@ Visualization Manager:
           Color: 255; 255; 255
           Color Transformer: Intensity
           Decay Time: 0
-          Enabled: false
+          Enabled: true
           Invert Rainbow: false
           Max Color: 255; 255; 255
           Min Color: 0; 0; 0
@@ -239,22 +239,22 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 10
           Selectable: true
-          Size (Pixels): 3
+          Size (Pixels): 10
           Size (m): 0.10000000149011612
           Style: Points
           Topic: /cloud
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
-          Value: false
+          Value: true
         - Class: rviz/Marker
-          Enabled: false
+          Enabled: true
           Marker Topic: /normals
           Name: norms_
           Namespaces:
             {}
           Queue Size: 100
-          Value: false
+          Value: true
         - Alpha: 0.5
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
@@ -333,7 +333,7 @@ Visualization Manager:
       Head Length: 0
       Length: 0.30000001192092896
       Line Style: Billboards
-      Line Width: 0.30000001192092896
+      Line Width: 0.029999999329447746
       Name: MLS-Path
       Offset:
         X: 0
@@ -476,11 +476,11 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 23.64863395690918
-        Min Value: -1.5382007360458374
+        Max Value: 30.99201774597168
+        Min Value: -2.247568368911743
         Value: true
       Axis: Z
-      Channel Name: reflectance
+      Channel Name: z
       Class: rviz/PointCloud2
       Color: 255; 255; 255
       Color Transformer: AxisColor
@@ -501,7 +501,7 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
-    - Alpha: 0.10000000149011612
+    - Alpha: 0.5
       Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
         Max Value: 41.53299331665039
@@ -567,13 +567,13 @@ Visualization Manager:
       Unreliable: false
       Value: false
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /tree_markers
       Name: Trees
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -586,7 +586,7 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: FlatColor
       Decay Time: 0
-      Enabled: true
+      Enabled: false
       Invert Rainbow: false
       Max Color: 255; 255; 255
       Min Color: 238; 238; 236
@@ -601,7 +601,7 @@ Visualization Manager:
       Unreliable: false
       Use Fixed Frame: true
       Use rainbow: true
-      Value: true
+      Value: false
     - Alpha: 0.30000001192092896
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -686,7 +686,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/ThirdPersonFollower
-      Distance: 110.34330749511719
+      Distance: 82.04447937011719
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -694,17 +694,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 19.249465942382812
-        Y: 31.61488151550293
-        Z: -1.1575780263228808e-05
+        X: 15.143508911132812
+        Y: 36.95001220703125
+        Z: 0
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.079797387123108
+      Pitch: 1.2553977966308594
       Target Frame: global
-      Yaw: 0.8004123568534851
+      Yaw: 0.8003981709480286
     Saved: ~
 Window Geometry:
   Displays:

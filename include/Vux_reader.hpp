@@ -78,7 +78,7 @@ namespace vux
                 // if (range > numeric_limits<double>::epsilon())
                 
                 //std::cout<<"t.echo_range:"<<t.echo_range<<", range:"<<range<<std::endl;
-                if (range > 1 && range < max_range)
+                if (range > 2 && range < max_range)
                 {
                     VUX_PointType point;
                     point.x = t.vertex[0];
@@ -89,7 +89,7 @@ namespace vux
                     //point.echo_range = t.echo_range;
                     point.time = t.time;
                     // point.amplitude = t.amplitude;
-                    point.reflectance = t.reflectance;
+                    point.reflectance = 0;// t.reflectance;
                     // point.deviation = t.deviation;
                     // point.segment = t.segment;
                     // point.time_sorg = t.time_sorg;
