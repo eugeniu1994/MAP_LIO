@@ -299,6 +299,23 @@ void TransformPoints(const Sophus::SE3 &T, std::vector<V3D> &points)
                       });
 }
 
+void TransformPoints(const Sophus::SE3 &T, pcl::PointCloud<VUX_PointType>::Ptr &cloud)
+{
+    tbb::parallel_for(tbb::blocked_range<int>(0, cloud->size()),
+                      [&](tbb::blocked_range<int> r)
+                      {
+                          for (int i = r.begin(); i < r.end(); ++i)
+                          {
+                              V3D p_src(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+                              V3D p_transformed = T * p_src;
+
+                              cloud->points[i].x = p_transformed.x();
+                              cloud->points[i].y = p_transformed.y();
+                              cloud->points[i].z = p_transformed.z();
+                          }
+                      });
+}
+
 void Eigen2PCL(PointCloudXYZI::Ptr &pcl_cloud, const std::vector<V3D> &eigen_cloud)
 {
     // Reserve space for points to avoid reallocation
@@ -397,7 +414,8 @@ Sophus::SE3 registerClouds(pcl::PointCloud<PointType>::Ptr &src, pcl::PointCloud
 
         Eigen::Matrix4d T = transformation.cast<double>();
         Sophus::SE3 refinement_T(T.block<3, 3>(0, 0), T.block<3, 1>(0, 3));
-        std::cout << "refinement_T:\n" << refinement_T.log().transpose() << std::endl;
+        std::cout << "refinement_T:\n"
+                  << refinement_T.log().transpose() << std::endl;
 
         init_T = refinement_T; // vux 2 mls
     }

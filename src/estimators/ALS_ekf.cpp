@@ -304,8 +304,9 @@ bool ALS_Handler::init(const V3D &gps_origin_ENU_, const M3D &init_R_2_mls, cons
 
     if (!refine_als)
     {
-        // refine_als = true; these 2 lines will avoid initialization refinement
-        // return;
+        //remove these 2
+        //refine_als = true; //these 2 lines will avoid initialization refinement
+        //return true; 
 
         std::cout << "\033[31mStart initialization registration ALS2MLS...\033[0m" << std::endl;
 
@@ -422,6 +423,7 @@ bool ALS_Handler::init(const Sophus::SE3 &known_als2mls, const PointCloudXYZI::P
         setupALS_Manager();
     }
 
+    //if(false) //just a test
     {
         std::cout << "\033[31mStart initialization registration ALS2MLS...\033[0m" << std::endl;
         std::chrono::time_point<std::chrono::system_clock> start, end;
@@ -543,6 +545,22 @@ bool ALS_Handler::init(const Sophus::SE3 &known_als2mls, const PointCloudXYZI::P
             throw std::invalid_argument("handle this");
         }
 
+        if(false)
+        {
+            //this is required to keep only the updates on the z axis
+            
+            V3D t = known_als2mls.translation(); //known transform
+            std::cout<<"Init    t:"<<known_als2mls.translation().transpose()<<std::endl;
+            std::cout<<"Refined t:"<<als_to_mls.translation().transpose()<<std::endl;
+            //t[2] = als_to_mls.translation().z(); //refined z value
+            
+            //t = als_to_mls.translation();
+            //als_to_mls = Sophus::SE3(known_als2mls.so3().matrix(), t); //set the given one plus the z axis refinement for sparse ALS
+            std::cout<<"debug als_to_mls translation: "<<als_to_mls.translation().transpose()<<std::endl;
+        }
+
+
+
         end = std::chrono::system_clock::now();
         std::chrono::duration<float> elapsed_seconds = end - start;
         float duration_milliseconds = elapsed_seconds.count() * 1000; // to get milliseconds
@@ -621,11 +639,12 @@ void ALS_Handler::AddPoints_from_file(const std::string &filename)
         Eigen::Vector2d ref_gps = gps_origin_ENU.head<2>();
         double dist = 10 * 10; // 10m radius
         dist = 40 * 40;        // take 40m
+        //dist = 100 * 100; //added later because there was not enough points for some cases
         std::vector<double> min_z;
         while (mean_reader.ReadNextPoint())
         {
             liblas::Point const &p = mean_reader.GetPoint();
-            std::cout << "p.x:" << p.GetX() << " p.y:" << p.GetY() << std::endl;
+            std::cout << "p.x:" << p.GetX() << " p.y:" << p.GetY() << " p.z:" << p.GetZ() << std::endl;
             std::cout << "ref_gps:" << ref_gps.transpose() << std::endl;
             auto d = (Eigen::Vector2d(p.GetX(), p.GetY()) - ref_gps).squaredNorm();
             std::cout << "distance:" << sqrt(d) << std::endl;
@@ -666,6 +685,9 @@ void ALS_Handler::AddPoints_from_file(const std::string &filename)
 
             // gps_origin_ENU[2] = bestZ.b; // corrent the als cloud hight
             gps_origin_ENU[2] = median; // corrent the als cloud hight
+
+            //remove this TODO ------------------------------------added just for jesses data
+            //gps_origin_ENU[2] += 30;
 
             // init guess from GNSS
             als_to_mls = Sophus::SE3(R_to_mls, -R_to_mls * gps_origin_ENU);

@@ -31,12 +31,18 @@ namespace hesai_ros
     float intensity;
     double timestamp;
     uint16_t ring;
+    float range;
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   };
 } // namespace hesai_ros
 
 POINT_CLOUD_REGISTER_POINT_STRUCT(hesai_ros::Point,
-                                  (float, x, x)(float, y, y)(float, z, z)(float, intensity, intensity)(double, timestamp, timestamp)(uint16_t, ring, ring))
+  (float, x, x)(float, y, y)(float, z, z)
+  (float, intensity, intensity)
+  (double, timestamp, timestamp)
+  (uint16_t, ring, ring)
+  (float, range, range)
+)
 
 // the one provided by Petri
 

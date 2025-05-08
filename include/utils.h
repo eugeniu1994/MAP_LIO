@@ -394,5 +394,6 @@ std::vector<double>  NormalizeTimestamps(const std::vector<double> &timestamps);
 
 Sophus::SE3 registerClouds(pcl::PointCloud<PointType>::Ptr &src, pcl::PointCloud<PointType>::Ptr &tgt, pcl::PointCloud<PointType>::Ptr &cloud_aligned);
 
+void TransformPoints(const Sophus::SE3 &T, pcl::PointCloud<VUX_PointType>::Ptr &cloud);
 
 #endif
