@@ -34,11 +34,11 @@ mapping:
     #also the message times are in global frame,  while point times should be relative, starting from zero to .1 s or something 
 
 als:
-    closest_N_files: 3 # 5 # 4 #number of closest files
-    downsample: true 
+    closest_N_files: 5 # 3 # 5 # 4 #number of closest files
+    downsample: false # true 
     #als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/"   # this is reference from Jesse
-    #als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
-    als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
+    als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
+    #als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
 
     use_gnss: false
     #if this is not empty we'll use the postprocessed GNSS solution 

@@ -1922,7 +1922,7 @@ void DataHandler::Subscribe()
                             Sophus::SE3 pose4georeference = als2mls * interpolated_pose_ppk * vux2imu_extrinsics; // this does not have the extrinsics for mls
 
                             // MLS pose as init guess ---- first extrinsics, then georeference  // mls pose
-                            //pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
+                            pose4georeference = interpolated_pose_mls * vux2mls_extrinsics;
 
                             publish_refined_ppk_gnss(pose4georeference, cloud_time);
 
@@ -2227,12 +2227,15 @@ void DataHandler::Subscribe()
                                         line_poses_buffer.clear();
 
                                         //THIS SHOULD BE DONE ONLY WHEN THE GNSS-IMU INIT IS USED 
-                                        //coarse_delta_T = Sophus::SE3(M3D::Identity(), coarse_delta_T.translation());
+                                        
+                                        //only for gnss imu to bring it closer 
+                                        //good enough 
+                                        coarse_delta_T = Sophus::SE3(M3D::Identity(), coarse_delta_T.translation());
                                     }
                                 }
                                 else
                                 {
-                                    //uncomment only for gnss imu
+                                    //uncomment only for gnss imu,  for hesai leave it identity
                                     coarse_delta_T = Sophus::SE3(); //this solved the issue,  do not do that 
 
                                     if (!refine_init)
