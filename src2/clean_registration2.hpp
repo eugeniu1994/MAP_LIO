@@ -28,7 +28,14 @@
 #include <gtsam/base/numericalDerivative.h>
 
 #define BA_NEIGH (10.0) // (5.0) // use min 5 points for nearest neighbours
-// #define BA_NEIGH (20.0) // (5.0) // use min 5 points for nearest neighbours
+
+// try now see if it still drifts
+
+// #define BA_NEIGH (20.0) no landmarks found for sparse data
+
+// this will rewure tests with radius based landmarks
+
+// #define BA_NEIGH (30.0) too many enighbours does not fit the 1m threshold
 
 namespace Eigen
 {
@@ -2117,7 +2124,7 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
     const Sophus::SE3 &T,                                            // init guess
     const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,       // reference kdtree
     const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud, // reference cloud
-    double threshold_nn = 1.0)
+    double threshold_nn = 1.0, bool radius_based = false)
 {
 
     // std::unordered_map<int, landmark_new> landmarks_map; // key is index of the point from the map
@@ -2137,6 +2144,174 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
         search_point.y = p_transformed.y();
         search_point.z = p_transformed.z();
 
+        if (radius_based)
+        {
+            //std::cout<<"\n Radius based NN search ..."<<std::endl;
+
+            std::vector<int> point_idx; //(neighbours);
+            std::vector<float> point_dist;
+
+            if (refference_kdtree->radiusSearch(search_point, threshold_nn, point_idx, point_dist) >= 15) // at least 10 neighbours
+            {
+                int neighbours = point_idx.size();
+
+                // Compute the centroid
+                V3D centroid(0, 0, 0);
+                for (int j = 0; j < neighbours; j++)
+                {
+                    centroid(0) += reference_localMap_cloud->points[point_idx[j]].x;
+                    centroid(1) += reference_localMap_cloud->points[point_idx[j]].y;
+                    centroid(2) += reference_localMap_cloud->points[point_idx[j]].z;
+                }
+                centroid /= neighbours;
+
+                // Compute covariance matrix
+                M3D covariance;
+                covariance.setZero();
+                for (int j = 0; j < neighbours; j++)
+                {
+                    const auto &p = reference_localMap_cloud->points[point_idx[j]];
+                    V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                    covariance += diff * diff.transpose();
+                }
+                covariance /= neighbours;
+
+                // Compute Eigenvalues and Eigenvectors
+                Eigen::SelfAdjointEigenSolver<M3D> solver(covariance);
+                V3D norm = solver.eigenvectors().col(0); // Smallest eigenvector
+                norm.normalize();
+
+                // Compute plane offset: d = - (n * centroid)
+                double negative_OA_dot_norm = -norm.dot(centroid);
+
+                // Compute eigenvalue ratios to assess planarity
+                const auto &eigenvalues = solver.eigenvalues();
+                double lambda0 = eigenvalues(0); // smallest
+                double lambda1 = eigenvalues(1);
+                double lambda2 = eigenvalues(2);
+
+                double curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+
+                // Check for invalid or degenerate cases
+                if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6)
+                {
+                    std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
+                    std::cerr << "curvature is : " << curvature << std::endl;
+                    std::cerr << "lambda0:" << lambda0 << ", lambda1:" << lambda1 << ", lambda2:" << lambda2 << std::endl;
+                    // throw std::runtime_error("Handle this...");
+                    continue;
+                }
+
+                // Colinear: if the two smallest eigenvalues are close to zero
+                if ((lambda1 / lambda2) < 1e-3)
+                {
+                    std::cerr << "Colinear structure detected. Skipping...\n";
+                    continue;
+                }
+
+                //this can be done in the visualization 
+                // Flip normal to point consistently toward viewpoint
+                // V3D point_on_the_plane(reference_localMap_cloud->points[point_idx[0]].x, reference_localMap_cloud->points[point_idx[0]].y, reference_localMap_cloud->points[point_idx[0]].z);
+                // if (norm.dot(T.translation() - point_on_the_plane) < 0)
+                // {
+                //     norm = -norm;
+                // }
+
+                if (curvature > 0)
+                {
+                    double linearity = eigenvalues(2) / eigenvalues.sum();
+                    // good plane
+                    if (curvature <= .02)
+                    {                                      //.04 - all tests with .04
+                        for (int j = 0; j < neighbours; j++) // all the points share the same normal
+                        {
+                            V3D point_3d(reference_localMap_cloud->points[point_idx[j]].x, reference_localMap_cloud->points[point_idx[j]].y, reference_localMap_cloud->points[point_idx[j]].z);
+                            auto planes_iterator = landmarks_map.find(point_3d); // Search by 3D point instead of index
+                            // auto planes_iterator = landmarks_map.find(point_idx[j]);
+
+                            if (planes_iterator == landmarks_map.end()) // Does not exist -> add new landmark
+                            {
+                                landmark_new tgt;
+                                tgt.is_plane = true;
+                                tgt.map_point_index = point_idx[j];
+                                tgt.norm = norm;
+                                tgt.center = centroid;
+
+                                tgt.landmark_point = centroid; // centroid
+                                // tgt.landmark_point = point_3d;  //first point
+                                tgt.key = point_3d;
+
+                                tgt.negative_OA_dot_norm = negative_OA_dot_norm;
+                                tgt.re_proj_error = curvature;
+                                tgt.line_idx.push_back(0); // Seen from line l
+                                tgt.scan_idx.push_back(i); // Seen at point i in line l
+
+                                landmarks_map.emplace(point_3d, tgt); // Insert with 3D point as key
+                                // landmarks_map[point_idx[j]] = tgt;
+                            }
+                            else if (planes_iterator->second.is_plane) // Already exists → update if better
+                            {
+                                if (planes_iterator->second.re_proj_error > curvature)
+                                {
+                                    planes_iterator->second.norm = norm;
+                                    planes_iterator->second.negative_OA_dot_norm = negative_OA_dot_norm;
+                                    planes_iterator->second.re_proj_error = curvature; // Fixed: Use curvature (not point_dist[j])
+                                }
+                            }
+
+                            break; // to keep only the closest neighbour
+                        }
+                    }
+                    else if (linearity > 0.8) // edge like
+                    {
+                        // if (lambda2 > 3 * lambda1) -> good line aloam
+
+                        V3D point_3d(reference_localMap_cloud->points[point_idx[0]].x, reference_localMap_cloud->points[point_idx[0]].y, reference_localMap_cloud->points[point_idx[0]].z);
+                        auto edge_iterator = landmarks_map.find(point_3d);
+
+                        if (edge_iterator == landmarks_map.end()) // Does not exist -> add new landmark
+                        {
+                            landmark_new tgt;
+                            tgt.is_edge = true;
+                            tgt.map_point_index = point_idx[0]; // Optional: Keep original index if needed
+                            tgt.norm = norm;
+
+                            tgt.landmark_point = centroid; // point_3d;
+                            tgt.key = point_3d;
+                            tgt.center = centroid;
+
+                            tgt.negative_OA_dot_norm = negative_OA_dot_norm;
+
+                            tgt.re_proj_error = linearity; // keep linearity here, bigger -> better
+
+                            tgt.line_idx.push_back(0); // Seen from line l
+                            tgt.scan_idx.push_back(i); // Seen at point i in line l
+
+                            V3D line_direction = solver.eigenvectors().col(2);
+                            line_direction.normalize();
+                            tgt.edge_direction = line_direction; // biggest eigen vector
+                            landmarks_map.emplace(point_3d, tgt);
+                        }
+                        else if (edge_iterator->second.is_edge) // Already exists → update if better
+                        {
+                            if (edge_iterator->second.re_proj_error < linearity) // found a better
+                            {
+                                V3D line_direction = solver.eigenvectors().col(2);
+                                line_direction.normalize();
+
+                                edge_iterator->second.edge_direction = line_direction;
+                                edge_iterator->second.negative_OA_dot_norm = negative_OA_dot_norm;
+                                edge_iterator->second.re_proj_error = linearity;
+                            }
+                        }
+                    }
+                }
+            }
+
+            continue; // do not go to the next, kNN
+        }
+
+        //std::cout<<"kNN based NN search ..."<<std::endl;
         std::vector<int> point_idx(BA_NEIGH);
         std::vector<float> point_dist(BA_NEIGH);
 
@@ -2254,10 +2429,10 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                             break; // to keep only the closest neighbour
                         }
                     }
-                    else if (linearity > 0.8) // if (curvature > .1 && curvature < .3) // edge like
+                    else if (linearity > 0.8) // edge like
                     {
-                        // aloam
-                        // if (lambda2 > 5 * lambda1) -> good line
+                        //
+                        // if (lambda2 > 3 * lambda1) -> good line aloam
 
                         V3D point_3d(reference_localMap_cloud->points[point_idx[0]].x, reference_localMap_cloud->points[point_idx[0]].y, reference_localMap_cloud->points[point_idx[0]].z);
                         auto edge_iterator = landmarks_map.find(point_3d);
@@ -2287,14 +2462,14 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                         }
                         else if (edge_iterator->second.is_edge) // Already exists → update if better
                         {
-                            if (edge_iterator->second.re_proj_error < linearity) //found a better
+                            if (edge_iterator->second.re_proj_error < linearity) // found a better
                             {
                                 V3D line_direction = solver.eigenvectors().col(2);
                                 line_direction.normalize();
 
                                 edge_iterator->second.edge_direction = line_direction;
                                 edge_iterator->second.negative_OA_dot_norm = negative_OA_dot_norm;
-                                edge_iterator->second.re_proj_error = linearity; 
+                                edge_iterator->second.re_proj_error = linearity;
                             }
                         }
                     }
@@ -2365,24 +2540,27 @@ Sophus::SE3 updateReferenceGraph(
     {
         std::cout << "updateReferenceGraph key:" << key << std::endl;
 
-        // Pose3 absolute_gtsam_pose(T.matrix()); // take the init guess from proviede
+        debugPoint(T.translation(), _pub_prev);
 
-        auto new_initial_guess = prevOptimized_pose * rel_T; // init guess from prev optimized with const vel
-        Pose3 absolute_gtsam_pose(new_initial_guess.matrix());
+        //T = prevOptimized_pose * rel_T; // this added to start from the prev optimized value
 
+        Pose3 absolute_gtsam_pose(T.matrix());
         Pose3 gtsam_relative(rel_T.matrix());
 
         reference_values.insert(X(key), absolute_gtsam_pose);
         reference_graph.emplace_shared<BetweenFactor<Pose3>>(X(key - 1), X(key), gtsam_relative, odometry_noise_);
 
-        debugPoint(T.translation(), _pub_prev);
-
         if (true)
         {
+            double threshold_nn = 1.0;
+            bool radius_based = true;// false;
+
             // add the landmarks
             // const std::unordered_map<int, landmark_new> &landmarks_map
             const std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> &landmarks_map = get_Landmarks(
-                scan, T, refference_kdtree, reference_localMap_cloud);
+                scan, T, refference_kdtree, reference_localMap_cloud ,
+                threshold_nn, radius_based);
+
             std::cout << "optimize_landmarks:" << optimize_landmarks << std::endl;
             std::cout << "Number of items in landmarks_map: " << landmarks_map.size() << ", global_seen_landmarks: " << global_seen_landmarks.size() << std::endl;
 
@@ -2514,7 +2692,7 @@ Sophus::SE3 updateReferenceGraph(
                                     bool use_alternative_method = true; // this works - the tests was done with this true
 
                                     // THE BUG WAS SOLVED: ---- THERE IS A BUG HERE SOMEWHERE - SOLVE IT
-                                    // use_alternative_method = false; //just check if this solves the issue of xy drift
+                                    //use_alternative_method = false; //just check if this solves the issue of xy drift
 
                                     reference_graph.emplace_shared<PointToPlaneFactor>(X(key), measured_point, plane_norm, target_point, land.negative_OA_dot_norm,
                                                                                        use_alternative_method, plane_noise_cauchy);
@@ -2598,16 +2776,16 @@ Sophus::SE3 updateReferenceGraph(
                 // add the map landmarks
                 for (const auto &[index, land] : global_seen_landmarks)
                 {
-                    //break; // just for now do not show them
+                    // break; // just for now do not show them
                     pcl::PointNormal pt;
 
                     if (land.is_edge)
                     {
-                        pt.curvature = -2; //edges
+                        pt.curvature = -2; // edges
                     }
                     else
                     {
-                        //pt.curvature = -1; //prev planes
+                        // pt.curvature = -1; //prev planes
                         pt.curvature = 1; // <0 plotted as blue
                     }
 
@@ -2619,7 +2797,6 @@ Sophus::SE3 updateReferenceGraph(
                     pt.normal_y = land.norm.y();
                     pt.normal_z = land.norm.z();
 
-                    
                     cloud_with_normals->push_back(pt);
                 }
                 // add the new landmarks
@@ -2686,6 +2863,18 @@ Sophus::SE3 updateReferenceGraph(
         prevOptimized_pose = optimized_pose;
 
         debugPoint(T_last.block<3, 1>(0, 3), _pub_curr);
+
+
+        if(true)
+        {
+            //try the approach with the local vux submap
+            //collect a queue of 20 latest scans and their optimized poses 
+            //merge them into a cloud
+            //for the latest scan that has not been added to this submap
+            //search the planes and edges landmarks 
+            //add them to the graph - 
+        }
+
 
         key++;
         if (key >= max_size)
