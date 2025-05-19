@@ -31,20 +31,21 @@ methods = {
     #------------------------------------------------------------------------------------------------
 
 
-    'GNSS-IMU 0': '/home/eugeniu/x_vux-georeferenced-final/gnss-imu0/surface-eval',
+    #'GNSS-IMU 0': '/home/eugeniu/x_vux-georeferenced-final/gnss-imu0/surface-eval',
     'GNSS-IMU 1': '/home/eugeniu/x_vux-georeferenced-final/gnss-imu1/surface-eval',
     'GNSS-IMU 2': '/home/eugeniu/x_vux-georeferenced-final/gnss-imu2/surface-eval',
     'GNSS-IMU 3': '/home/eugeniu/x_vux-georeferenced-final/gnss-imu3/surface-eval',
 
-    # 'GNSS-test 0': '/home/eugeniu/x_vux-georeferenced-final/gnss_test0/surface-eval',
-    # 'GNSS-test 1': '/home/eugeniu/x_vux-georeferenced-final/gnss_test1/surface-eval',
-    # 'GNSS-test 2': '/home/eugeniu/x_vux-georeferenced-final/gnss_test2/surface-eval',
-    # 'GNSS-test 3': '/home/eugeniu/x_vux-georeferenced-final/gnss_test3/surface-eval',
+    #'GNSS-test 0': '/home/eugeniu/x_vux-georeferenced-final/gnss_test0/surface-eval',
+    'GNSS-test 1': '/home/eugeniu/x_vux-georeferenced-final/gnss_test1/surface-eval',
+    'GNSS-test 2': '/home/eugeniu/x_vux-georeferenced-final/gnss_test2/surface-eval',
+    'GNSS-test 3': '/home/eugeniu/x_vux-georeferenced-final/gnss_test3/surface-eval',
 
-    'Hesai 0': '/home/eugeniu/x_vux-georeferenced-final/hesai0/surface-eval',
-    'Hesai 1': '/home/eugeniu/x_vux-georeferenced-final/hesai1/surface-eval',
-    'Hesai 2': '/home/eugeniu/x_vux-georeferenced-final/hesai2/surface-eval',
-    'Hesai 3': '/home/eugeniu/x_vux-georeferenced-final/hesai3/surface-eval'
+    'check-gnss-1': '/home/eugeniu/x_vux-georeferenced-final/test'
+    # 'Hesai 0': '/home/eugeniu/x_vux-georeferenced-final/hesai0/surface-eval',
+    # 'Hesai 1': '/home/eugeniu/x_vux-georeferenced-final/hesai1/surface-eval',
+    # 'Hesai 2': '/home/eugeniu/x_vux-georeferenced-final/hesai2/surface-eval',
+    # 'Hesai 3': '/home/eugeniu/x_vux-georeferenced-final/hesai3/surface-eval'
 }
 
 
@@ -73,9 +74,9 @@ for label, folder in methods.items():
             
             all_data.append(scan_data[valid_rows])
 
-            # scans-=1
-            # if scans < 0:
-            #     break
+            scans-=1
+            if scans < 0:
+                break
 
     data[label] = np.vstack(all_data)
 

@@ -1364,32 +1364,36 @@ namespace custom_factor
         }
     };
 
-    class PointToDistributionFactor : public NoiseModelFactor1<Pose3> {
+    class PointToDistributionFactor : public NoiseModelFactor1<Pose3>
+    {
         using Base = NoiseModelFactor1<Pose3>;
-        Point3 point_;                // LiDAR point in local frame
-        Point3 mean_;                 // Mean of nearby map points in world frame
-        Matrix3 invCov_;              // Inverse covariance (Σ⁻¹)
-      
-      public:
+        Point3 point_;   // LiDAR point in local frame
+        Point3 mean_;    // Mean of nearby map points in world frame
+        Matrix3 invCov_; // Inverse covariance (Σ⁻¹)
+
+    public:
         PointToDistributionFactor(Key poseKey,
-                                  const Point3& point,
-                                  const Point3& mean,
-                                  const Matrix3& invCov)
-          : Base(noiseModel::Unit::Create(3), poseKey),
-            point_(point), mean_(mean), invCov_(invCov) {}
-      
-        Vector evaluateError(const Pose3& pose, OptionalMatrixType H) const override {
-          Point3 p_world = pose.transformFrom(point_, H);
-      
-          Vector3 diff = p_world - mean_;
-          if (H) {
-            *H = invCov_ * (*H); // Chain rule: dMahalanobis/dPose = Σ⁻¹ * dP/dPose
-          }
-          return invCov_ * diff; // Mahalanobis residual vector
+                                  const Point3 &point,
+                                  const Point3 &mean,
+                                  const Matrix3 &invCov)
+            : Base(noiseModel::Unit::Create(3), poseKey),
+              point_(point), mean_(mean), invCov_(invCov) {}
+
+        Vector evaluateError(const Pose3 &pose, OptionalMatrixType H) const override
+        {
+            Point3 p_world = pose.transformFrom(point_, H);
+
+            Vector3 diff = p_world - mean_;
+            if (H)
+            {
+                // Whitened Jacobian: ∂e/∂pose = inv(Cov) * ∂(p_world)/∂pose
+                *H = invCov_ * (*H); // Chain rule: dMahalanobis/dPose = Σ⁻¹ * dP/dPose
+            }
+            return invCov_ * diff; // Mahalanobis residual vector
         }
-      
+
         virtual ~PointToDistributionFactor() {}
-      };
+    };
 };
 
 using namespace custom_factor;
@@ -2040,6 +2044,8 @@ struct landmark_new
     int landmark_key = 0;
 
     V3D center;
+    M3D covariance;
+
     V3D key;
 
     bool is_plane = false;
@@ -2094,15 +2100,28 @@ auto plane_noise_cauchy_for_prev_segment = gtsam::noiseModel::Robust::Create(
     gtsam::noiseModel::Isotropic::Sigma(1, landmarks_sigma));
 
 // used so far
+// auto odometry_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
+//     (gtsam::Vector6() << gtsam::Vector3(.01, .01, .05), //.01, .01, .02 translation stddev (m): x, y, z
+//      gtsam::Vector3(.01, .01, .01)                      // rotation stddev (radians): roll, pitch, yaw
+//      )
+//         .finished());
+
+// auto loose_prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
+//     (gtsam::Vector6() << gtsam::Vector3(5., 5., 10.), // translation stddev (m): x, y, z
+//      gtsam::Vector3(.5, .5, 1.)                       //                      // rotation stddev (radians): roll, pitch, yaw ~5 degrees std in rpy
+//      )
+//         .finished());
+
+// just a test
 auto odometry_noise_ = gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << gtsam::Vector3(.01, .01, .05), //.01, .01, .02 translation stddev (m): x, y, z
-     gtsam::Vector3(.01, .01, .01)                      // rotation stddev (radians): roll, pitch, yaw
+    (gtsam::Vector6() << gtsam::Vector3(1., 1., 1.), //.01, .01, .02 translation stddev (m): x, y, z
+     gtsam::Vector3(.5, .5, .5)                      // rotation stddev (radians): roll, pitch, yaw
      )
         .finished());
 
 auto loose_prior_noise = gtsam::noiseModel::Diagonal::Sigmas(
-    (gtsam::Vector6() << gtsam::Vector3(5., 5., 10.), // translation stddev (m): x, y, z
-     gtsam::Vector3(.5, .5, 1.)                       //                      // rotation stddev (radians): roll, pitch, yaw ~5 degrees std in rpy
+    (gtsam::Vector6() << gtsam::Vector3(10., 10., 10.), // translation stddev (m): x, y, z
+     gtsam::Vector3(1., 1., 1.)                         //                      // rotation stddev (radians): roll, pitch, yaw ~5 degrees std in rpy
      )
         .finished());
 
@@ -2113,7 +2132,7 @@ bool doneFirstOpt = false;
 bool systemInitialized = false;
 bool optimize_landmarks = false; // true;
 
-bool batch_optimization = false;   // true;    // batch after every buffer requires re-init
+bool batch_optimization = false;   // false;   // true;    // batch after every buffer requires re-init
 NonlinearFactorGraph global_graph; // keep all factors here for batch
 Values global_values;
 
@@ -2133,6 +2152,8 @@ gtsam::ISAM2 isam;
 // persistent variable
 // Map: V3D (point) -> int (landmark key)
 std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> global_seen_landmarks;
+
+std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> prev_seen_landmarks;
 
 void debugGraph(const gtsam::Values &_values, ros::Publisher &pub)
 {
@@ -2171,6 +2192,7 @@ void debugPoint(const V3D &t, ros::Publisher &pub)
 void resetOptimization()
 {
     gtsam::ISAM2Params optParameters;
+
     // optParameters.relinearizeThreshold = 0.1; //0.1 means if the change in a variable (like pose or velocity) exceeds 0.1 in norm, then it will be relinearized.
     optParameters.relinearizeThreshold = 0.01;
 
@@ -2201,6 +2223,8 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
     // //return landmarks_map; // no landmarks TEST WITHOUT PLANES
 
     double uncertainty_scale = 15;
+
+    // uncertainty_scale = 1;
 
     // this can be done in parallel BTW-----------------------------
     for (int i = 0; i < scan->size(); i++)
@@ -2324,6 +2348,8 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                         // Compute sigma (standard deviation along normal)
                         double sigma_plane = uncertainty_scale * std::sqrt(lambda0); // scale_factor = 1.0 -> 1-sigma confidence, 3 and so on
 
+                        // neighbours = 5; //test to take 5 neighbours
+
                         for (int j = 0; j < neighbours; j++) // all the points share the same normal
                         {
                             V3D point_3d(reference_localMap_cloud->points[point_idx[j]].x, reference_localMap_cloud->points[point_idx[j]].y, reference_localMap_cloud->points[point_idx[j]].z);
@@ -2337,6 +2363,7 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                                 tgt.map_point_index = point_idx[j];
                                 tgt.norm = norm;
                                 tgt.center = centroid;
+                                tgt.covariance = covariance;
 
                                 tgt.landmark_point = centroid; // centroid
                                 // tgt.landmark_point = point_3d;  //first point
@@ -2382,6 +2409,7 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                             tgt.landmark_point = centroid; // point_3d;
                             tgt.key = point_3d;
                             tgt.center = centroid;
+                            tgt.covariance = covariance;
 
                             tgt.negative_OA_dot_norm = negative_OA_dot_norm;
                             tgt.sigma = sigma_edge;
@@ -2510,6 +2538,7 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                                 tgt.map_point_index = point_idx[j];
                                 tgt.norm = norm;
                                 tgt.center = centroid;
+                                tgt.covariance = covariance;
 
                                 tgt.landmark_point = centroid; // centroid
                                 // tgt.landmark_point = point_3d;  //first point
@@ -2554,6 +2583,7 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                             tgt.landmark_point = centroid; // point_3d;
                             tgt.key = point_3d;
                             tgt.center = centroid;
+                            tgt.covariance = covariance;
 
                             tgt.negative_OA_dot_norm = negative_OA_dot_norm;
 
@@ -3205,6 +3235,11 @@ Sophus::SE3 updateReferenceGraph(
 
         isam.update(); // Repeatedly relinearizes and refines
 
+        for (int i = 0; i < 20; i++)
+        {
+            isam.update();
+        }
+
         reference_graph.resize(0);
         reference_values.clear(); // this is required to clean the graph, isam has its copy
         gtsam::Values current_estimate = isam.calculateEstimate();
@@ -3313,5 +3348,499 @@ Sophus::SE3 updateReferenceGraph(
     else
     {
         throw std::runtime_error("Reference graph not inited...");
+    }
+}
+
+void updateDA(ros::Publisher &_pub_debug,
+              ros::Publisher &_pub_prev, ros::Publisher &_pub_curr,
+              const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
+              pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
+              const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
+              const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud,
+              const Sophus::SE3 &nn_init_guess_T, NonlinearFactorGraph &this_Graph)
+{
+
+    double threshold_nn = 1.0;
+    bool radius_based = true; // false;
+
+    const std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> &landmarks_map = get_Landmarks(
+        scan, nn_init_guess_T, refference_kdtree, reference_localMap_cloud,
+        threshold_nn, radius_based);
+
+    std::cout << "Number of items in landmarks_map: " << landmarks_map.size() << ", global_seen_landmarks: " << global_seen_landmarks.size() << std::endl;
+    int added_constraints = 0;
+    if (landmarks_map.size() > 2) //
+    {
+        prev_seen_landmarks.clear();
+        for (const auto &[landmark_id, land] : landmarks_map)
+        {
+            for (int i = 0; i < land.scan_idx.size(); i++)
+            {
+                const auto &p_idx = land.scan_idx[i]; // at index p_idx from that scan
+                const auto &raw_point = scan->points[p_idx];
+
+                Point3 measured_point(raw_point.x, raw_point.y, raw_point.z); // measured_landmark_in_sensor_frame
+                Point3 target_point(land.landmark_point.x(), land.landmark_point.y(), land.landmark_point.z());
+
+                if (land.is_plane)
+                {
+                    Point3 plane_norm(land.norm.x(), land.norm.y(), land.norm.z());
+                    // if (use_alternative_method_)
+                    //     error = (p_transformed - target_point_).dot(plane_normal_);
+                    // else
+                    //     error = plane_normal_.dot(p_transformed) + negative_OA_dot_norm_;
+
+                    bool use_alternative_method = true; // this works - the tests was done with this true
+                    use_alternative_method = false;     // just check if this solves the issue of xy drift
+
+                    auto robust_noise = gtsam::noiseModel::Robust::Create(
+                        gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel),
+                        gtsam::noiseModel::Isotropic::Sigma(1, 3 * land.sigma));
+
+                    if (use_artificial_uncertainty)
+                    {
+                        robust_noise = plane_noise_cauchy; // use the artificial one
+                    }
+
+                    this_Graph.emplace_shared<PointToPlaneFactor>(X(key), measured_point, plane_norm, target_point, land.negative_OA_dot_norm,
+                                                                  use_alternative_method, robust_noise);
+
+                    //--------check consistency with prev scans-----------------------
+                    // auto it = global_seen_landmarks.find(landmark_id); // check if its seen in prev scan
+                    // if (it != global_seen_landmarks.end())             // same plane seen in prev scans too
+                    // {
+                    //     Point3 target_point_prev(it->second.landmark_point.x(), it->second.landmark_point.y(), it->second.landmark_point.z());
+                    //     // maybe use the current point measurement
+                    //     Point3 plane_norm_prev(it->second.norm.x(), it->second.norm.y(), it->second.norm.z());
+
+                    //     auto prev_robust_noise = gtsam::noiseModel::Robust::Create(
+                    //         gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel),
+                    //         gtsam::noiseModel::Isotropic::Sigma(1, 3 * it->second.sigma));
+
+                    //     if (use_artificial_uncertainty)
+                    //     {
+                    //         prev_robust_noise = plane_noise_cauchy; // use the artificial one
+                    //     }
+
+                    //     this_Graph.emplace_shared<PointToPlaneFactor>(X(key), measured_point, plane_norm_prev, target_point_prev, land.negative_OA_dot_norm,
+                    //                                                     use_alternative_method, prev_robust_noise);
+
+                    //     prev_seen_landmarks[land.key] = land;
+                    // }
+                    // else
+                    // {
+                    //     // this landmarks is has not been seet yet,  add it to buffer
+                    //     global_seen_landmarks[land.key] = land;
+                    // }
+                }
+                else if (land.is_edge && false)
+                {
+                    Point3 line_dir(land.edge_direction.x(), land.edge_direction.y(), land.edge_direction.z());
+                    auto robust_noise = gtsam::noiseModel::Robust::Create(
+                        gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel),
+                        gtsam::noiseModel::Isotropic::Sigma(1, 3 * land.sigma));
+
+                    if (use_artificial_uncertainty)
+                    {
+                        robust_noise = plane_noise_cauchy; // use the artificial one
+                    }
+                    this_Graph.emplace_shared<PointToLineFactor>(X(key), measured_point, target_point, line_dir, robust_noise);
+
+                    added_constraints++;
+                }
+
+                // p2p
+                // auto point_noise_cauchy = gtsam::noiseModel::Robust::Create(
+                // gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel), // Robust kernel for outliers
+                // gtsam::noiseModel::Isotropic::Sigma(3, sigma_point));
+
+                auto point_noise = gtsam::noiseModel::Robust::Create(
+                    gtsam::noiseModel::mEstimator::Cauchy::Create(.1), // Robust kernel for outliers 10cm
+                    gtsam::noiseModel::Isotropic::Sigma(3, .5));
+
+                //this_Graph.emplace_shared<PointToPointFactor>(X(key), measured_point, target_point, point_noise);
+
+                added_constraints++;
+
+                break; // means only once
+            }
+        }
+    }
+
+    std::cout << "added_constraints:" << added_constraints << std::endl;
+
+    if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
+    {
+        pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointNormal>());
+        // add the map landmarks
+        // for (const auto &[index, land] : global_seen_landmarks)
+        for (const auto &[index, land] : prev_seen_landmarks)
+        {
+            // break; // just for now do not show them
+            pcl::PointNormal pt;
+
+            if (land.is_edge)
+            {
+                pt.curvature = -2; // edges
+            }
+            else
+            {
+                // pt.curvature = -1; //prev planes
+                pt.curvature = 1; // <0 plotted as blue
+            }
+
+            pt.x = land.landmark_point.x();
+            pt.y = land.landmark_point.y();
+            pt.z = land.landmark_point.z();
+
+            pt.normal_x = land.norm.x();
+            pt.normal_y = land.norm.y();
+            pt.normal_z = land.norm.z();
+
+            cloud_with_normals->push_back(pt);
+        }
+        // add the new landmarks
+        for (const auto &[index, land] : landmarks_map)
+        {
+            if (land.is_edge)
+            {
+                pcl::PointNormal pt;
+                pt.x = land.landmark_point.x();
+                pt.y = land.landmark_point.y();
+                pt.z = land.landmark_point.z();
+
+                pt.normal_x = land.edge_direction.x();
+                pt.normal_y = land.edge_direction.y();
+                pt.normal_z = land.edge_direction.z();
+
+                pt.curvature = -2;
+
+                cloud_with_normals->push_back(pt);
+            }
+            else if (land.is_plane)
+            {
+                pcl::PointNormal pt;
+                pt.x = land.landmark_point.x();
+                pt.y = land.landmark_point.y();
+                pt.z = land.landmark_point.z();
+
+                pt.normal_x = land.norm.x();
+                pt.normal_y = land.norm.y();
+                pt.normal_z = land.norm.z();
+
+                pt.curvature = -1;
+
+                cloud_with_normals->push_back(pt);
+            }
+        }
+
+        debug_CloudWithNormals2(cloud_with_normals, cloud_pub, normals_pub);
+    }
+
+    if (_pub_debug.getNumSubscribers() != 0)
+    {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_(new pcl::PointCloud<pcl::PointXYZ>());
+        for (int j = 0; j < scan->size(); j++)
+        {
+            V3D p_src(scan->points[j].x, scan->points[j].y, scan->points[j].z);
+            V3D p_transformed = nn_init_guess_T * p_src;
+
+            pcl::PointXYZ p;
+            p.x = p_transformed.x();
+            p.y = p_transformed.y();
+            p.z = p_transformed.z();
+
+            cloud_->push_back(p);
+        }
+
+        sensor_msgs::PointCloud2 cloud_msg;
+        pcl::toROSMsg(*cloud_, cloud_msg);
+        cloud_msg.header.frame_id = "world";
+        _pub_debug.publish(cloud_msg);
+    }
+}
+
+Sophus::SE3 updateSimple(
+    ros::Publisher &_pub_debug, volatile bool &flag,
+    ros::Publisher &_pub_prev, ros::Publisher &_pub_curr,
+    const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
+    pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
+    const Sophus::SE3 &T, Sophus::SE3 &rel_T,  // absolute T, odometry
+    const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
+    const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud)
+{
+    std::cout << "updateSimple key:" << key << std::endl;
+
+    if (doneFirstOpt)
+    {
+        debugPoint(T.translation(), _pub_prev);
+
+        Pose3 _absolute_guess = Pose3(T.matrix());
+        auto T_init = prevOptimized_pose * rel_T;
+
+        Pose3 absolute_gtsam_pose(T_init.matrix());
+        Pose3 gtsam_relative(rel_T.matrix());
+
+        Values latest_estimate;
+        Eigen::Matrix4d T_last;
+
+        double prev_error = std::numeric_limits<double>::max();
+        const double convergence_threshold = .05; // when to stop
+
+        // Add odometry or priors to graph
+        reference_values.insert(X(key), absolute_gtsam_pose);
+        reference_graph.emplace_shared<BetweenFactor<Pose3>>(X(key - 1), X(key), gtsam_relative, odometry_noise_);
+        reference_graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(key), _absolute_guess, loose_prior_noise));
+
+        for (int refinement = 0; refinement < 20; refinement++)
+        {
+            ros::spinOnce();
+            if (flag || !ros::ok())
+                break;
+
+            // new graph and values for current iteration
+            NonlinearFactorGraph curr_graph;
+            Values curr_values;
+
+            // add previous collected data
+            curr_graph.add(global_graph);
+            curr_values.insert(global_values);
+
+            // curr_values.print("\n\nCurrent values with global_values:\n");
+
+            // add the data for the current graph measurements
+            curr_graph.add(reference_graph);
+            curr_values.insert(reference_values);
+
+            // std::set<gtsam::Key> referencedKeys;
+            // for (const auto& factor : curr_graph) {
+            //     if (!factor) continue; // skip null factors
+            //     gtsam::KeyVector keys = factor->keys();
+            //     for (const auto& key : keys) {
+            //         referencedKeys.insert(key);
+            //     }
+            // }
+            // std::cout << "Keys used in the curr_graph factor graph:" << std::endl;
+            // for (const auto& key : referencedKeys) {
+            //     std::cout << "  " << gtsam::DefaultKeyFormatter(key) << std::endl;
+            // }
+
+            // Add odometry or priors to graph
+            // curr_values.insert(X(key), absolute_gtsam_pose);
+            // curr_graph.emplace_shared<BetweenFactor<Pose3>>(X(key - 1), X(key), gtsam_relative, odometry_noise_);
+            // curr_graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(key), _absolute_guess, loose_prior_noise));
+
+            // std::cout<<"Inside refinement - Try to get the pose at X("<<key<<")"<<std::endl;
+            Pose3 latest_pose = (refinement == 0) ? absolute_gtsam_pose : latest_estimate.at<gtsam::Pose3>(X(key));
+
+            T_last = latest_pose.matrix();
+            Sophus::SE3 nn_init_guess_T(T_last.block<3, 3>(0, 0), T_last.block<3, 1>(0, 3));
+
+            // add the landmarks to current graph
+            updateDA(_pub_debug,
+                     _pub_prev, _pub_curr,
+                     cloud_pub, normals_pub,
+                     scan, // scan in sensor frame
+                     refference_kdtree, reference_localMap_cloud,
+                     nn_init_guess_T, curr_graph);
+
+            // curr_values.print("\n\nCurrent values:\n");
+            //  for (const auto& key_value : curr_values) {
+            //      std::cout <<"Key in curr_values: " << gtsam::DefaultKeyFormatter(key_value.key) << std::endl;
+            //  }
+
+            // std::cout<<"Start optimize"<<std::endl;
+            LevenbergMarquardtOptimizer optimizer(curr_graph, curr_values);
+            latest_estimate = optimizer.optimize();
+
+            // for (const auto &key_value : latest_estimate) {
+            //     std::cout << "Key in estimate: " << DefaultKeyFormatter(key_value.key) << std::endl;
+            // }
+
+            double current_error = optimizer.error();
+
+            // std::cout << "\nIteration " << refinement << ", error = " << current_error << std::endl;
+
+            auto d_error = std::abs(prev_error - current_error);
+            std::cout << "Number of factors in graph: " << curr_graph.size() << ", d_error:" << d_error << std::endl;
+            if (d_error < convergence_threshold)
+            {
+                std::cout << "Converged after " << refinement << " iterations.\n";
+                break;
+            }
+
+            prev_error = current_error;
+
+            // std::cout << "Finished one iteration, press enter..." << std::endl;
+            // std::cin.get();
+
+            // break;
+        }
+        // std::cout<<"Out the for loop..."<<std::endl;
+        //  add the landmarks to current graph
+
+        reference_values.clear();
+        //reference_values.insert(X(key - 1), prevPose_);
+        reference_values.insert(X(key), latest_estimate.at<gtsam::Pose3>(X(key)));
+
+        Sophus::SE3 nn_init_guess_T(T_last.block<3, 3>(0, 0), T_last.block<3, 1>(0, 3));
+        updateDA(_pub_debug,
+                 _pub_prev, _pub_curr,
+                 cloud_pub, normals_pub,
+                 scan, // scan in sensor frame
+                 refference_kdtree, reference_localMap_cloud,
+                 nn_init_guess_T, reference_graph);
+
+        //isam.update(reference_graph); // graph only includes current iteration's factors
+        isam.update(reference_graph, reference_values);
+
+        latest_estimate = isam.calculateEstimate();
+        std::cout << "Isam Total factors: " << isam.getFactorsUnsafe().size() << std::endl;
+        double current_error = isam.getFactorsUnsafe().error(latest_estimate);
+        std::cout<<"before update isam current_error:"<<current_error<<std::endl;
+
+        // isam.update();
+        // latest_estimate = isam.calculateEstimate();
+        // current_error = isam.getFactorsUnsafe().error(latest_estimate);
+        // std::cout<<"after update  isam current_error:"<<current_error<<std::endl;
+        
+
+        global_graph.resize(0);
+        global_values.clear();
+
+        gtsam::noiseModel::Gaussian::shared_ptr updatedPoseNoise = gtsam::noiseModel::Gaussian::Covariance(isam.marginalCovariance(X(key - 1)));
+        gtsam::PriorFactor<gtsam::Pose3> priorPose(X(key), prevPose_, updatedPoseNoise);
+
+        if (!reference_values.exists(X(key-1))) {
+            std::cerr << "Missing X("<<key<<") in reference_values, inserting value" << std::endl;
+            reference_values.insert(X(key-1), prevPose_);
+        }
+
+        // keep track of them
+        global_graph.add(reference_graph);
+        global_values.insert(reference_values);
+
+        reference_graph.resize(0);
+        reference_values.clear(); // this is required to clean the graph, isam has its copy
+
+        prevPose_ = latest_estimate.at<gtsam::Pose3>(X(key));
+
+        T_last = prevPose_.matrix();
+        Sophus::SE3 optimized_pose(T_last.block<3, 3>(0, 0), T_last.block<3, 1>(0, 3));
+        prevOptimized_pose = optimized_pose;
+
+        debugPoint(T_last.block<3, 1>(0, 3), _pub_curr);
+
+        std::cout << "Published one scan, press enter..." << std::endl;
+        std::cin.get();
+
+        key++;
+
+        if (key >= max_size && false)
+        {
+            if (batch_optimization)
+            {
+                std::cout << "Performing batch optimization before reset..." << std::endl;
+
+                // Run optimization on the accumulated graph
+                std::cout << "Performing batch optimization with LM before reset..." << std::endl;
+                gtsam::LevenbergMarquardtParams lmParams;
+                // lmParams.setVerbosityLM("SUMMARY");
+                lmParams.setVerbosity("ERROR");
+                lmParams.maxIterations = 10; // its pretty close already 100;
+                lmParams.setRelativeErrorTol(1e-3);
+                gtsam::LevenbergMarquardtOptimizer batch_optimizer(global_graph, global_values, lmParams);
+                gtsam::Values batch_result = batch_optimizer.optimize();
+
+                // Extract the final pose from batch result
+                gtsam::Pose3 last_optimized_pose = batch_result.at<gtsam::Pose3>(X(key - 1));
+                Eigen::Matrix4d T_last = last_optimized_pose.matrix();
+                prevPose_ = last_optimized_pose;
+                prevOptimized_pose = Sophus::SE3(T_last.block<3, 3>(0, 0), T_last.block<3, 1>(0, 3));
+                optimized_pose = prevOptimized_pose;
+
+                // Estimate new uncertainty for prior
+                gtsam::Marginals marginals(global_graph, batch_result);
+                gtsam::Matrix covariance = marginals.marginalCovariance(X(key - 1));
+                gtsam::noiseModel::Gaussian::shared_ptr updatedPoseNoise = gtsam::noiseModel::Gaussian::Covariance(covariance);
+
+                // Reset iSAM2 and restart from batch result
+                resetOptimization();
+                gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, updatedPoseNoise);
+                reference_graph.add(priorPose);
+                reference_values.insert(X(0), prevPose_);
+
+                isam.update(reference_graph, reference_values);
+                reference_graph.resize(0);
+                reference_values.clear();
+
+                // Clear the global containers and reset the key
+                global_graph.resize(0);
+                global_values.clear();
+
+                // Add to global graph and estimate
+                global_graph.add(priorPose);
+                global_values.insert(X(0), prevPose_);
+
+                key = 1;
+            }
+            else
+            {
+                std::cout << "reset graph =============================" << std::endl;
+
+                // get updated noise before reset
+                gtsam::noiseModel::Gaussian::shared_ptr updatedPoseNoise = gtsam::noiseModel::Gaussian::Covariance(isam.marginalCovariance(X(key - 1)));
+
+                // reset graph
+                resetOptimization();
+                // add pose
+                gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), prevPose_, updatedPoseNoise);
+                reference_graph.add(priorPose);
+
+                // add values
+                reference_values.insert(X(0), prevPose_);
+
+                // optimize once
+                isam.update(reference_graph, reference_values);
+                reference_graph.resize(0);
+                reference_values.clear();
+
+                key = 1;
+            }
+        }
+
+        return optimized_pose;
+    }
+    else
+    {
+        // throw std::runtime_error("Reference graph not inited...");
+        resetOptimization();
+
+        Pose3 _absolute_guess = Pose3(T.matrix());
+        reference_values.insert(X(0), _absolute_guess);
+        reference_graph.addPrior(X(0), _absolute_guess, prior_noise);
+        key++;
+
+        prevOptimized_pose = T;
+        debugGraph(reference_values, _pub_prev);
+
+        {
+            // Add to global graph and estimate
+            global_graph.add(reference_graph);
+            global_values.insert(reference_values);
+        }
+
+        // Do the initial batch optimization
+        isam.update(reference_graph, reference_values);
+        // Clear graph and values to avoid reusing same keys
+        reference_graph = gtsam::NonlinearFactorGraph(); //.resize(0);
+        reference_values.clear();
+
+        doneFirstOpt = true;
+        systemInitialized = true;
+
+        std::cout << "Build first node" << std::endl;
+
+        return T;
     }
 }
