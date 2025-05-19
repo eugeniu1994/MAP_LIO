@@ -35,12 +35,12 @@ mapping:
 
 als:
     closest_N_files: 5 #3 for evaluation 5 for registration # 4 #number of closest files
-    downsample: false # true 
+    downsample: true # true 
     #als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped/"   # this is reference from Jesse
-    als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
-    #als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
+    #als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
+    als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
 
-    use_gnss: false
+    use_gnss: true # false
     #if this is not empty we'll use the postprocessed GNSS solution 
     postprocessed_gnss_path: "" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"  
     saveALS_NN_2_MLS: false             #MLS map update with ALS points 
@@ -60,7 +60,7 @@ publish:
 eval:
     tree_file: "/media/eugeniu/T7/_georeferenced_latest/Ref_ALS_Hesai_fused/results/Results/Stem_curves/Found_stem_tree_attributes.txt"
     
-    vux_eval_path: "/home/eugeniu/x_vux-georeferenced-final/gnss_test3/abc/"
+    vux_eval_path: "/home/eugeniu/x_vux-georeferenced-final/gnss-imu1/"
     
     #vux_eval_path: "/home/eugeniu/vux_save_clouds/"
     #vux_eval_path: "/home/eugeniu/vux-georeferenced_2km_30cm_voxel/hesai3/"

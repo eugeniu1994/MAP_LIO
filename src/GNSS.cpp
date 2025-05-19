@@ -62,8 +62,6 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
 
         global_gps_time = msg->time + gps_epoch;
 
-        
-
         if (gps_init_origin && !gps_buffer.empty()) // position initialised and still msgs exists
         {
             double diff_curr = fabs(gps_time - lidar_end_time);
@@ -96,7 +94,7 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
         // GET THE WEIGHTED AVERAGE lla of the current position
         if (!gps_init_origin)
         {
-            if (gps_measurements.size() < 10)
+            if (gps_measurements.size() < 10)  //
             {
                 gps_measurements.push_back(lla);
                 gps_covariances.push_back(gps_cov);
