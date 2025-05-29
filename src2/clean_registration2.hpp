@@ -210,12 +210,162 @@ double scan2map_ceres(pcl::PointCloud<PointType>::Ptr &src,
     return 0; // implemented in clean_Registration.hpp
 }
 
+pcl::KdTreeFLANN<VUX_PointType>::Ptr kdtree_tangent(new pcl::KdTreeFLANN<VUX_PointType>());
+
+struct tanget
+{
+    int point_id;
+    V3D direction;
+    double linearity;
+};
+
+// void perPointTangent(const VUX_PointType& point, const pcl::KdTreeFLANN<VUX_PointType>::Ptr &kdtree_tangent, double threshold_nn)
+// {
+//     std::vector<int> point_idx; //(neighbours);
+//         std::vector<float> point_dist;
+
+//         if (kdtree_tangent->radiusSearch(search_point, threshold_nn, point_idx, point_dist) >= 3)
+//         {
+//             int neighbours = point_idx.size();
+//             // std::cout<<"neighbours:"<<neighbours<<std::endl;
+//             V3D centroid(0, 0, 0);
+//             M3D covariance;
+//             covariance.setZero();
+
+//             for (int j = 0; j < neighbours; j++)
+//             {
+//                 centroid(0) += scan->points[point_idx[j]].x;
+//                 centroid(1) += scan->points[point_idx[j]].y;
+//                 centroid(2) += scan->points[point_idx[j]].z;
+//             }
+//             centroid /= neighbours;
+
+//             for (int j = 0; j < neighbours; j++)
+//             {
+//                 const auto &p = scan->points[point_idx[j]];
+//                 V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+//                 covariance += diff * diff.transpose();
+//             }
+//             covariance /= neighbours;
+
+//             // Compute Eigenvalues and Eigenvectors
+//             Eigen::SelfAdjointEigenSolver<M3D> solver(covariance);
+
+//             // Compute eigenvalue ratios to assess planarity
+//             const auto &eigenvalues = solver.eigenvalues();
+//             // double lambda0 = eigenvalues(0); // smallest
+//             // double lambda1 = eigenvalues(1);
+//             // double lambda2 = eigenvalues(2);
+
+//             // double curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+
+//             // Check for invalid or degenerate cases
+//             // if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6)
+//             //{
+//             // std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
+//             // std::cerr << "curvature is : " << curvature << std::endl;
+//             // std::cerr << "lambda0:" << lambda0 << ", lambda1:" << lambda1 << ", lambda2:" << lambda2 << std::endl;
+//             // throw std::runtime_error("Handle this...");
+//             //    continue;
+//             //}
+
+//             double linearity = eigenvalues(2) / eigenvalues.sum();
+//             if (linearity > .5) // curvature > 0 &&
+//             {
+//                 V3D line_direction = solver.eigenvectors().col(2);
+//                 line_direction.normalize();
+
+//                 tanget t;
+//                 t.point_id = i;
+//                 t.direction = line_direction;
+//                 t.linearity = linearity;
+
+//                 tangents.push_back(t);
+//             }
+//         }
+// }
+
+void computeTangents(const pcl::PointCloud<VUX_PointType>::Ptr &scan, std::vector<tanget> &tangents, double threshold_nn = 1)
+{
+    kdtree_tangent->setInputCloud(scan);
+    tangents.clear();
+
+    for (int i = 0; i < scan->size(); i++)
+    {
+        const auto &search_point = scan->points[i];
+
+        std::vector<int> point_idx; //(neighbours);
+        std::vector<float> point_dist;
+
+        if (kdtree_tangent->radiusSearch(search_point, threshold_nn, point_idx, point_dist) >= 3)
+        {
+            int neighbours = point_idx.size();
+            // std::cout<<"neighbours:"<<neighbours<<std::endl;
+            V3D centroid(0, 0, 0);
+            M3D covariance;
+            covariance.setZero();
+
+            for (int j = 0; j < neighbours; j++)
+            {
+                centroid(0) += scan->points[point_idx[j]].x;
+                centroid(1) += scan->points[point_idx[j]].y;
+                centroid(2) += scan->points[point_idx[j]].z;
+            }
+            centroid /= neighbours;
+
+            for (int j = 0; j < neighbours; j++)
+            {
+                const auto &p = scan->points[point_idx[j]];
+                V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                covariance += diff * diff.transpose();
+            }
+            covariance /= neighbours;
+
+            // Compute Eigenvalues and Eigenvectors
+            Eigen::SelfAdjointEigenSolver<M3D> solver(covariance);
+
+            // Compute eigenvalue ratios to assess planarity
+            const auto &eigenvalues = solver.eigenvalues();
+            // double lambda0 = eigenvalues(0); // smallest
+            // double lambda1 = eigenvalues(1);
+            // double lambda2 = eigenvalues(2);
+
+            // double curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+
+            // Check for invalid or degenerate cases
+            // if (lambda0 < 0 || (lambda0 + lambda1 + lambda2) < 1e-6)
+            //{
+            // std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
+            // std::cerr << "curvature is : " << curvature << std::endl;
+            // std::cerr << "lambda0:" << lambda0 << ", lambda1:" << lambda1 << ", lambda2:" << lambda2 << std::endl;
+            // throw std::runtime_error("Handle this...");
+            //    continue;
+            //}
+
+            double linearity = eigenvalues(2) / eigenvalues.sum();
+            if (linearity > .5) // curvature > 0 &&
+            {
+                V3D line_direction = solver.eigenvectors().col(2);
+                line_direction.normalize();
+
+                tanget t;
+                t.point_id = i;
+                t.direction = line_direction;
+                t.linearity = linearity;
+
+                tangents.push_back(t);
+            }
+        }
+    }
+}
+
 double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
                        const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
                        const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud,
                        Eigen::Quaterniond &q, V3D &t, Sophus::SE3 &T_icp,
                        const bool &prev_segment_init, const pcl::PointCloud<PointType>::Ptr &prev_segment, const pcl::KdTreeFLANN<PointType>::Ptr &kdtree_prev_segment,
-                       bool p2p = false, bool p2plane = true, bool local_error = true, double threshold_nn = 1.0)
+                       bool p2p = false, bool p2plane = true, bool local_error = true, double threshold_nn = 1.0,
+                       bool p2plane_with_mesh_point = false, bool weighted_p2_plane = false)
 {
     using namespace registration;
 
@@ -229,8 +379,21 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
     Eigen::Vector6d JTr_global = Eigen::Vector6d::Zero();
     double cost_total = 0.;
 
+    // std::vector<V3D> tangents;
+    // computeTangents(src, tangents, threshold_nn); // this should be called outside once
+
+    // std::cout << "tangents:" << tangents.size() << std::endl;
+
     std::cout << "Run GN omp ..." << std::endl;
-    if (p2plane && p2p)
+    if (weighted_p2_plane)
+    {
+        std::cout << "Perform weighted_p2_plane" << std::endl;
+    }
+    else if (p2plane_with_mesh_point)
+    {
+        std::cout << "Perform p2plane_with_mesh_point" << std::endl;
+    }
+    else if (p2plane && p2p)
     {
         std::cout << "Perform both p2p and p2plane" << std::endl;
     }
@@ -269,7 +432,219 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
             search_point.y = p_transformed.y();
             search_point.z = p_transformed.z();
 
-            if (p2p && p2plane) // both
+            if (weighted_p2_plane)
+            {
+                std::vector<int> point_idx(5);
+                std::vector<float> point_dist(5);
+                if (refference_kdtree->nearestKSearch(search_point, 5, point_idx, point_dist) > 0)
+                {
+                    if (point_dist[4] < threshold_nn) // not too far
+                    {
+                        Eigen::Matrix<double, 5, 3> matA0;
+                        Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
+
+                        for (int j = 0; j < 5; j++)
+                        {
+                            matA0(j, 0) = reference_localMap_cloud->points[point_idx[j]].x;
+                            matA0(j, 1) = reference_localMap_cloud->points[point_idx[j]].y;
+                            matA0(j, 2) = reference_localMap_cloud->points[point_idx[j]].z;
+                        }
+
+                        // find the norm of plane
+                        V3D norm = matA0.colPivHouseholderQr().solve(matB0);
+                        double d = 1 / norm.norm();
+                        norm.normalize();
+
+                        bool planeValid = true;
+                        for (int j = 0; j < 5; j++)
+                        {
+                            if (fabs(norm(0) * reference_localMap_cloud->points[point_idx[j]].x +
+                                     norm(1) * reference_localMap_cloud->points[point_idx[j]].y +
+                                     norm(2) * reference_localMap_cloud->points[point_idx[j]].z + d) > .1)
+                            {
+                                planeValid = false;
+                                break;
+                            }
+                        }
+
+                        if (planeValid)
+                        {
+
+                            {
+
+                                // for (const auto& obs : observations) {
+                                //     Eigen::Vector3d p = obs.source_point;
+                                //     Eigen::Vector3d t = obs.source_tangent.normalized();  // ensure unit tangent
+                                //     Eigen::Vector3d q = obs.target_point;
+                                //     Eigen::Vector3d n = obs.target_normal.normalized();
+
+                                //     Eigen::Vector3d p_trans = pose_estimate * p;
+                                //     Eigen::Vector3d residual_vec = p_trans - q;
+
+                                //     double point_plane_residual = n.dot(residual_vec);
+
+                                //     double weight = 1.0;
+
+                                //     if (!options.use_tangent_alignment) {
+                                //         // Use angle between tangent and normal as a weight
+                                //         weight = (t.cross(n)).norm(); // sin(angle)
+                                //     }
+
+                                //     // Jacobian of point-to-plane residual wrt se3 pose (6D)
+                                //     Eigen::Matrix<double, 1, 6> J;
+                                //     Eigen::Matrix3d skew = Sophus::SO3d::hat(p_trans);
+                                //     J.block<1, 3>(0, 0) = -n.transpose() * skew;  // rotation part
+                                //     J.block<1, 3>(0, 3) = n.transpose();          // translation part
+
+                                //     double weighted_residual = weight * point_plane_residual;
+                                //     Eigen::Matrix<double, 1, 6> weighted_J = weight * J;
+
+                                //     H += weighted_J.transpose() * weighted_J;
+                                //     b += weighted_J.transpose() * weighted_residual;
+
+                                //     total_error += weighted_residual * weighted_residual;
+
+                                //     if (options.use_tangent_alignment) {
+                                //         double tangent_normal_residual = t.dot(n); // Should be 0 if orthogonal
+
+                                //         // Add it as a soft cost term (like regularization)
+                                //         double tangent_weight = 0.01;  // tunable
+
+                                //         // No pose Jacobian for this — it’s independent of pose
+                                //         H += tangent_weight * Eigen::Matrix<double, 6, 6>::Identity();
+                                //         b += tangent_weight * tangent_normal_residual * Eigen::Matrix<double, 6, 1>::Zero(); // no derivative wrt pose
+                                //     }
+                                // }
+
+                                // Eigen::Matrix<double, 6, 1> dx = -H.ldlt().solve(b);
+                                // if (dx.norm() < 1e-6) {
+                                //     break;
+                                // }
+
+                                // pose_estimate = Sophus::SE3d::exp(dx) * pose_estimate;
+                            }
+
+                            V3D target_point(
+                                reference_localMap_cloud->points[point_idx[0]].x,
+                                reference_localMap_cloud->points[point_idx[0]].y,
+                                reference_localMap_cloud->points[point_idx[0]].z);
+
+                            Eigen::Matrix<double, 1, 6> J_r;
+                            double tangent_penalty = 1.0;
+                            //// Residual: n^T (T·p - q) * ||t × n||
+                            // double point_to_plane = n.dot(p_to_q);
+                            // double tangent_penalty = (t.cross(n)).norm();
+                            // residuals[i] = point_to_plane * tangent_penalty;
+
+                            // if (tangents[i].squaredNorm() > 0)
+                            // {
+                            //     tangent_penalty = (tangents[i].cross(norm)).norm();
+                            // }
+
+                            Eigen::Matrix3_6d J_se3;
+                            double residual = (p_transformed - target_point).dot(norm);
+
+                            J_se3.block<3, 3>(0, 0) = Eye3d;                                  // df/dt
+                            J_se3.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(p_transformed); // df/dR
+                            double w = 1.;                                                    // Weight(residual * residual);
+
+                            J_r = tangent_penalty * norm.transpose() * J_se3;
+
+                            JTJ_private.noalias() += J_r.transpose() * w * J_r;      // 6x6
+                            JTr_private.noalias() += J_r.transpose() * w * residual; // 6x1
+                            cost_private += w * residual * residual;                 // Always non-negative
+
+                            // Eigen::Vector6d J_r;                               // 6x1
+                            // J_r.block<3, 1>(0, 0) = norm;                      // df/dt
+                            // J_r.block<3, 1>(3, 0) = p_transformed.cross(norm); // df/dR
+                            // // double residual = norm(0) * p_transformed.x() + norm(1) * p_transformed.y() + norm(2) * p_transformed.z() + d;
+                            // double residual = (p_transformed - target_point).dot(norm);
+                            // double w = Weight(residual * residual);
+                            // JTJ_private.noalias() += J_r * w * J_r.transpose();
+                            // JTr_private.noalias() += J_r * w * residual;
+                            // cost_private += w * residual * residual; // Always non-negative
+                        }
+                    }
+                }
+            }
+            else if (p2plane_with_mesh_point)
+            {
+                std::vector<int> point_idx(5);
+                std::vector<float> point_dist(5);
+                if (refference_kdtree->nearestKSearch(search_point, 5, point_idx, point_dist) > 0)
+                {
+                    if (point_dist[4] < threshold_nn) // not too far
+                    {
+                        Eigen::Matrix<double, 5, 3> matA0;
+                        Eigen::Matrix<double, 5, 1> matB0 = -1 * Eigen::Matrix<double, 5, 1>::Ones();
+
+                        for (int j = 0; j < 5; j++)
+                        {
+                            matA0(j, 0) = reference_localMap_cloud->points[point_idx[j]].x;
+                            matA0(j, 1) = reference_localMap_cloud->points[point_idx[j]].y;
+                            matA0(j, 2) = reference_localMap_cloud->points[point_idx[j]].z;
+                        }
+
+                        // find the norm of plane
+                        V3D norm = matA0.colPivHouseholderQr().solve(matB0);
+                        double d = 1 / norm.norm();
+                        norm.normalize();
+
+                        bool planeValid = true;
+                        for (int j = 0; j < 5; j++)
+                        {
+                            if (fabs(norm(0) * reference_localMap_cloud->points[point_idx[j]].x +
+                                     norm(1) * reference_localMap_cloud->points[point_idx[j]].y +
+                                     norm(2) * reference_localMap_cloud->points[point_idx[j]].z + d) > .1)
+                            {
+                                planeValid = false;
+                                break;
+                            }
+                        }
+
+                        if (planeValid)
+                        {
+                            V3D target_point(
+                                reference_localMap_cloud->points[point_idx[0]].x,
+                                reference_localMap_cloud->points[point_idx[0]].y,
+                                reference_localMap_cloud->points[point_idx[0]].z);
+
+                            // Eigen::Vector6d J_r;                               // 6x1
+                            // J_r.block<3, 1>(0, 0) = norm;                      // df/dt
+                            // J_r.block<3, 1>(3, 0) = p_transformed.cross(norm); // df/dR
+
+                            // // double residual = norm(0) * p_transformed.x() + norm(1) * p_transformed.y() + norm(2) * p_transformed.z() + d;
+                            // double residual = (p_transformed - target_point).dot(norm);
+
+                            // double w = Weight(residual * residual);
+                            // JTJ_private.noalias() += J_r * w * J_r.transpose();
+                            // JTr_private.noalias() += J_r * w * residual;
+
+                            // cost_private += w * residual * residual; // Always non-negative
+
+                            // // Project point to plane
+                            V3D vec = p_transformed - target_point; // p2p
+                            double dist = vec.dot(norm);
+                            target_point = p_transformed - dist * norm; // projected_point
+
+                            // this is equivalent to p2plane but slow bc:
+                            // residual = (p_transformed - p_transformed - dist * norm).dot(norm) = dist -> vec.dot(norm)  but slower
+
+                            Eigen::Matrix3_6d J_r;
+
+                            const V3D residual = p_transformed - target_point;
+                            J_r.block<3, 3>(0, 0) = Eye3d;                                  // df/dt
+                            J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(p_transformed); // df/dR
+                            double w = Weight(residual.squaredNorm());
+                            JTJ_private.noalias() += J_r.transpose() * w * J_r;
+                            JTr_private.noalias() += J_r.transpose() * w * residual;
+
+                            cost_private += w * residual.squaredNorm();
+                        }
+                    }
+                }
+            }
+            else if (p2p && p2plane) // both
             {
                 std::vector<int> point_idx(5);
                 std::vector<float> point_dist(5);
@@ -419,8 +794,10 @@ double scan2map_GN_omp(pcl::PointCloud<PointType>::Ptr &src,
                         Eigen::Matrix3_6d J_r;
 
                         const V3D residual = p_transformed - target_point;
+
                         J_r.block<3, 3>(0, 0) = Eye3d;                                  // df/dt
                         J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(p_transformed); // df/dR
+
                         double w = Weight(residual.squaredNorm());
                         JTJ_private.noalias() += J_r.transpose() * w * J_r;
                         JTr_private.noalias() += J_r.transpose() * w * residual;
@@ -680,7 +1057,9 @@ void debug_CloudWithNormals(const pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cl
 }
 
 void debug_CloudWithNormals2(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud_with_normals,
-                             const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub)
+                             const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
+                             bool plot_tangents = false,
+                             pcl::PointCloud<pcl::PointXYZINormal>::Ptr cloud_with_tangents = boost::make_shared<pcl::PointCloud<pcl::PointXYZINormal>>())
 {
     // --- 1. Publish Point Cloud ---
     sensor_msgs::PointCloud2 cloud_msg;
@@ -692,7 +1071,7 @@ void debug_CloudWithNormals2(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud_w
     normals_marker.header.frame_id = "world";
     normals_marker.type = visualization_msgs::Marker::LINE_LIST;
     normals_marker.action = visualization_msgs::Marker::ADD;
-    normals_marker.scale.x = 0.05; // Line width
+    normals_marker.scale.x = 0.02; // Line width
     normals_marker.color.a = 1.0;  // Full opacity
     double normal_length = 2.;     // 5.;     // Length of normal lines
     double opacity = 1.0;
@@ -773,6 +1152,37 @@ void debug_CloudWithNormals2(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud_w
         normals_marker.colors.push_back(color); // Color for end point
     }
 
+    if (plot_tangents)
+    {
+        std::cout << "plot tangents...cloud_with_tangents:" << cloud_with_tangents->size() << std::endl;
+        for (auto &point : cloud_with_tangents->points)
+        {
+            geometry_msgs::Point p1, p2;
+            // Start of normal (point)
+            p1.x = point.x;
+            p1.y = point.y;
+            p1.z = point.z;
+            normals_marker.points.push_back(p1);
+
+            normal_length = .4; // 1;
+
+            // End of normal (point + normal * length)
+            p2.x = point.x + normal_length * point.normal_x;
+            p2.y = point.y + normal_length * point.normal_y;
+            p2.z = point.z + normal_length * point.normal_z;
+            normals_marker.points.push_back(p2);
+
+            std_msgs::ColorRGBA color;
+            color.r = 1.0f; // full red
+            color.g = 1.0f; // full green
+            color.b = 0.0f; // no blue
+            color.a = .8;
+
+            normals_marker.colors.push_back(color); // Color for start point
+            normals_marker.colors.push_back(color); // Color for end point
+        }
+    }
+
     if (cloud_pub.getNumSubscribers() != 0)
     {
         cloud_pub.publish(cloud_msg);
@@ -790,6 +1200,22 @@ using gtsam::symbol_shorthand::A; // for anchor
 using gtsam::symbol_shorthand::L; // Landmark symbols
 using gtsam::symbol_shorthand::X; // Pose symbols
 using gtsam::symbol_shorthand::Z; // prev Pose symbols
+
+Pose3 sophusToGtsam(const Sophus::SE3 &pose)
+{
+    return Pose3(pose.matrix());
+}
+
+Sophus::SE3 GtsamToSophus(const Pose3 &pose)
+{
+    Eigen::Matrix4d T = pose.matrix(); // Get 4x4 matrix
+    return Sophus::SE3(T.topLeftCorner<3, 3>(), T.topRightCorner<3, 1>());
+}
+
+namespace trajectory_extrinsics
+{
+
+};
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr extractTranslations(const gtsam::Values &values)
 {
@@ -1266,6 +1692,11 @@ namespace custom_factor
                 error = plane_normal_.dot(p_transformed) + d_;
             }
 
+            // auto vec = p_transformed - target_point_; //p2p
+            // auto dist = vec.dot(plane_normal_);
+            // auto projected_point = p_transformed - dist * plane_normal_;
+            // error = (p_transformed - projected_point).dot(plane_normal_);
+
             double robust_weight = huberWeight(fabs(error)); //  Apply robust weighting
             // double robust_weight = 1.0;
 
@@ -1376,6 +1807,67 @@ namespace custom_factor
                 measured_point_,
                 target_point_,
                 line_dir_,
+                this->noiseModel());
+        }
+    };
+
+    class PointToMeshFactor : public NoiseModelFactor1<Pose3>
+    {
+    private:
+        Point3 measured_point_; // Point in sensor frame
+        Point3 plane_normal_;   // Plane normal (normalized)
+        Point3 target_point_;   // A point on the plane in world frame
+
+        double huber_delta_ = 1.0; // .1;  maybe take this as parameter
+        double huberWeight(double error_norm) const
+        {
+            return (error_norm <= huber_delta_) ? 1.0 : huber_delta_ / error_norm;
+        }
+
+    public:
+        PointToMeshFactor(Key pose_key,
+                          const Point3 &measured_point,
+                          const Point3 &plane_norm,
+                          const Point3 &target_point,
+                          const SharedNoiseModel &model) : NoiseModelFactor1<Pose3>(model, pose_key),
+                                                           measured_point_(measured_point),
+                                                           plane_normal_(plane_norm),
+                                                           target_point_(target_point) {}
+
+        Vector evaluateError(const Pose3 &pose, OptionalMatrixType H) const override
+        {
+            Matrix36 H_point_wrt_pose;
+            Point3 p_transformed = pose.transformFrom(measured_point_, H ? &H_point_wrt_pose : 0); // Transform measured point to world frame
+
+            // Project point to plane
+            auto p2p = p_transformed - target_point_; // p2p
+            // double dist = p2p.dot(plane_normal_); //distance to the plane
+            // target_point = p_transformed - dist * plane_normal_; //projected_point
+
+            auto projected_point = p_transformed - (p2p.dot(plane_normal_) * plane_normal_);
+
+            // Calculate error vector
+            Vector3 error = p_transformed - projected_point;
+
+            auto robust_weight = huberWeight(error.norm());
+            // double robust_weight = 1.0;
+
+            if (H)
+            {
+                // Jacobian: ∂error/∂pose = ∂p_world/∂pose
+                *H = H_point_wrt_pose * robust_weight;
+            }
+
+            return robust_weight * error;
+        }
+
+        virtual gtsam::NonlinearFactor::shared_ptr clone() const override
+        {
+            return std::make_shared<PointToMeshFactor>(
+                this->key(),
+                measured_point_,
+                plane_normal_,
+                target_point_,
                 this->noiseModel());
         }
     };
@@ -2131,7 +2623,8 @@ float robust_kernel = .03;
 
 auto landmarks_sigma = 1; // this was used for all the tests so far
 
-bool use_artificial_uncertainty = false;
+//bool use_artificial_uncertainty = false;
+bool use_artificial_uncertainty = true;
 
 auto plane_noise_cauchy = gtsam::noiseModel::Robust::Create(
     // gtsam::noiseModel::mEstimator::Cauchy::Create(.2), // Less aggressive than Tukey
@@ -2235,6 +2728,36 @@ void debugPoint(const V3D &t, ros::Publisher &pub)
     pub.publish(msg);
 }
 
+void publishPose(ros::Publisher &pose_pub, const Sophus::SE3 &pose, double cloud_time,
+                const V3D &trans_var,   // variance of x, y, z
+                 const V3D &rot_var)
+{
+    std::cout<<"\n publishPose :"<<cloud_time<<", t:"<<pose.translation().transpose()<<std::endl;
+    nav_msgs::Odometry pose_msg;
+    pose_msg.header.frame_id = "world"; // Fixed/world/global frame
+    pose_msg.header.stamp = ros::Time().fromSec(cloud_time);
+    //pose_msg.header.stamp = ros::Time::now();
+
+    Eigen::Vector3d trans = pose.translation();
+    pose_msg.pose.pose.position.x = trans.x();
+    pose_msg.pose.pose.position.y = trans.y();
+    pose_msg.pose.pose.position.z = trans.z();
+
+    Eigen::Quaterniond q(pose.so3().matrix());
+    pose_msg.pose.pose.orientation.x = q.x();
+    pose_msg.pose.pose.orientation.y = q.y();
+    pose_msg.pose.pose.orientation.z = q.z();
+    pose_msg.pose.pose.orientation.w = q.w();
+
+    // Fill diagonal covariance [x, y, z, roll, pitch, yaw]
+    for (int i = 0; i < 3; i++) {
+        pose_msg.pose.covariance[i * 6 + i] = trans_var(i);       // x, y, z
+        pose_msg.pose.covariance[(i + 3) * 6 + (i + 3)] = rot_var(i); // roll, pitch, yaw
+    }
+    
+    pose_pub.publish(pose_msg);
+}
+
 void resetOptimization()
 {
     std::cout << "\n\nresetOptimization\n\n"
@@ -2258,7 +2781,7 @@ void resetOptimization()
 }
 
 std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks(
-    const pcl::PointCloud<VUX_PointType>::Ptr &scan,                 // scan in sensor frame
+    pcl::PointCloud<VUX_PointType>::Ptr &scan,                       // scan in sensor frame
     const Sophus::SE3 &T,                                            // init guess
     const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,       // reference kdtree
     const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud, // reference cloud
@@ -2272,15 +2795,23 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
 
     double uncertainty_scale = 15;
 
-    // uncertainty_scale = 1.;
-
-    uncertainty_scale = 5;
+    uncertainty_scale = 1.;
+    uncertainty_scale = 10;
 
     // this can be done in parallel BTW-----------------------------
     for (int i = 0; i < scan->size(); i++)
     {
+        // scan->points[i].reflectance = 0; // no error yet;
+
+        // scan->points[i].reflectance = i;
+
         V3D p_src(scan->points[i].x, scan->points[i].y, scan->points[i].z);
         V3D p_transformed = T * p_src; // transform the point with the initial guess pose
+
+        // if(p_transformed.z() > 0)
+        // {
+        //     continue;
+        // }
 
         // Nearest neighbor search
         PointType search_point;
@@ -2304,6 +2835,10 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                 // Compute covariance matrix
                 M3D covariance;
                 covariance.setZero();
+
+                // Regularize
+                //  double lambda_reg = 1e-6;
+                //  covariance = covariance + lambda_reg * Eye3d;
 
                 if (weighted_mean)
                 {
@@ -2370,16 +2905,20 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                     std::cerr << "Degenerate covariance matrix (maybe zero variation). Skipping...\n";
                     std::cerr << "curvature is : " << curvature << std::endl;
                     std::cerr << "lambda0:" << lambda0 << ", lambda1:" << lambda1 << ", lambda2:" << lambda2 << std::endl;
-                    // throw std::runtime_error("Handle this...");
+
+                    throw std::runtime_error("invalid or degenerate cases...");
+
                     continue;
                 }
 
                 // Colinear: if the two smallest eigenvalues are close to zero
-                if ((lambda1 / lambda2) < 1e-3)
-                {
-                    std::cerr << "Colinear structure detected. Skipping...\n";
-                    continue;
-                }
+                // if ((lambda1 / lambda2) < 1e-3)
+                // {
+                //     std::cerr << "Colinear structure detected. Skipping...\n";
+                //     std::cout<<"eigenvalues:"<<eigenvalues<<std::endl;
+                //     throw std::runtime_error("Colinear structure detected. Skipping ...");
+                //     continue;
+                // }
 
                 // this can be done in the visualization
                 //  Flip normal to point consistently toward viewpoint
@@ -2406,6 +2945,8 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                             auto planes_iterator = landmarks_map.find(point_3d); // Search by 3D point instead of index
                             // auto planes_iterator = landmarks_map.find(point_idx[j]);
 
+                            // scan->points[i].reflectance = fabs((p_transformed - point_3d).dot(norm));
+
                             if (planes_iterator == landmarks_map.end()) // Does not exist -> add new landmark
                             {
                                 landmark_new tgt;
@@ -2415,8 +2956,10 @@ std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> get_Landmarks
                                 tgt.center = centroid;
                                 tgt.covariance = covariance;
 
-                                tgt.landmark_point = centroid; // centroid
-                                // tgt.landmark_point = point_3d;  //first point
+                                // tgt.landmark_point = centroid; // centroid
+
+                                tgt.landmark_point = point_3d; // first point
+
                                 tgt.key = point_3d;
                                 tgt.sigma = sigma_plane;
                                 tgt.d = d;
@@ -3404,7 +3947,7 @@ Sophus::SE3 updateReferenceGraph(
 void updateDA(ros::Publisher &_pub_debug,
               // ros::Publisher &_pub_prev, ros::Publisher &_pub_curr,
               const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
-              const pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
+              pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
               const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
               const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud,
               const Sophus::SE3 &nn_init_guess_T, NonlinearFactorGraph &this_Graph, bool use_prev_scans_landmarks = false)
@@ -3742,8 +4285,8 @@ Sophus::SE3 updateSimple_old(
         //  current_error = isam.getFactorsUnsafe().error(latest_estimate);
         //  std::cout<<"after update  isam current_error:"<<current_error<<std::endl;
 
-        //the issue with this is that for 2d case it will fail
-        //because only 2 scans are used at a time
+        // the issue with this is that for 2d case it will fail
+        // because only 2 scans are used at a time
 
         global_graph.resize(0);
         global_values.clear();
@@ -3888,9 +4431,11 @@ Sophus::SE3 updateSimple_old(
 
 namespace latest_code
 {
+    double robust_kernel = .1;
+
     void updateDataAssociation(ros::Publisher &_pub_debug, int pose_key,
                                const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
-                               const pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
+                               pcl::PointCloud<VUX_PointType>::Ptr &scan, // scan in sensor frame
                                const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
                                const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud,
                                const Sophus::SE3 &nn_init_guess_T, NonlinearFactorGraph &this_Graph, bool use_prev_scans_landmarks = false)
@@ -3903,7 +4448,9 @@ namespace latest_code
             scan, nn_init_guess_T, refference_kdtree, reference_localMap_cloud,
             threshold_nn, radius_based);
 
-        std::cout << "Number of items in landmarks_map: " << landmarks_map.size() << ", global_seen_landmarks: " << global_seen_landmarks.size() << std::endl;
+        if (use_prev_scans_landmarks)
+            std::cout << "Number of items in landmarks_map: " << landmarks_map.size() << ", global_seen_landmarks: " << global_seen_landmarks.size() << std::endl;
+
         int added_constraints = 0;
         if (use_prev_scans_landmarks)
         {
@@ -3930,11 +4477,11 @@ namespace latest_code
                         // else
                         //     error = plane_normal_.dot(p_transformed) + d_;
 
-                        bool use_alternative_method = true; // this works - the tests was done with this true
-                        use_alternative_method = false;     // just check if this solves the issue of xy drift
+                        bool use_alternative_method = true;
+                        // use_alternative_method = false;
 
                         auto robust_noise = gtsam::noiseModel::Robust::Create(
-                            gtsam::noiseModel::mEstimator::Cauchy::Create(.1), // robust_kernel
+                            gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel),
                             gtsam::noiseModel::Isotropic::Sigma(1, 3 * land.sigma));
 
                         if (use_artificial_uncertainty)
@@ -3944,6 +4491,13 @@ namespace latest_code
 
                         this_Graph.emplace_shared<PointToPlaneFactor>(X(pose_key), measured_point, plane_norm, target_point, land.d,
                                                                       use_alternative_method, robust_noise);
+
+                        // p2plane is more stable than this
+                        //  auto point_noise = gtsam::noiseModel::Robust::Create(
+                        //  gtsam::noiseModel::mEstimator::Cauchy::Create(.1), // Robust kernel for outliers 10cm
+                        //  gtsam::noiseModel::Isotropic::Sigma(3, 1.));
+                        //  this_Graph.emplace_shared<PointToMeshFactor>(X(pose_key), measured_point, plane_norm, target_point,
+                        //                                               point_noise);
 
                         added_constraints++;
 
@@ -3957,7 +4511,7 @@ namespace latest_code
                                 // Point3 plane_norm_prev(it->second.norm.x(), it->second.norm.y(), it->second.norm.z());
 
                                 // auto prev_robust_noise = gtsam::noiseModel::Robust::Create(
-                                //     gtsam::noiseModel::mEstimator::Cauchy::Create(.1),
+                                //     gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel),
                                 //     gtsam::noiseModel::Isotropic::Sigma(1, 3 * it->second.sigma));
 
                                 // if (use_artificial_uncertainty)
@@ -3999,7 +4553,7 @@ namespace latest_code
                     // gtsam::noiseModel::Isotropic::Sigma(3, sigma_point));
 
                     // auto point_noise = gtsam::noiseModel::Robust::Create(
-                    //     gtsam::noiseModel::mEstimator::Cauchy::Create(.1), // Robust kernel for outliers 10cm
+                    //     gtsam::noiseModel::mEstimator::Cauchy::Create(robust_kernel), // Robust kernel for outliers 10cm
                     //     gtsam::noiseModel::Isotropic::Sigma(3, .5));
 
                     // this_Graph.emplace_shared<PointToPointFactor>(X(pose_key), measured_point, target_point, point_noise);
@@ -4009,79 +4563,115 @@ namespace latest_code
             }
         }
 
-        std::cout << "added_constraints:" << added_constraints << std::endl;
+        if (use_prev_scans_landmarks)
+            std::cout << "added_constraints:" << added_constraints << std::endl;
     }
+    
+    //auto r_sigma = V3D(.01, .01, .01);
+    auto t_sigma = V3D(.005, .005, .005);
 
+    //auto t_sigma = V3D(.5, .005, .005); //handles errors on x axis of vux - which is z of the world
+    //auto r_sigma = V3D(.01, .01, .1); //roll
 
-    auto odom_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << .1, .1, .1, .1, .1, .1).finished());
-    auto prior_noise_model_loose = noiseModel::Diagonal::Sigmas((Vector(6) << 1., 1., 1., .1, .1, .1).finished());
-    auto anchor_noise_model = noiseModel::Diagonal::Sigmas((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished());
+    auto r_sigma = V3D(.1, .01, .01); //roll
+
+    auto odom_noise_model = gtsam::noiseModel::Diagonal::Sigmas(
+        (gtsam::Vector6() << 
+        gtsam::Vector3(r_sigma),                   // rotation stddev (radians): roll, pitch, yaw
+        gtsam::Vector3(t_sigma) //. translation stddev (m): x, y, z
+         ).finished());
+    // the issues is that is should be // rad,rad,rad,m, m, m
+        
+    Vector6 sigmas_prior = (Vector6() << gtsam::Vector3(r_sigma),  gtsam::Vector3(t_sigma)).finished();
+    // auto prior_noise_model_loose = noiseModel::Diagonal::Sigmas(sigmas_prior);
+    auto prior_noise_model_loose = noiseModel::Gaussian::Covariance(sigmas_prior.array().square().matrix().asDiagonal());
+
+    //Vector6 sigmas_anchor = (Vector6() << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished();
+    Vector6 sigmas_anchor = (Vector6() << gtsam::Vector3(r_sigma),  gtsam::Vector3(t_sigma)).finished();
+    // auto anchor_noise_model = noiseModel::Diagonal::Sigmas(sigmas_anchor);
+    auto anchor_noise_model = noiseModel::Gaussian::Covariance(sigmas_anchor.array().square().matrix().asDiagonal());
 
     std::deque<Sophus::SE3> pose_buffer;
     std::deque<pcl::PointCloud<VUX_PointType>::Ptr> scan_buffer;
 
-    const size_t max_buffer_size = 10;// 20;
+    const size_t max_buffer_size = 50; // 25; // 3;
+    const size_t step_size = 25;       // 10;  // Number of poses to slide each time
 
-    Pose3 sophusToGtsam(const Sophus::SE3 &pose)
-    {
-        return Pose3(pose.matrix());
-    }
-
-    Sophus::SE3 GtsamToSophus(const Pose3 &pose)
-    {
-        Eigen::Matrix4d T = pose.matrix(); // Get 4x4 matrix
-        return Sophus::SE3(T.topLeftCorner<3,3>(), T.topRightCorner<3,1>());
-    }
-
-    Values prev_optimized_values_;
     bool has_prev_solution = false;
 
     Pose3 anchor_pose, relative_anchor;
-    pcl::PointCloud<VUX_PointType>::Ptr anchor_scan;
+    pcl::PointCloud<VUX_PointType>::Ptr anchor_scan(new pcl::PointCloud<VUX_PointType>);
 
-    double prev_error = 9999., current_error; // std::numeric_limits<double>::max();
-    const double convergence_threshold = .05; // 5cm  // when to stop
+    double prev_error = 9999., current_error;  // std::numeric_limits<double>::max();
+    const double convergence_threshold = .001; // .05; // 5cm  // when to stop
 
     Sophus::SE3 updateSimple(
         ros::Publisher &_pub_debug, volatile bool &flag,
         ros::Publisher &_pub_prev, ros::Publisher &_pub_curr,
         const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
-        const pcl::PointCloud<VUX_PointType>::Ptr &scan,           // scan in sensor frame
+        const pcl::PointCloud<VUX_PointType>::Ptr &scan,     // scan in sensor frame
         const Sophus::SE3 &initial_pose, Sophus::SE3 &rel_T, // absolute T, odometry
         const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
-        const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud)
+        const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud,
+        ros::Publisher &pubOptimizedVUX, ros::Publisher &pose_pub, double time = 0)
     {
         pose_buffer.push_back(initial_pose);
         scan_buffer.push_back(scan);
 
+        //rotate translation sigma to curr frame 
+        auto _sigma_translation = t_sigma;// initial_pose.so3().matrix() * t_sigma;
+        
+        // Eigen::Matrix3d Sigma = t_sigma.array().square().matrix().asDiagonal();
+        // auto R = initial_pose.so3().matrix();
+        // Eigen::Matrix3d rotated_Sigma = R * Sigma * R.transpose();
+        // //_sigma_translation = rotated_Sigma.diagonal().cwiseSqrt();
+
+        // std::cout<<"\ninitial t_sigma:"<<t_sigma.transpose()<<std::endl;
+        // std::cout<<"rotated _sigma_translation:"<<_sigma_translation.transpose()<<std::endl;
+
+        
+        //do the same for rotation 
+
+        odom_noise_model = gtsam::noiseModel::Diagonal::Sigmas(
+        (gtsam::Vector6() << 
+        gtsam::Vector3(r_sigma),                   // rotation stddev (radians): roll, pitch, yaw
+        gtsam::Vector3(_sigma_translation) //. translation stddev (m): x, y, z
+         ).finished());
+
+        debugPoint(initial_pose.translation(), _pub_prev);
+        if (pose_pub.getNumSubscribers() != 0)
+        {
+            publishPose(pose_pub, initial_pose, time, _sigma_translation, r_sigma);
+        }
+
         if (pose_buffer.size() < max_buffer_size) // not enough poses
         {
-            return pose_buffer.front(); //the optimization will start when pose_buffer.size() is equal to max_buffer_size
+            return initial_pose; // the optimization will start when pose_buffer.size() is equal to max_buffer_size
         }
-        
-        if (pose_buffer.size() > max_buffer_size) {
-            
-            anchor_scan = scan_buffer.front();
-            
-            pose_buffer.pop_front();
-            scan_buffer.pop_front();
-        }
+
+        //return initial_pose; 
 
         // Initialize values from raw odometry
         Values current_values;
-        if(has_prev_solution) //add anchor
+        if (has_prev_solution) // add anchor
         {
             current_values.insert(A(0), anchor_pose);
         }
-        for (size_t i = 0; i < pose_buffer.size(); i++) {
-            Pose3 pose = sophusToGtsam(pose_buffer[i]); 
+
+        std::cout << "updateSimple pose_buffer size:" << pose_buffer.size() << std::endl;
+        for (size_t i = 0; i < pose_buffer.size(); i++)
+        {
+            Pose3 pose = sophusToGtsam(pose_buffer[i]);
             current_values.insert(X(i), pose);
         }
-        
+
         pcl::PointCloud<pcl::PointXYZI>::Ptr buffer_clouds(new pcl::PointCloud<pcl::PointXYZI>());
 
-        //optimization refinement 
-        for (int iter = 0; iter < 10; ++iter) 
+        // optimization refinement
+        bool debug =  true; // false;
+
+        NonlinearFactorGraph graph;
+        for (int iter = 0; iter < 50; ++iter)
         {
             ros::spinOnce();
             if (flag || !ros::ok())
@@ -4090,32 +4680,37 @@ namespace latest_code
             buffer_clouds->clear();
             global_seen_landmarks.clear();
 
-            NonlinearFactorGraph graph; //everytime a new graph
+            graph = gtsam::NonlinearFactorGraph(); // .resize(0); // everytime a new graph
 
-            //process the buffer
-            for (size_t i = 0; i < pose_buffer.size(); i++) 
+            // process the buffer
+            for (size_t i = 0; i < pose_buffer.size(); i++)
             {
-                //add odometry data from current_values-------------------------------------------------
+                // add odometry data from current_values-------------------------------------------------
                 Pose3 curr_pose = current_values.at<Pose3>(X(i));
-                if (i == 0) {
+
+                if (i == 0)
+                {
                     graph.add(PriorFactor<Pose3>(X(i), curr_pose, prior_noise_model_loose));
-                } else {
+                }
+                else
+                {
                     Pose3 prev_pose = current_values.at<Pose3>(X(i - 1));
                     Pose3 rel_pose = prev_pose.between(curr_pose);
-                    graph.add(BetweenFactor<Pose3>(X(i - 1), X(i), rel_pose, odom_noise_model));
+                    //graph.add(BetweenFactor<Pose3>(X(i - 1), X(i), rel_pose, odom_noise_model));
+                    graph.add(PriorFactor<Pose3>(X(i), curr_pose, odom_noise_model));
                 }
 
                 // Add point-to-plane factors using updated poses--------------------------------------
                 Eigen::Matrix4d curr_pose_i = curr_pose.matrix();
                 Sophus::SE3 nn_init_guess_T(curr_pose_i.block<3, 3>(0, 0), curr_pose_i.block<3, 1>(0, 3));
-                bool use_prev_scans_landmarks = true;
-                updateDataAssociation(_pub_debug, i, //add planes for graph from pose i
-                            cloud_pub, normals_pub,
-                            scan_buffer[i], // scan in sensor frame
-                            refference_kdtree, reference_localMap_cloud,
-                            nn_init_guess_T, graph, use_prev_scans_landmarks);
+                bool use_prev_scans_landmarks = (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0); // true;
+                updateDataAssociation(_pub_debug, i,                                                                          // add planes for graph from pose i
+                                      cloud_pub, normals_pub,
+                                      scan_buffer[i], // scan in sensor frame
+                                      refference_kdtree, reference_localMap_cloud,
+                                      nn_init_guess_T, graph, use_prev_scans_landmarks);
 
-                if(_pub_debug.getNumSubscribers() != 0 || normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
+                if (_pub_debug.getNumSubscribers() != 0 || normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
                 {
                     if (_pub_debug.getNumSubscribers() != 0)
                     {
@@ -4128,12 +4723,13 @@ namespace latest_code
                             p.x = p_transformed.x();
                             p.y = p_transformed.y();
                             p.z = p_transformed.z();
-                            p.intensity = i;
+                            p.intensity = i; // scan_buffer[i]->points[j].reflectance;
 
                             buffer_clouds->push_back(p);
                         }
-                        
-                        if(has_prev_solution){
+
+                        if (has_prev_solution)
+                        {
                             auto anchor_T = GtsamToSophus(anchor_pose);
                             for (int j = 0; j < anchor_scan->size(); j++)
                             {
@@ -4144,7 +4740,7 @@ namespace latest_code
                                 p.x = p_transformed.x();
                                 p.y = p_transformed.y();
                                 p.z = p_transformed.z();
-                                p.intensity = -1;
+                                p.intensity = 0; // anchor_scan->points[j].reflectance;
 
                                 buffer_clouds->push_back(p);
                             }
@@ -4161,7 +4757,7 @@ namespace latest_code
                         pcl::PointCloud<pcl::PointXYZINormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointXYZINormal>());
                         // add the map landmarks
                         for (const auto &[index, land] : global_seen_landmarks)
-                        //for (const auto &[index, land] : prev_seen_landmarks)
+                        // for (const auto &[index, land] : prev_seen_landmarks)
                         {
                             // break; // just for now do not show them
                             pcl::PointXYZINormal pt;
@@ -4230,21 +4826,26 @@ namespace latest_code
                 }
             }
 
-            if(has_prev_solution)//add anchor
+            if (has_prev_solution) // add anchor
             {
                 // Re-insert anchor pose factor every time
                 graph.add(PriorFactor<Pose3>(A(0), anchor_pose, anchor_noise_model));
                 // Tie anchor to first pose
-                graph.add(BetweenFactor<Pose3>(A(0), X(0), relative_anchor, anchor_noise_model));
+                graph.add(BetweenFactor<Pose3>(A(0), X(0), relative_anchor, odom_noise_model));
             }
 
             LevenbergMarquardtOptimizer optimizer(graph, current_values);
-            current_values = optimizer.optimize();  //re-optimize the current values
+            current_values = optimizer.optimize(); // re-optimize the current values
 
             current_error = optimizer.error();
-            std::cout << "\nIteration " << iter << ", error = " << current_error << std::endl;
             auto d_error = std::abs(prev_error - current_error);
-            std::cout << "Number of factors in graph: " << graph.size() << ", d_error:" << d_error << std::endl;
+
+            if (debug)
+            {
+                std::cout << "\nIteration " << iter << ", error = " << current_error << std::endl;
+                std::cout << "Number of factors in graph: " << graph.size() << ", d_error:" << d_error << std::endl;
+            }
+
             if (d_error < convergence_threshold)
             {
                 std::cout << "Converged after " << iter << " iterations.\n";
@@ -4252,19 +4853,264 @@ namespace latest_code
             }
             prev_error = current_error;
 
-            std::cout << "Finished one iteration, press enter..." << std::endl;
-            std::cin.get();
-            //break;
+            if (debug)
+            {
+                std::cout << "Finished one iteration, press enter..." << std::endl;
+                std::cin.get();
+            }
+
+            // break;
         }
 
-        // Save latest optimized values
-        prev_optimized_values_ = current_values;
+        std::cout << "Accepted press enter... pose_buffer.size():" << pose_buffer.size() << std::endl;
+        std::cin.get();
+
         has_prev_solution = true;
 
-        anchor_pose = current_values.at<Pose3>(X(0));
-        relative_anchor = anchor_pose.between(current_values.at<Pose3>(X(1)));
+        // Estimate new uncertainty for prior
+        gtsam::Marginals marginals(graph, current_values);
+
+        gtsam::Matrix anchor_covariance;
+        gtsam::Matrix next_prior_covariance;
+        if (pose_buffer.size() >= max_buffer_size)
+        {
+            buffer_clouds->clear();
+            for (size_t i = 0; i < step_size; i++) // remove first step_size poses
+            {
+                if (!pose_buffer.empty())
+                {
+                    anchor_scan = scan_buffer.front();
+
+                    pose_buffer.pop_front();
+                    scan_buffer.pop_front();
+
+                    anchor_pose = current_values.at<Pose3>(X(i));
+                    relative_anchor = anchor_pose.between(current_values.at<Pose3>(X(i + 1)));
+
+                    anchor_covariance = marginals.marginalCovariance(X(i));
+                    next_prior_covariance = marginals.marginalCovariance(X(i + 1));
+
+                    if (pubOptimizedVUX.getNumSubscribers() != 0)
+                    {
+                        debugPoint(GtsamToSophus(current_values.at<Pose3>(X(i))).translation(), _pub_curr);
+
+                        Sophus::SE3 anchor_T = GtsamToSophus(anchor_pose);
+                        for (int j = 0; j < anchor_scan->size(); j++)
+                        {
+                            V3D p_src(anchor_scan->points[j].x, anchor_scan->points[j].y, anchor_scan->points[j].z);
+                            V3D p_transformed = anchor_T * p_src;
+
+                            pcl::PointXYZI p;
+                            p.x = p_transformed.x();
+                            p.y = p_transformed.y();
+                            p.z = p_transformed.z();
+                            p.intensity = j; // anchor_scan->points[j].reflectance;
+
+                            buffer_clouds->push_back(p);
+                        }
+                    }
+                }
+            }
+            if (pubOptimizedVUX.getNumSubscribers() != 0)
+            {
+
+                sensor_msgs::PointCloud2 cloud_msg;
+                pcl::toROSMsg(*buffer_clouds, cloud_msg);
+                cloud_msg.header.frame_id = "world";
+                pubOptimizedVUX.publish(cloud_msg);
+            }
+
+            prior_noise_model_loose = gtsam::noiseModel::Gaussian::Covariance(next_prior_covariance);
+            anchor_noise_model = gtsam::noiseModel::Gaussian::Covariance(anchor_covariance);
+        }
 
         return GtsamToSophus(anchor_pose);
     }
 };
 
+void registration_last_method(
+    ros::Publisher &_pub_debug, volatile bool &flag,
+    ros::Publisher &_pub_prev, ros::Publisher &_pub_curr,
+    const ros::Publisher &cloud_pub, const ros::Publisher &normals_pub,
+    pcl::PointCloud<VUX_PointType>::Ptr &scan,           // scan in sensor frame
+    const Sophus::SE3 &initial_pose, Sophus::SE3 &rel_T, // absolute T, odometry
+    const pcl::KdTreeFLANN<PointType>::Ptr &refference_kdtree,
+    const pcl::PointCloud<PointType>::Ptr &reference_localMap_cloud)
+{
+    double threshold_nn = 1.0;
+    bool radius_based = true; // false;
+    bool plot_tangents = true;
+
+    auto nn_init_guess_T = initial_pose; // ini pose for NN search
+
+    const std::unordered_map<V3D, landmark_new, Vector3dHash, Vector3dEqual> &landmarks_map = get_Landmarks(
+        scan, nn_init_guess_T, refference_kdtree, reference_localMap_cloud,
+        threshold_nn, radius_based);
+
+    std::vector<tanget> tangents;
+    double tangents_nn_sq = 1; // .5 * .5; //.5 m
+    computeTangents(scan, tangents, tangents_nn_sq);
+
+    std::cout << "tangents:" << tangents.size() << ", landmarks_map:" << landmarks_map.size() << std::endl;
+
+    if (_pub_debug.getNumSubscribers() != 0 || normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
+    {
+        if (_pub_debug.getNumSubscribers() != 0)
+        {
+            pcl::PointCloud<pcl::PointXYZI>::Ptr buffer_clouds(new pcl::PointCloud<pcl::PointXYZI>());
+            for (int j = 0; j < scan->size(); j++)
+            {
+                V3D p_src(scan->points[j].x, scan->points[j].y, scan->points[j].z);
+                V3D p_transformed = nn_init_guess_T * p_src;
+
+                pcl::PointXYZI p;
+                p.x = p_transformed.x();
+                p.y = p_transformed.y();
+                p.z = p_transformed.z();
+                p.intensity = -1;
+
+                buffer_clouds->push_back(p);
+            }
+
+            sensor_msgs::PointCloud2 cloud_msg;
+            pcl::toROSMsg(*buffer_clouds, cloud_msg);
+            cloud_msg.header.frame_id = "world";
+            _pub_debug.publish(cloud_msg);
+        }
+
+        if (normals_pub.getNumSubscribers() != 0 || cloud_pub.getNumSubscribers() != 0)
+        {
+            pcl::PointCloud<pcl::PointXYZINormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointXYZINormal>());
+            for (const auto &[index, land] : landmarks_map)
+            {
+                if (land.is_edge && false)
+                {
+                    pcl::PointXYZINormal pt;
+                    pt.x = land.landmark_point.x();
+                    pt.y = land.landmark_point.y();
+                    pt.z = land.landmark_point.z();
+
+                    pt.normal_x = land.edge_direction.x();
+                    pt.normal_y = land.edge_direction.y();
+                    pt.normal_z = land.edge_direction.z();
+
+                    pt.curvature = -2;
+
+                    cloud_with_normals->push_back(pt);
+                }
+                else if (land.is_plane)
+                {
+                    // break;
+                    pcl::PointXYZINormal pt;
+                    pt.x = land.landmark_point.x();
+                    pt.y = land.landmark_point.y();
+                    pt.z = land.landmark_point.z();
+
+                    pt.normal_x = land.norm.x();
+                    pt.normal_y = land.norm.y();
+                    pt.normal_z = land.norm.z();
+
+                    pt.curvature = -1;
+                    pt.intensity = land.sigma;
+
+                    cloud_with_normals->push_back(pt);
+                }
+            }
+            pcl::PointCloud<pcl::PointXYZINormal>::Ptr cloud_with_tangents(new pcl::PointCloud<pcl::PointXYZINormal>());
+
+            auto R = nn_init_guess_T.so3().matrix();
+
+            for (int i = 0; i < tangents.size(); i++)
+            {
+                const auto &t = tangents[i];
+
+                pcl::PointXYZINormal pt;
+                auto p = nn_init_guess_T * V3D(scan->points[t.point_id].x, scan->points[t.point_id].y, scan->points[t.point_id].z);
+
+                pt.x = p.x();
+                pt.y = p.y();
+                pt.z = p.z();
+
+                auto rotated_tanget = R * t.direction;
+                pt.normal_x = rotated_tanget.x();
+                pt.normal_y = rotated_tanget.y();
+                pt.normal_z = rotated_tanget.z();
+
+                pt.curvature = t.linearity;
+                pt.intensity = 0;
+
+                cloud_with_tangents->push_back(pt);
+            }
+            debug_CloudWithNormals2(cloud_with_normals, cloud_pub, normals_pub, plot_tangents, cloud_with_tangents);
+        }
+    }
+
+    std::cout << "Finished one iteration, press enter..." << std::endl;
+    std::cin.get();
+
+    double prev_error = 9999., current_error; // std::numeric_limits<double>::max();
+    const double convergence_threshold = .01; // 5cm  // when to stop
+
+    bool debug = true;
+    double kernel = 1.0;
+    auto Weight = [&](double residual2)
+    {
+        return square(kernel) / square(kernel + residual2);
+    };
+
+    for (int iter = 0; iter < 15; iter++)
+    {
+        ros::spinOnce();
+        if (flag || !ros::ok())
+            break;
+
+        current_error = 0; // optimizer.error();
+
+        // registration here
+        {
+            Eigen::Matrix6d JTJ_global = Eigen::Matrix6d::Zero();
+            Eigen::Vector6d JTr_global = Eigen::Vector6d::Zero();
+        }
+
+        auto d_error = std::abs(prev_error - current_error);
+        if (d_error < convergence_threshold)
+        {
+            std::cout << "Converged after " << iter << " iterations.\n";
+            break;
+        }
+        prev_error = current_error;
+
+        if (debug)
+        {
+            std::cout << "\nIteration " << iter << ", error = " << current_error << ", d_error:" << d_error << std::endl;
+            std::cout << "Finished one iteration, press enter..." << std::endl;
+            std::cin.get();
+        }
+    }
+
+    /*
+        --search the tangets for the current scan
+        --search the landmark planes
+        ---plot planes and tangents
+
+
+        a functtion to get the tangent given one point
+        a function to get the plane given one point
+
+        ---for a number of iterations do:
+            search the landmarks for with curr init guess
+
+            do point to plane with GN in parallel
+
+            stop when no longer changes
+
+
+        add the tangent as a weighting factor
+        add the tangent as a proper residual do hessian
+
+        check with each of them the iterations required, accuracy, time
+
+        check for determinism too the original one
+
+    */
+}
