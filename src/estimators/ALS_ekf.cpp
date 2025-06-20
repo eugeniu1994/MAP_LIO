@@ -168,6 +168,8 @@ ALS_Handler::ALS_Handler(const std::string &folder_root_, bool donwsample_, int 
     downSizeFilterSurf.setLeafSize(leaf_size, leaf_size, leaf_size);
     als_cloud.reset(new PointCloudXYZI());
 
+    localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
+
     if (!als_manager_setup)
         setupALS_Manager();
 }
@@ -905,6 +907,8 @@ bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
                 }
             }
         }
+
+        localKdTree_map_als->setInputCloud(als_cloud);
 
         return true; // there was an update
     }

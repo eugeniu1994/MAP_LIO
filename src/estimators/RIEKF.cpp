@@ -7,6 +7,8 @@ PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(50000, 1));
 PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(50000, 1));
 std::vector<bool> point_selected_surf(50000, 1);
 
+#define USE_STATIC_KDTREE 1
+
 #if USE_STATIC_KDTREE == 0
 
 void RIEKF::lidar_observation_model(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
@@ -546,7 +548,7 @@ bool RIEKF::update(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZ
     }
 
     localKdTree_map->setInputCloud(map);
-    
+
 #ifdef ADAPTIVE_KERNEL
     sigma = adaptive_threshold.ComputeThreshold();
     // std::cout << "sigma:" << sigma << ", max_dist:" << 3.0 * sigma << std::endl;
@@ -622,6 +624,336 @@ bool RIEKF::update(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZ
     const auto model_deviation = initial_guess.inverse() * new_pose;
     adaptive_threshold.UpdateModelDeviation(model_deviation);
 #endif
+
+    return status.valid;
+}
+
+void RIEKF::lidar_observation_model_tighly_fused(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
+                                                 PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                                 const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                                 std::vector<PointVector> &Nearest_Points, bool extrinsic_est)
+{
+
+    int feats_down_size = feats_down_body->points.size();
+    laserCloudOri->clear();
+    corr_normvect->clear();
+    // int p_mls = 0, p_als=0;
+
+#ifdef MP_EN
+    //omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        PointType &point_body = feats_down_body->points[i];
+        PointType point_world;
+
+        V3D p_body(point_body.x, point_body.y, point_body.z);
+        V3D p_global(x_.rot * (x_.offset_R_L_I * p_body + x_.offset_T_L_I) + x_.pos);
+
+        point_world.x = p_global(0);
+        point_world.y = p_global(1);
+        point_world.z = p_global(2);
+        point_world.intensity = point_body.intensity;
+
+        std::vector<int> pointSearchInd(NUM_MATCH_POINTS);
+        std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+
+        auto &points_near = Nearest_Points[i];
+        if (ekfom_data.converge)
+        {
+            points_near.clear();
+            point_selected_surf[i] = false;
+
+            // search als neighbours
+            if (localKdTree_map_als->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+            {
+                if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
+                {
+                    point_selected_surf[i] = true;
+                    for (int j = 0; j < pointSearchInd.size(); j++)
+                    {
+                        points_near.push_back(map_als->points[pointSearchInd[j]]);
+                    }
+                    // p_als++;
+                }
+            }
+
+            //if (point_selected_surf[i] == false) // not valid neighbours has been found
+            {
+                pointSearchInd.clear();
+                pointSearchSqDis.clear();
+                // search mls neighbours
+                if (localKdTree_map->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+                {
+                    if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
+                    {
+                        point_selected_surf[i] = true;
+
+                        for (int j = 0; j < pointSearchInd.size(); j++)
+                        {
+                            points_near.push_back(map_mls->points[pointSearchInd[j]]);
+                            // points_near.insert(points_near.begin(), map_mls->points[pointSearchInd[j]]);
+                        }
+                        // p_mls++;
+                    }
+                }
+            }
+        }
+        if (!point_selected_surf[i]) // src point does not have neighbours
+            continue;
+
+        Eigen::Matrix<float, 4, 1> pabcd;
+        point_selected_surf[i] = false;
+
+        if (ekf::esti_plane2(pabcd, points_near, .2f)) //.1f
+        {
+            float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
+            // float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+            float s = 1 - 0.9 * fabs(pd2) / point_body.intensity;
+
+            if (s > 0.9)
+            {
+                point_selected_surf[i] = true;
+                normvec->points[i].x = pabcd(0);
+                normvec->points[i].y = pabcd(1);
+                normvec->points[i].z = pabcd(2);
+                normvec->points[i].intensity = pd2;
+            }
+        }
+    }
+
+    //std::cout<<"p_mls:"<<p_mls<<", p_als:"<<p_als<<std::endl;
+
+    int effct_feat_num = 0;
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        if (point_selected_surf[i])
+        {
+            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
+            corr_normvect->points[effct_feat_num] = normvec->points[i];
+            effct_feat_num++;
+        }
+    }
+
+    //std::cout<<"effct_feat_num: "<<effct_feat_num<<"/"<<feats_down_size<<std::endl;
+    if (effct_feat_num < 5)
+    {
+        ekfom_data.valid = false;
+        ROS_WARN("No Effective Points! cannot find good planes \n");
+        std::cout << "effct_feat_num:" << effct_feat_num << " cannot find good planes" << std::endl;
+        throw std::runtime_error("Stop here - the system will collapes, no good planes found");
+        return;
+    }
+
+    // Calculation of Jacobian matrix H and residual vector
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, noise_size); // m * 12
+    ekfom_data.innovation.resize(effct_feat_num);
+
+#ifdef MP_EN
+    // omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+        V3D point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
+        M3D point_crossmat;
+        point_crossmat << SKEW_SYM_MATRX(point_);
+        V3D point_I_ = x_.offset_R_L_I * point_ + x_.offset_T_L_I;
+        M3D point_I_crossmat;
+        point_I_crossmat << SKEW_SYM_MATRX(point_I_);
+
+        const PointType &norm_p = corr_normvect->points[i];
+        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+        V3D C(x_.rot.matrix().transpose() * norm_vec);
+        V3D A(point_I_crossmat * C);
+        if (extrinsic_est)
+        {
+            V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
+            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+        }
+        else
+        {
+            ekfom_data.h_x.block<1, 6>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A); //, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        }
+
+        ekfom_data.innovation(i) = -norm_p.intensity;
+    }
+}
+
+bool RIEKF::update_tighly_fused(double R, PointCloudXYZI::Ptr &feats_down_body,
+                                PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                std::vector<PointVector> &Nearest_Points, int maximum_iter,
+                                bool extrinsic_est)
+{
+    normvec->resize(int(feats_down_body->points.size()));
+
+    residual_struct status;
+    status.valid = true;
+    status.converge = true;
+    int t = 0;
+
+    state x_propagated = x_;
+    vectorized_state dx_new = vectorized_state::Zero(); // 24X1
+
+    std::cout << "map_mls:" << map_mls->size() << ", map_als:" << map_als->size() << std::endl;
+    if (map_mls->points.size() < 5)
+    {
+        std::cerr << "Error: map_mls Point cloud is empty! : " << map_mls->points.size() << std::endl;
+        status.valid = false;
+        status.converge = false;
+        return false;
+    }
+
+    localKdTree_map->setInputCloud(map_mls);
+    //localKdTree_map_als->setInputCloud(map_als);
+
+    for (int i = -1; i < maximum_iter; i++) // maximum_iter
+    {
+        status.valid = true;
+
+        // std::cout<<"\nekfom_data.converge:"<<status.converge << ", iteration "<<i+1<<std::endl;
+
+        // z = y - h(x)
+        lidar_observation_model_tighly_fused(status, feats_down_body, map_mls, map_als, localKdTree_map_als, Nearest_Points, extrinsic_est);
+
+        if (!status.valid)
+        {
+            break;
+        }
+
+        vectorized_state dx;
+        dx_new = boxminus(x_, x_propagated); // x^k - x^ in formula (18)
+
+        const auto &H = status.h_x; // m X 12 the matrix,  where m is the number of feature points
+        cov HTH = cov::Zero();      // matrix H^T * H   state_size = 24
+
+        HTH.block<noise_size, noise_size>(0, 0) = H.transpose() * H;
+
+        auto K_front = (HTH / R + P_.inverse()).inverse();                   // 24x24      formula 20 beginning here
+        Eigen::Matrix<double, state_size, Eigen::Dynamic> K;                 // 24 x m
+        K = K_front.block<state_size, noise_size>(0, 0) * H.transpose() / R; //   Kalman Gain;, Here R is treated as a scalar variance
+
+        cov KH = cov::Zero(); //  matrix K * H
+        KH.block<state_size, noise_size>(0, 0) = K * H;
+
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
+        x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
+
+        status.converge = true;
+        for (int j = 0; j < state_size; j++)
+        {
+            if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_) // If dx_>ESTIMATION_THRESHOLD_ no convergence is considered
+            {
+                status.converge = false;
+                break;
+            }
+        }
+
+        if (status.converge)
+            t++;
+
+        if (!t && i == maximum_iter - 2)
+        {
+            status.converge = true;
+        }
+
+        if (t > 1 || i == maximum_iter - 1)
+        {
+            P_ = (cov::Identity() - KH) * P_;
+            break;
+        }
+    }
+
+    return status.valid;
+
+    // std::vector<double> R_vec(m);
+    // for (int i = 0; i < m; ++i)
+    // {
+    //     // Suppose each measurement has its own standard deviation (e.g. from scan-matching residuals)
+    //     double std_i = feats_down_body[i].intensity * 0.01; // example: 1% of intensity
+    //     R_vec[i] = std_i * std_i; // variance
+    // }
+
+    for (int i = -1; i < maximum_iter; i++) // maximum_iter
+    {
+        status.valid = true;
+
+        // Compute innovation and Jacobian
+        lidar_observation_model_tighly_fused(status, feats_down_body, map_mls, map_als, localKdTree_map_als, Nearest_Points, extrinsic_est);
+
+        if (!status.valid)
+            break;
+
+        vectorized_state dx;
+        dx_new = boxminus(x_, x_propagated);
+
+        const auto &H = status.h_x; // [m x 12] Jacobian
+        int m = H.rows();    // number of measurements
+        
+        std::vector<double> R_vec(m, 0.05 * 0.05); // 5 cm variance for all
+        Eigen::VectorXd inv_sqrt_R(m);
+        for (int i = 0; i < m; ++i)
+            inv_sqrt_R(i) = 1.0 / std::sqrt(R_vec[i]);
+
+
+        // Weighted HᵀH with per-measurement variances
+        cov HTH = cov::Zero();
+        // for (int row = 0; row < m; ++row)
+        // {
+        //     double r = R_vec[row]; // variance of point `row`
+        //     HTH.block(0, 0, noise_size, noise_size) += (H.row(row).transpose() * H.row(row)) / r;
+        // }
+        // Scale each row of H by inv_sqrt_R[i]
+        Eigen::MatrixXd H_weighted = H;
+        H_weighted = inv_sqrt_R.asDiagonal() * H;
+
+        // Now compute HTH = H_weighted^T * H_weighted
+        HTH.block(0, 0, noise_size, noise_size) = H_weighted.transpose() * H_weighted;
+
+        // Step 3: Compute Kalman gain
+        Eigen::Matrix<double, state_size, state_size> K_front = (HTH.block(0, 0, noise_size, noise_size) + P_.inverse()).inverse();
+
+        Eigen::Matrix<double, state_size, Eigen::Dynamic> K(state_size, m);
+        for (int row = 0; row < m; ++row)
+        {
+            double r = R_vec[row];
+            K.col(row) = K_front.block(0, 0, state_size, noise_size) * H.row(row).transpose() / r;
+        }
+
+        cov KH = cov::Zero();
+        KH.block(0, 0, state_size, noise_size) = K * H;
+
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
+        x_ = boxplus(x_, dx_); 
+        
+
+        status.converge = true;
+        for (int j = 0; j < state_size; j++)
+        {
+            if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_)
+            {
+                status.converge = false;
+                break;
+            }
+        }
+
+        if (status.converge)
+            t++;
+
+        if (!t && i == maximum_iter - 2)
+        {
+            status.converge = true;
+        }
+
+        if (t > 1 || i == maximum_iter - 1)
+        {
+            P_ = (cov::Identity() - KH) * P_;
+            break;
+        }
+    }
 
     return status.valid;
 }

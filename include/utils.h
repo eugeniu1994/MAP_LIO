@@ -28,12 +28,11 @@
 #include <iostream>
 #include <chrono>
 
-//#include "sophus/se3.h"
-//#include "sophus/so3.h"
+// #include "sophus/se3.h"
+// #include "sophus/so3.h"
 
 #include <sophus/se3.h>
 #include <sophus/so3.h>
-
 
 #include <Pose6D.h>
 #include <point_definitions.hpp>
@@ -140,8 +139,96 @@ namespace ekf
         return true;
     }
 
+    template <typename T>
+    inline bool esti_plane2(Eigen::Matrix<T, 4, 1> &pca_result, const std::vector<PointType> &points, const T &threshold)
+    {
+        const size_t N = points.size();
+        if (N < 3)
+            return false; // Not enough points to estimate a plane
 
-    //TODO - to be  tested in time and accuracy 
+        Eigen::Matrix<T, Eigen::Dynamic, 3> A(N, 3);
+        Eigen::Matrix<T, Eigen::Dynamic, 1> b(N);
+        b.setConstant(-1.0);
+
+        for (size_t j = 0; j < N; ++j)
+        {
+            A(j, 0) = static_cast<T>(points[j].x);
+            A(j, 1) = static_cast<T>(points[j].y);
+            A(j, 2) = static_cast<T>(points[j].z);
+        }
+
+        Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+        T norm = normvec.norm();
+        if (norm < T(1e-6))
+            return false; // Avoid division by zero
+
+        // Normalized plane coefficients A, B, C, D (where D = 1/norm)
+        pca_result.template head<3>() = normvec / norm;
+        pca_result(3) = T(1.0) / norm;
+
+        // Validate all points lie within threshold distance from the plane
+        for (size_t j = 0; j < N; ++j)
+        {
+            T dist = pca_result(0) * static_cast<T>(points[j].x) +
+                     pca_result(1) * static_cast<T>(points[j].y) +
+                     pca_result(2) * static_cast<T>(points[j].z) +
+                     pca_result(3);
+            if (std::abs(dist) > threshold)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    template <typename T>
+    inline bool esti_plane2(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &points, const T &threshold)
+    {
+        const size_t N = points.size();
+        //std::cout<<"N:"<<N<<std::endl;
+        if (N < 3)
+            return false; // Need at least 3 points to define a plane
+
+        Eigen::Matrix<T, Eigen::Dynamic, 3> A(N, 3);
+        Eigen::Matrix<T, Eigen::Dynamic, 1> b(N);
+        b.setConstant(T(-1.0));
+
+        // Fill matrix A with point coordinates
+        for (size_t j = 0; j < N; ++j)
+        {
+            A(j, 0) = static_cast<T>(points[j].x);
+            A(j, 1) = static_cast<T>(points[j].y);
+            A(j, 2) = static_cast<T>(points[j].z);
+        }
+
+        // Solve for normal vector components
+        Eigen::Matrix<T, 3, 1> normvec = A.colPivHouseholderQr().solve(b);
+        T norm = normvec.norm();
+        if (norm < T(1e-6))
+            return false; // Avoid division by zero or near-singular result
+
+        // Normalize and fill output
+        pca_result.template head<3>() = normvec / norm;
+        pca_result(3) = T(1.0) / norm;
+
+        // Validate all points lie close to the plane
+        for (size_t j = 0; j < N; ++j)
+        {
+            T dist = pca_result(0) * static_cast<T>(points[j].x) +
+                     pca_result(1) * static_cast<T>(points[j].y) +
+                     pca_result(2) * static_cast<T>(points[j].z) +
+                     pca_result(3);
+            if (std::abs(dist) > threshold)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // TODO - to be  tested in time and accuracy
 
     /*
     PCA method---------------------------------------------------
@@ -390,7 +477,7 @@ void PCL2EIGEN(const PointCloudXYZI::Ptr &pcl_cloud, std::vector<V3D> &eigen_clo
 
 sensor_msgs::PointField GetTimestampField(const sensor_msgs::PointCloud2::ConstPtr &msg);
 
-std::vector<double>  NormalizeTimestamps(const std::vector<double> &timestamps);
+std::vector<double> NormalizeTimestamps(const std::vector<double> &timestamps);
 
 Sophus::SE3 registerClouds(pcl::PointCloud<PointType>::Ptr &src, pcl::PointCloud<PointType>::Ptr &tgt, pcl::PointCloud<PointType>::Ptr &cloud_aligned);
 
