@@ -77,7 +77,7 @@ void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
     std::cout << "Initialization will be done with:" << meas.imu.size() << " measurements " << std::endl;
 
     bool init_orientation = true;
-    
+
     if (init_orientation)
     {
         // assuming the IMU is mostly stationary.
@@ -187,6 +187,161 @@ void IMU_Class::IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, 
     init_from_GT = true;
 }
 
+void IMU_Class::Propagate2D(std::vector<pcl::PointCloud<VUX_PointType>::Ptr> &vux_scans,
+                            const std::vector<double> &vux_scans_time,
+                            const double &pcl_beg_time,
+                            const double &pcl_end_time,
+                            const double &tod_end_scan,
+                        const Sophus::SE3 &prev_mls, const double &prev_mls_time)
+{
+    std::cout << "IMU Propagate2D vux_scans: " << vux_scans.size() << std::endl;
+    if (vux_scans.empty() || IMU_Buffer.size() < 2)
+    {
+        std::cout << "No valid data..." << std::endl;
+        return;
+    }
+
+    double scan_duration = pcl_end_time - pcl_beg_time; // e.g., 0.1s
+    double tod_beg_scan = tod_end_scan - scan_duration;
+
+    if (false) // propagate for each vux from the closest imu
+    {
+        V3D pos_imu, vel_imu, angvel_avr, acc_avr, acc_imu;
+        M3D R_imu;
+
+        int pcl_idx = static_cast<int>(vux_scans.size()) - 1;
+
+        for (int imu_idx = static_cast<int>(IMU_Buffer.size()) - 1; imu_idx > 0 && pcl_idx >= 0; imu_idx--)
+        {
+            const auto &head = IMU_Buffer[imu_idx - 1];
+            const auto &tail = IMU_Buffer[imu_idx];
+
+            R_imu << MAT_FROM_ARRAY(head.rot);
+            vel_imu << VEC_FROM_ARRAY(head.vel);
+            pos_imu << VEC_FROM_ARRAY(head.pos);
+            acc_imu << VEC_FROM_ARRAY(tail.acc);
+            angvel_avr << VEC_FROM_ARRAY(tail.gyr);
+
+            std::cout << "\nIMU_Buffer [" << imu_idx << "] time: " << head.offset_time << " -> " << tail.offset_time << std::endl;
+
+            // Process 2D scans in this IMU interval
+            while (pcl_idx >= 0)
+            {
+                pcl::PointCloud<VUX_PointType>::Ptr &scan = vux_scans[pcl_idx]; // get the current scan
+                if (scan->points.empty())
+                {
+                    pcl_idx--;
+                    continue;
+                }
+
+                double tod_time = vux_scans_time[pcl_idx];// scan->points[0].time;
+                double relative_time = tod_time - tod_beg_scan;
+
+                if (relative_time <= head.offset_time)
+                    break; // move to earlier IMU segment
+
+                double dt = relative_time - head.offset_time;
+                std::cout << "  VUX[" << pcl_idx << "] rel_time: " << relative_time << ", dt: " << dt << std::endl;
+
+                M3D R_i = R_imu * Sophus::SO3::exp(angvel_avr * dt).matrix();
+                V3D T_ei = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
+
+                Sophus::SE3 interpolated_imu_pose(R_i, T_ei);
+
+                // apply transform to each point in the scan
+                for (auto &pt : scan->points)
+                {
+                    Eigen::Vector3d p_raw(pt.x, pt.y, pt.z);
+                    Eigen::Vector3d p_new = interpolated_imu_pose * p_raw;
+                    pt.x = p_new.x();
+                    pt.y = p_new.y();
+                    pt.z = p_new.z();
+                }
+
+                pcl_idx--; // move to earlier 2D scan
+            }
+        }
+    }
+    else // interpolate from the begin and end of the 2d scan
+    {
+        // also maybe apply voxelization before transformation 
+        // when combining with hesai - combined after voxelization
+        //     each scan is voxelized individually
+        //     to prevent the voxel grid problems when too close to each other 
+        //         if bad imu -> will result in false measurements
+
+        std::cout<<std::endl;
+        //std::cout<<"prev_mls_time:"<<prev_mls_time<<", last_lidar_end_time_:"<<last_lidar_end_time_<<std::endl;
+        //std::cout<<"tod_beg_scan:"<<tod_beg_scan<<", tod_end_scan:"<<tod_end_scan<<std::endl;
+
+        //auto dt_ = last_lidar_end_time_ - prev_mls_time;
+        auto dt_tod = tod_end_scan - tod_beg_scan;
+        //std::cout<<"dt_:"<<dt_<<", dt_tod:"<<dt_tod<<std::endl;
+
+        auto delta_predicted = (prev_mls.inverse() * Sophus::SE3(imu_state.rot, imu_state.pos)).log();
+        
+        for (int i = 0; i < vux_scans.size(); i++)
+        {
+            const double &t = vux_scans_time[i];// vux_scans[i]->points[0].time;
+            double alpha = (t - tod_beg_scan) / dt_tod; // when t will be bigger thatn time 2 it will extrapolate
+
+            Sophus::SE3 interpolated_imu_pose = prev_mls * Sophus::SE3::exp(alpha * delta_predicted);
+
+            int n_points = vux_scans[i]->points.size();
+            #pragma omp parallel for
+            for (int j = 0; j < n_points; ++j)
+            {
+                auto &pt = vux_scans[i]->points[j];
+                V3D p_raw(pt.x, pt.y, pt.z);
+                V3D p_new = interpolated_imu_pose * p_raw;
+                pt.x = p_new.x();
+                pt.y = p_new.y();
+                pt.z = p_new.z();
+                pt.reflectance = i;
+            }
+        }
+
+
+        //THE NEXT IS INTERPOLATING BETWEEN THE FIRST AND LAST IMU poses
+        // M3D R_imu1, R_imu2;
+        // V3D pos_imu1, pos_imu2;
+        // double time1 = IMU_Buffer[0].offset_time;
+        // R_imu1 << MAT_FROM_ARRAY(IMU_Buffer[0].rot);
+        // pos_imu1 << VEC_FROM_ARRAY(IMU_Buffer[0].pos);
+        // const Sophus::SE3 pose1(R_imu1, pos_imu1);
+
+        // int n = IMU_Buffer.size() - 1;
+        // double time2 = IMU_Buffer[n].offset_time;
+        // R_imu2 << MAT_FROM_ARRAY(IMU_Buffer[n].rot);
+        // pos_imu2 << VEC_FROM_ARRAY(IMU_Buffer[n].pos);
+        // const Sophus::SE3 pose2(R_imu2, pos_imu2);
+
+        // Sophus::SE3 delta = pose1.inverse() * pose2;
+
+        // for (int i = 0; i < vux_scans.size(); i++)
+        // {
+        //     const double &tod_time = vux_scans_time[i];// vux_scans[i]->points[0].time;
+        //     double t = tod_time - tod_beg_scan;           // relative_time
+        //     double alpha = (t - time1) / (time2 - time1); // when t will be bigger thatn time 2 it will extrapolate
+
+        //     Sophus::SE3 interpolated_imu_pose = pose1 * Sophus::SE3::exp(alpha * delta.log());
+
+        //     int n_points = vux_scans[i]->points.size();
+        //     #pragma omp parallel for
+        //     for (int j = 0; j < n_points; ++j)
+        //     {
+        //         auto &pt = vux_scans[i]->points[j];
+        //         V3D p_raw(pt.x, pt.y, pt.z);
+        //         V3D p_new = interpolated_imu_pose * p_raw;
+        //         pt.x = p_new.x();
+        //         pt.y = p_new.y();
+        //         pt.z = p_new.z();
+        //         pt.reflectance = j;
+        //     }
+        // }
+    }
+}
+
 void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI &pcl_out)
 {
     auto v_imu = meas.imu;
@@ -207,7 +362,7 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
     // Sort the point cloud by the timestamp if not sorted already
     // sort(pcl_out.points.begin(), pcl_out.points.end(), time_list); // sort by timestamp
 
-    state imu_state = kf_state.get_x();
+    imu_state = kf_state.get_x();
 
     IMU_Buffer.clear();
     IMU_Buffer.push_back(set_pose6d(0.0, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.matrix()));
@@ -447,7 +602,7 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
             angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
             int end_ = it_pcl - begin_pcl;
-            //for (; it_pcl->time * 1e-9 > head->offset_time; it_pcl--)
+            // for (; it_pcl->time * 1e-9 > head->offset_time; it_pcl--)
             for (; it_pcl->time > head->offset_time; it_pcl--)
             {
                 if (it_pcl == begin_pcl)
@@ -466,7 +621,7 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
                               {
                                   for (int i = r.begin(); i < r.end(); i++)
                                   {
-                                      //double dt_ = pcl_out.points[i].time * 1e-9 - head->offset_time;
+                                      // double dt_ = pcl_out.points[i].time * 1e-9 - head->offset_time;
                                       double dt_ = pcl_out.points[i].time - head->offset_time;
 
                                       M3D R_i(R_imu * Sophus::SO3::exp(angvel_avr * dt_).matrix());
@@ -475,13 +630,13 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
 
                                       V3D P_compensate = R_I2L * (end_R_T * (R_i * (R_L2I * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);
 
-                                      //P_compensate = P_i; //remove this later 
+                                      // P_compensate = P_i; //remove this later
 
                                       pcl_out.points[i].x = P_compensate(0);
                                       pcl_out.points[i].y = P_compensate(1);
                                       pcl_out.points[i].z = P_compensate(2);
 
-                                      pcl_out.points[i].time += first_point_time; //put the time back 
+                                      pcl_out.points[i].time += first_point_time; // put the time back
                                   }
                               });
         }
@@ -500,10 +655,10 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
                                   pcl_out.points[i].range = P_i.norm();
                               }
                           });
-                        
-        //first_point_time = std::fmod(first_point_time, 3600); //not sure about this - added to decrease the absolute value of time
-        std::cout << "Deskew for Hesai, IMU_Buffer:" << IMU_Buffer.size()<<", first_point_time:"<<first_point_time << std::endl;
-        
+
+        // first_point_time = std::fmod(first_point_time, 3600); //not sure about this - added to decrease the absolute value of time
+        std::cout << "Deskew for Hesai, IMU_Buffer:" << IMU_Buffer.size() << ", first_point_time:" << first_point_time << std::endl;
+
         for (auto it_kp = IMU_Buffer.end() - 1; it_kp != IMU_Buffer.begin(); it_kp--)
         {
             auto head = it_kp - 1;
@@ -548,14 +703,14 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
                               });
         }
 
-        saved_scan ++;
+        saved_scan++;
         tbb::parallel_for(tbb::blocked_range<int>(0, pcl_out.size()),
                           [&](const tbb::blocked_range<int> &r)
                           {
                               for (int i = r.begin(); i < r.end(); ++i)
                               {
-                                  //pcl_out.points[i].timestamp += first_point_time; //put the time back 
-                                  pcl_out.points[i].timestamp += (saved_scan * .1); //10Hz
+                                  // pcl_out.points[i].timestamp += first_point_time; //put the time back
+                                  pcl_out.points[i].timestamp += (saved_scan * .1); // 10Hz
                               }
                           });
     }

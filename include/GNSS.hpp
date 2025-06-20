@@ -47,7 +47,7 @@ class GNSS
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-    double tod;
+    double tod, diff_curr_gnss2mls;
     double gps_time, global_gps_time, theta_GPS_to_IMU = 0., max_travelled_distance_for_initialization = 20.;
     std::vector<V3D> gps_measurements, gps_covariances;
     V3D ref_gps_point_lla, origin_enu, curr_enu, gps_cov;

@@ -53,7 +53,6 @@ void GNSS::Process(const Sophus::SE3 &gps_local, const Sophus::SE3 &gps_global, 
 void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
                    const double &lidar_end_time, const V3D &MLS_pos)
 {
-
     while ((!gps_buffer.empty()) && gps_time <= lidar_end_time)
     {
         auto msg = gps_buffer.front();
@@ -64,13 +63,15 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
 
         if (gps_init_origin && !gps_buffer.empty()) // position initialised and still msgs exists
         {
-            double diff_curr = fabs(gps_time - lidar_end_time);
+            diff_curr_gnss2mls = fabs(gps_time - lidar_end_time); 
             double diff_next = fabs(gps_buffer.front()->header.stamp.toSec() - lidar_end_time);
-            // std::cout<<"diff_curr:"<<diff_curr<<", diff_next:"<<diff_next<<std::endl;
-            if (diff_curr > diff_next)
+            // std::cout<<"diff_curr_gnss2mls:"<<diff_curr_gnss2mls<<", diff_next:"<<diff_next<<std::endl;
+            if (diff_curr_gnss2mls > diff_next)
             {
                 continue; // continue to go to the next message
             }
+
+            diff_curr_gnss2mls = gps_time - lidar_end_time;
         }
 
         Eigen::Vector3d lla(msg->latitude, msg->longitude, msg->altitude);
@@ -144,7 +145,7 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
         }
         gps_pose.so3() = Sophus::SO3(R_compas);
 
-        std::cout<<"HESAI GNSS TIME:"<<msg->time<<std::endl;
+        //std::cout<<"HESAI GNSS TIME:"<<msg->time<<std::endl;
 
         auto gpsTime = msg->time;
         
@@ -164,11 +165,14 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
         snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", hours, minutes, seconds);
 
         std::string timeOfDay = std::string(buffer);
-        std::cout << "GNSS Time of the day: " << timeOfDay << std::endl;
+        //std::cout << "GNSS Time of the day: " << timeOfDay << std::endl;
 
         // Compute the time of the day in seconds (including fractional part)
         tod = fmod(utcTime, secondsInADay);
-        std::cout<<"GNSS tod:"<<tod<<std::endl;
+        std::cout<<"GNSS tod:"<<tod<<", diff_curr_gnss2mls:"<<diff_curr_gnss2mls<<std::endl;
+        //add diff_curr_gnss2mls  correction
+        tod = tod - diff_curr_gnss2mls;
+        std::cout<<"Corrected tod of the mls:"<<tod<<std::endl;
     }
 
     if (use_postprocessed_gnss)

@@ -31,10 +31,13 @@ public:
     #endif
 
     void IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, const Sophus::SE3 &gt);
-
+    void Propagate2D(std::vector<pcl::PointCloud<VUX_PointType>::Ptr> &vux_scans,
+        const std::vector<double> &vux_scans_time, const double &pcl_beg_time, const double &pcl_end_time, const double &tod,
+        const Sophus::SE3 &prev_mls, const double &prev_mls_time);
     
     
 protected:
+    state imu_state;
     Eigen::Matrix<double, noise_size, noise_size> Q;
     V3D cov_acc, cov_gyr;
     V3D cov_acc_scale, cov_gyr_scale;
@@ -57,6 +60,7 @@ protected:
     void reset();
     virtual void IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N);
     virtual void Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI &pcl_out);
+    
     
 };
 

@@ -90,6 +90,7 @@ class RIEKF : public Estimator
 {
 public:
     pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map;
+    //pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map_als;
 #ifdef ADAPTIVE_KERNEL
     RIEKF()
         : adaptive_threshold(1.0, 0.1, 100.0) // Initialize with constructor initializer list
@@ -111,6 +112,7 @@ public:
             }
         }
         localKdTree_map.reset(new pcl::KdTreeFLANN<PointType>());
+        //localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
 #endif
     }
 #else
@@ -134,6 +136,7 @@ public:
         }
 #endif
         localKdTree_map.reset(new pcl::KdTreeFLANN<PointType>());
+        //localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
     };
 #endif
 
@@ -163,6 +166,12 @@ public:
 
     bool update(double R, PointCloudXYZI::Ptr &feats_down_body,
                 PointCloudXYZI::Ptr &map, std::vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est);
+    
+    void lidar_observation_model_tighly_fused(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
+                                 PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
+
+    bool update_tighly_fused(double R, PointCloudXYZI::Ptr &feats_down_body,
+                PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est);
 
 #endif
     // gnss update

@@ -129,7 +129,7 @@ bool VuxAdaptor::timeAlign(const double &mls_tod)
         std::cout << " " << i;
         rxp_files.pop_front();
     }
-    std::cout << "rxp_files:" << rxp_files.size() << std::endl;
+    std::cout << " rxp_files:" << rxp_files.size() << std::endl;
 
     plt::scatter(ind, time_diff_vect, 5, {{"label", "time_diff"}, {"color", "blue"}});
     plt::xlabel("Files");

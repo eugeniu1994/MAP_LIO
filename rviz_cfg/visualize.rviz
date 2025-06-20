@@ -34,7 +34,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ALS
+    SyncSource: LiDAR
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -71,8 +71,6 @@ Visualization Manager:
           Value: true
         VUX:
           Value: false
-        VUX_B:
-          Value: true
         world:
           Value: true
       Marker Alpha: 1
@@ -86,8 +84,6 @@ Visualization Manager:
           MLS:
             {}
           VUX:
-            {}
-          VUX_B:
             {}
       Update Interval: 0
       Value: true
@@ -124,14 +120,14 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 27.311491012573242
-            Min Value: -3.5302770137786865
+            Max Value: 23.996706008911133
+            Min Value: -2.5482640266418457
             Value: true
           Axis: Z
-          Channel Name: z
+          Channel Name: reflectance
           Class: rviz/PointCloud2
           Color: 255; 255; 255
-          Color Transformer: AxisColor
+          Color Transformer: Intensity
           Decay Time: 500
           Enabled: false
           Invert Rainbow: true
@@ -144,7 +140,7 @@ Visualization Manager:
           Size (Pixels): 5
           Size (m): 0.009999999776482582
           Style: Points
-          Topic: /vux_optimized
+          Topic: /vux_data
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
@@ -180,8 +176,8 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 30.667510986328125
-            Min Value: -4.379408836364746
+            Max Value: 32.25342559814453
+            Min Value: -2.871729612350464
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -487,14 +483,14 @@ Visualization Manager:
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 25.507070541381836
-        Min Value: -2.3809311389923096
+        Max Value: 15.879777908325195
+        Min Value: -5.573248386383057
         Value: true
       Axis: Z
-      Channel Name: z
+      Channel Name: reflectance
       Class: rviz/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: AxisColor
+      Color Transformer: Intensity
       Decay Time: 0
       Enabled: true
       Invert Rainbow: true
@@ -732,7 +728,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 68.38880157470703
+      Distance: 68.14649200439453
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -740,17 +736,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 24.07259178161621
-        Y: 42.71352005004883
-        Z: -3.7159761632210575e-06
+        X: 12.760324478149414
+        Y: 57.419189453125
+        Z: 2.1506273697013967e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.2797976732254028
+      Pitch: 0.8547979593276978
       Target Frame: global
-      Yaw: 0.7967475056648254
+      Yaw: 0.9167474508285522
     Saved: ~
 Window Geometry:
   Displays:

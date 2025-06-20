@@ -54,7 +54,7 @@ public:
 
     bool refine_als = false, initted_ = false;
     int min_points_per_patch = 0;
-    
+    pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map_als;
 
 private:
 
