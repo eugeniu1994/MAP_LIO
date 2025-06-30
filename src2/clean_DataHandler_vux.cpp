@@ -52,6 +52,10 @@ void DataHandler::publish_odometry(const ros::Publisher &pubOdomAftMapped)
     q.setZ(odomAftMapped.pose.pose.orientation.z);
     transform.setRotation(q);
     br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "world", "MLS"));
+
+    tf::Transform transform_inv = transform.inverse();
+    static tf::TransformBroadcaster br2;
+    br2.sendTransform(tf::StampedTransform(transform_inv, odomAftMapped.header.stamp, "MLS", "world"));
 }
 
 void DataHandler::publish_gnss_odometry(const Sophus::SE3 &gnss_pose)
@@ -109,16 +113,21 @@ void DataHandler::publish_frame_body(const ros::Publisher &pubLaserCloudFull_bod
     tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
                       {
                     for (int i = r.begin(); i < r.end(); i++)
-                    //for (int i = 0; i < size; i++)
                     {
-                        pointBodyLidarToIMU(&laserCloudFullRes->points[i],
-                                        &laserCloudWorld->points[i]);
+                         pointBodyLidarToIMU(&laserCloudFullRes->points[i],
+                                         &laserCloudWorld->points[i]);
+
+                         //laserCloudWorld->points[i] = laserCloudFullRes->points[i];
                     } });
 
     sensor_msgs::PointCloud2 laserCloudmsg;
     pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
-    laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
-    laserCloudmsg.header.frame_id = "world";// "MLS";
+    //pcl::toROSMsg(*laserCloudFullRes, laserCloudmsg);
+
+    //laserCloudmsg.header.stamp = ros::Time().fromSec(lidar_end_time);
+    laserCloudmsg.header.stamp = ros::Time(0);  // <- "no transform needed"
+
+    laserCloudmsg.header.frame_id =  "MLS";
     pubLaserCloudFull_body.publish(laserCloudmsg);
 }
 
@@ -286,7 +295,9 @@ void DataHandler::pointBodyLidarToIMU(PointType const *const pi, PointType *cons
     V3D p_body(pi->x, pi->y, pi->z);
     V3D p_global(state_point.offset_R_L_I.matrix() * p_body + state_point.offset_T_L_I);
 
-    p_global = p_body;
+    //V3D p_global(state_point.offset_R_L_I.matrix().transpose() * p_body - state_point.offset_R_L_I.matrix().transpose() * state_point.offset_T_L_I);
+
+    //p_global = p_body;
 
     po->x = p_global(0);
     po->y = p_global(1);

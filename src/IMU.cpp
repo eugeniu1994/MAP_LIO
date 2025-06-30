@@ -39,6 +39,10 @@ void IMU_Class::set_param(const V3D &tran, const M3D &rot, const V3D &gyr, const
     cov_acc_scale = acc;
     cov_bias_gyr = gyr_bias;
     cov_bias_acc = acc_bias;
+
+    std::cout<<"set_param:\n"<<std::endl;
+    std::cout<<"cov_acc_scale:"<<cov_acc_scale.transpose()<<"\ncov_gyr_scale:"<<cov_gyr_scale.transpose()<<std::endl;
+
 }
 
 void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
@@ -160,10 +164,18 @@ void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
     kf_state.set_P(init_P);
     last_imu_ = meas.imu.back();
 
+    std::cout<<"IMU_init\n"<<std::endl;
+    std::cout<<"cov_gyr:"<<cov_gyr.transpose()<<", cov_acc:"<<cov_acc.transpose()<<std::endl;
+    std::cout<<"cov_bias_gyr:"<<cov_bias_gyr.transpose()<<", cov_bias_acc:"<<cov_bias_acc.transpose()<<std::endl;
+
     Q.block<3, 3>(G_VAR_ID, G_VAR_ID).diagonal() = cov_gyr;
     Q.block<3, 3>(A_VAR_ID, A_VAR_ID).diagonal() = cov_acc;
     Q.block<3, 3>(BG_VAR_ID, BG_VAR_ID).diagonal() = cov_bias_gyr;
     Q.block<3, 3>(BA_VAR_ID, BA_VAR_ID).diagonal() = cov_bias_acc;
+
+    std::cout<<"Q G_VAR imu:\n"<<Q.block<3, 3>(G_VAR_ID, G_VAR_ID)<<std::endl;
+    std::cout<<"Q A_VAR_ID imu:\n"<<Q.block<3, 3>(A_VAR_ID, A_VAR_ID)<<std::endl;
+
 }
 
 void IMU_Class::IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, const Sophus::SE3 &gt)
@@ -517,6 +529,10 @@ void IMU_Class::Process(const MeasureGroup &meas, Estimator &kf_state, PointClou
     };
     ROS_ASSERT(meas.lidar != nullptr);
 
+    // std::cout<<"Q G_VAR imu:\n"<<Q.block<3, 3>(G_VAR_ID, G_VAR_ID)<<std::endl;
+    // std::cout<<"Q A_VAR_ID imu:\n"<<Q.block<3, 3>(A_VAR_ID, A_VAR_ID)<<std::endl;
+    // std::cout<<"cov_gyr_scale:"<<cov_gyr_scale.transpose()<<std::endl;
+    // std::cout<<"cov_acc_scale:"<<cov_acc_scale.transpose()<<std::endl;
     if (imu_need_init_)
     {
         std::cout << "IMU_init ..." << std::endl;
@@ -529,7 +545,8 @@ void IMU_Class::Process(const MeasureGroup &meas, Estimator &kf_state, PointClou
 
             std::cout << "\n\nInit" << std::endl;
             std::cout << "cov_acc:" << cov_acc.transpose() << std::endl;
-            std::cout << "cov_gyr:" << cov_acc.transpose() << std::endl;
+            std::cout << "cov_gyr:" << cov_gyr.transpose() << std::endl;
+            
             cov_acc = cov_acc_scale;
             cov_gyr = cov_gyr_scale;
 
@@ -537,6 +554,8 @@ void IMU_Class::Process(const MeasureGroup &meas, Estimator &kf_state, PointClou
             Q.block<3, 3>(A_VAR_ID, A_VAR_ID).diagonal() = cov_acc;
             Q.block<3, 3>(BG_VAR_ID, BG_VAR_ID).diagonal() = cov_bias_gyr;
             Q.block<3, 3>(BA_VAR_ID, BA_VAR_ID).diagonal() = cov_bias_acc;
+            //std::cout<<"Q G_VAR imu:\n"<<Q.block<3, 3>(G_VAR_ID, G_VAR_ID)<<std::endl;
+            //std::cout<<"Q A_VAR_ID imu:\n"<<Q.block<3, 3>(A_VAR_ID, A_VAR_ID)<<std::endl;
             ROS_INFO("IMU Initialization Done");
         }
         else
