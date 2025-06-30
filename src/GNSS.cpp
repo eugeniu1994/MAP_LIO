@@ -71,7 +71,7 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
                 continue; // continue to go to the next message
             }
 
-            diff_curr_gnss2mls = gps_time - lidar_end_time;
+            diff_curr_gnss2mls = gps_time - lidar_end_time; //gps_time = diff_curr_gnss2mls + lidar_end_time
         }
 
         Eigen::Vector3d lla(msg->latitude, msg->longitude, msg->altitude);
@@ -92,6 +92,9 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
         float noise_z = msg->position_covariance[8];
         gps_cov = V3D(noise_x, noise_y, noise_z);
 
+
+        
+
         // GET THE WEIGHTED AVERAGE lla of the current position
         if (!gps_init_origin)
         {
@@ -99,6 +102,12 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
             {
                 gps_measurements.push_back(lla);
                 gps_covariances.push_back(gps_cov);
+                
+
+                GeographicLib::UTMUPS::Forward(lla[0], lla[1], zone, northp, easting, northing);
+                V3D origin_enu_i = V3D(easting, northing, height);
+                enu_measurements.push_back(origin_enu_i);
+
                 return;
             }
             else
@@ -109,9 +118,14 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
                 gps_init_origin = true;
                 gps_measurements.clear();
                 gps_covariances.clear();
+                enu_measurements.clear();
 
                 GeographicLib::UTMUPS::Forward(ref_gps_point_lla[0], ref_gps_point_lla[1], zone, northp, easting, northing);
                 origin_enu = V3D(easting, northing, height);
+
+                //modification here, enu is the weighted average of all prev enu's
+                //origin_enu = computeWeightedAverage(enu_measurements, gps_covariances);
+
                 first_gps_pose = Sophus::SE3(Eye3d, origin_enu).inverse();
 
                 geo_converter.Reset(ref_gps_point_lla[0], ref_gps_point_lla[1], ref_gps_point_lla[2]); // set origin the current point
