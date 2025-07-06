@@ -362,7 +362,7 @@ Visualization Manager:
       Topic: /MLS/trajectory
       Unreliable: false
       Value: true
-    - Alpha: 1
+    - Alpha: 0.699999988079071
       Buffer Length: 1
       Class: rviz/Path
       Color: 255; 0; 0
@@ -371,7 +371,7 @@ Visualization Manager:
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
       Line Style: Billboards
-      Line Width: 0.30000001192092896
+      Line Width: 0.10000000149011612
       Name: GNSS-Path
       Offset:
         X: 0
@@ -386,7 +386,7 @@ Visualization Manager:
       Topic: /GPSFix/trajectory
       Unreliable: false
       Value: true
-    - Alpha: 1
+    - Alpha: 0.699999988079071
       Buffer Length: 1
       Class: rviz/Path
       Color: 114; 159; 207
@@ -414,7 +414,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz/Path
       Color: 255; 0; 0
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.30000001192092896
@@ -433,7 +433,7 @@ Visualization Manager:
       Shaft Length: 0.10000000149011612
       Topic: /VUX_B/trajectory
       Unreliable: false
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: false
       Marker Topic: /acceleration_marker
@@ -706,7 +706,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 104.71527099609375
+      Distance: 45.305419921875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -714,17 +714,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -24.75065040588379
-        Y: 40.633060455322266
+        X: 19.693082809448242
+        Y: 22.731882095336914
         Z: 4.4773874833481386e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.4097964763641357
+      Pitch: 0.934796929359436
       Target Frame: global
-      Yaw: 1.2817481756210327
+      Yaw: 0.8367485404014587
     Saved: ~
 Window Geometry:
   Displays:

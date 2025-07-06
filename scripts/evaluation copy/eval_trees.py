@@ -217,11 +217,11 @@ def summarize(errors, name):
 
         #ci = calculate_confidence_interval(mean, std, len(errs), alpha = 0.05)
         #print('\n \n prev ci:',ci)
-        # print('len errors:', len(errs))
-        # ci = bootstrap_ci(errs, n_resamples=00, ci=95)
-        # ci_mean = (mean - ci[0])
+        print('len errors:', len(errs))
+        ci = bootstrap_ci(errs, n_resamples=00, ci=95)
+        ci_mean = (mean - ci[0])
 
-        # print(f"{model}: Mean={mean:.4f}, Median={median:.4f}, RMSE={rmse:.4f}, Std={std:.4f}, ci={ci}, , ci_mean={ci_mean}")
+        print(f"{model}: Mean={mean:.4f}, Median={median:.4f}, RMSE={rmse:.4f}, Std={std:.4f}, ci={ci}, , ci_mean={ci_mean}")
 
 
 ref_trees = "/media/eugeniu/T7/las_georeferenced/Ref_ALS_Hesai_fused/results/Results/Stem_curves/Found_stem_tree_attributes.txt"
@@ -317,9 +317,7 @@ for label, data in matches.items():
 summarize(abs_errors_dict, "Absolute Errors")
 summarize(rel_errors_dict, "Relative Errors")
 
-bbox_to_anchor=(0.5, -0.1)
-
-add_first_legend = False
+add_first_legend = True
 # Boxplot plotting
 def plot_boxplots(data, metric_name, colors, add_first_legend = True):
     plt.figure(figsize=(10, 6))
@@ -347,10 +345,9 @@ def plot_boxplots(data, metric_name, colors, add_first_legend = True):
         line.set(color='black', linewidth=1.2)
 
     plt.ylabel(metric_name)
-    if not add_first_legend:
-        plt.legend(handles=legend_handles, title="Model", loc='upper center', bbox_to_anchor=bbox_to_anchor,
-          ncol=4, fancybox=True, shadow=True)
-        add_first_legend = True
+    if add_first_legend:
+        plt.legend(handles=legend_handles, title="Model", loc='best')
+        add_first_legend = False
     plt.grid(False)
     plt.tight_layout()
     #plt.xticks([])

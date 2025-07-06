@@ -866,7 +866,7 @@ void DataHandler::BagHandler()
                 }
             }
 
-            if(false) //just for now, remove later, test without als 
+            //if(false) //just for now, remove later, test without als 
             {
 #ifdef USE_ALS
             if (!als_obj->refine_als)

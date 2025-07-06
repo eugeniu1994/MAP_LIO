@@ -57,7 +57,7 @@ public:
     double gyr_cov = 0.1, acc_cov = 0.1, b_gyr_cov = 0.0001, b_acc_cov = 0.0001;
     double filter_size_surf_min = 0, filter_size_map_min = 0, fov_deg = 0;
     double cube_len = 0, lidar_end_time = 0, first_lidar_time = 0.0;
-    int feats_down_size = 0, NUM_MAX_ITERATIONS = 0, pcd_index = 0;
+    int feats_down_size = 0, NUM_MAX_ITERATIONS = 0, pcd_index = 0, pcd_vux_index;
 
     bool lidar_pushed, flg_first_scan = true, flg_EKF_inited, als2mls_saved = false;
     bool scan_pub_en = false, dense_pub_en = false, map_init = false;

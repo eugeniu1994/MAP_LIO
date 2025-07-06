@@ -127,6 +127,7 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
                 //origin_enu = computeWeightedAverage(enu_measurements, gps_covariances);
 
                 first_gps_pose = Sophus::SE3(Eye3d, origin_enu).inverse();
+                std::cout<<"first_gps_pose:\n"<<first_gps_pose.matrix()<<std::endl;
 
                 geo_converter.Reset(ref_gps_point_lla[0], ref_gps_point_lla[1], ref_gps_point_lla[2]); // set origin the current point
                 return;
@@ -159,6 +160,16 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
         }
         gps_pose.so3() = Sophus::SO3(R_compas);
 
+        //as for ppk --------------------------------------------
+        // auto t_z = als2mls_T.translation();// - V3D(0,0,first_gps_pose.translation()[2]);
+
+        // auto origin_enu_in_mls = (als2mls_T * origin_enu);
+        // //t_z[0] += origin_enu_in_mls[0];
+        // //t_z[1] += origin_enu_in_mls[1];
+        // t_z[2] -= origin_enu_in_mls[2];
+
+        // gps_pose = Sophus::SE3(als2mls_T.so3(), t_z) * Sophus::SE3(Eye3d, curr_enu); //transform enu to local mls
+        //gps_pose = gps_pose * Sophus::SE3(Eye3d, GNSS_T_wrt_IMU); //put in MLS frame
         //std::cout<<"HESAI GNSS TIME:"<<msg->time<<std::endl;
 
         auto gpsTime = msg->time;
@@ -191,16 +202,21 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
 
     if (use_postprocessed_gnss)
     {
+        //std::cout<<"gnss_measurements[curr_gnss].GPSTime:"<<gnss_measurements[curr_gnss].GPSTime<<std::endl;
+        //std::cout<<"gnss_measurements[curr_gnss].original_GPSTime:"<<gnss_measurements[curr_gnss].original_GPSTime<<std::endl;
         while (curr_gnss < total_gnss && gnss_measurements[curr_gnss].GPSTime <= global_gps_time)
+        //while (curr_gnss < total_gnss && gnss_measurements[curr_gnss].original_GPSTime <= tod)
         {
             const auto &pose = gnss_measurements[curr_gnss];
             curr_gnss++;
 
             if (fabs(gnss_measurements[curr_gnss].GPSTime - global_gps_time) > fabs(gnss_measurements[curr_gnss + 1].GPSTime - global_gps_time))
                 continue;
+            // if (fabs(gnss_measurements[curr_gnss].original_GPSTime - tod) > fabs(gnss_measurements[curr_gnss + 1].original_GPSTime - tod))
+            //     continue;
 
             // curr_gnss++;
-            double Heading = -pose.Heading * M_PI / 180.;
+            double Heading = pose.Heading * M_PI / 180.;
             double Pitch = pose.Pitch * M_PI / 180.;
             double Roll = pose.Roll * M_PI / 180.;
 
@@ -220,6 +236,14 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
             V3D gt_translation(pose.Easting, pose.Northing, pose.H_Ell);
 
             postprocessed_gps_pose = Sophus::SE3(gt_first_rot * gt_rotation, R_GNSS_to_MLS * (gt_translation - gt_first_translation));
+        
+
+            //-------------------------------------------
+            //do the same for raw data 
+            postprocessed_gps_pose = als2mls_T * Sophus::SE3(gt_rotation, gt_translation);
+            
+            postprocessed_gps_pose = postprocessed_gps_pose * Sophus::SE3(Eye3d, GNSS_T_wrt_IMU);
+
         }
     }
 }
@@ -341,11 +365,12 @@ std::vector<GNSS_IMU_Measurement> GNSS::parseGNSSFile(const std::string &filenam
             std::istringstream iss(line);
             GNSS_IMU_Measurement measurement;
 
-            iss >> measurement.UTCTime >> measurement.GPSTime >> measurement.Easting >> measurement.Northing >> measurement.H_Ell >> measurement.Heading >> measurement.Pitch >> measurement.Roll; // >> measurement.AccBdyX >> measurement.AccBdyY >> measurement.AccBdyZ >> measurement.AccBiasX >> measurement.AccBiasY >>
+            iss >> measurement.UTCTime >> measurement.GPSTime >> measurement.Easting >> measurement.Northing >>
+             measurement.H_Ell >> measurement.Heading >> measurement.Pitch >> measurement.Roll; // >> measurement.AccBdyX >> measurement.AccBdyY >> measurement.AccBdyZ >> measurement.AccBiasX >> measurement.AccBiasY >>
                                                                                                                                                                                                    // measurement.AccBiasZ >> measurement.GyroDriftX >> measurement.GyroDriftY >> measurement.GyroDriftZ >> measurement.Cx11 >> measurement.Cx22 >> measurement.Cx33
                                                                                                                                                                                                    //>> measurement.CxVHH >> measurement.CxVPP >> measurement.CxVRR;
-            measurement.original_GPSTime = measurement.GPSTime;
-            measurement.GPSTime = measurement.UTCTime + GPS_TO_UTC_OFFSET;
+            measurement.original_GPSTime = measurement.GPSTime;            //gps time of the week
+            measurement.GPSTime = measurement.UTCTime + GPS_TO_UTC_OFFSET; //gps global time
 
             measurements.push_back(measurement);
         }

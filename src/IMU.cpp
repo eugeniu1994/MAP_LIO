@@ -587,10 +587,10 @@ pcl::PointCloud<PointT> IMU_Class::DeSkewOriginalCloud(const sensor_msgs::PointC
 
     V3D pos_imu, vel_imu, angvel_avr, acc_avr, acc_imu;
     M3D R_imu;
-    auto end_R_T = imu_state.rot.matrix().transpose();
+    const auto &end_R_T = imu_state.rot.matrix().transpose();
 
-    const M3D R_L2I = imu_state.offset_R_L_I.matrix();
-    const M3D R_I2L = imu_state.offset_R_L_I.matrix().transpose();
+    const M3D &R_L2I = imu_state.offset_R_L_I.matrix();
+    const M3D &R_I2L = imu_state.offset_R_L_I.matrix().transpose();
 
     // if constexpr to conditionally compile code based on the type of PointT
     if constexpr (std::is_same<PointT, velodyne_ros::Point>::value)
