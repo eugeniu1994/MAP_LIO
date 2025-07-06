@@ -53,9 +53,9 @@ void DataHandler::publish_odometry(const ros::Publisher &pubOdomAftMapped)
     transform.setRotation(q);
     br.sendTransform(tf::StampedTransform(transform, odomAftMapped.header.stamp, "world", "MLS"));
 
-    tf::Transform transform_inv = transform.inverse();
-    static tf::TransformBroadcaster br2;
-    br2.sendTransform(tf::StampedTransform(transform_inv, odomAftMapped.header.stamp, "MLS", "world"));
+    //tf::Transform transform_inv = transform.inverse();
+    //static tf::TransformBroadcaster br2;
+    //br2.sendTransform(tf::StampedTransform(transform_inv, odomAftMapped.header.stamp, "MLS", "world"));
 }
 
 void DataHandler::publish_gnss_odometry(const Sophus::SE3 &gnss_pose)
@@ -72,6 +72,10 @@ void DataHandler::publish_gnss_odometry(const Sophus::SE3 &gnss_pose)
     q = tf::Quaternion(quat_.x(), quat_.y(), quat_.z(), quat_.w());
     transformGPS.setRotation(q);
     br.sendTransform(tf::StampedTransform(transformGPS, ros::Time().fromSec(lidar_end_time), "world", "GPSFix"));
+
+    // tf::Transform transform_inv = transformGPS.inverse();
+    // static tf::TransformBroadcaster br2;
+    // br2.sendTransform(tf::StampedTransform(transform_inv, ros::Time().fromSec(lidar_end_time), "GPSFix", "world"));
 }
 
 void DataHandler::publish_map(const ros::Publisher &pubLaserCloudMap)

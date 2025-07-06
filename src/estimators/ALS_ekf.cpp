@@ -10,7 +10,7 @@
 using namespace gnss;
 using namespace ekf;
 
-FixedSizeQueue<std::string> historyTiles(7);
+FixedSizeQueue<std::string> historyTiles(4);
 
 struct FileDistance
 {
@@ -908,7 +908,16 @@ bool ALS_Handler::Update(const Sophus::SE3 &mls_pose)
             }
         }
 
-        localKdTree_map_als->setInputCloud(als_cloud);
+        if(als_cloud->size() > 5)
+        {
+            localKdTree_map_als->setInputCloud(als_cloud);
+        }
+        else 
+        {
+            std::cerr<<"ALS: there is no ALS data available..."<<std::endl;
+            return false;
+        }
+        
 
         return true; // there was an update
     }

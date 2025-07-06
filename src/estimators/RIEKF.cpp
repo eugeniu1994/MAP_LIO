@@ -71,7 +71,7 @@ void RIEKF::lidar_observation_model(residual_struct &ekfom_data, PointCloudXYZI:
         }
     }
 
-    int effct_feat_num = 0;
+    effct_feat_num = 0;
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -123,7 +123,7 @@ void RIEKF::lidar_observation_model(residual_struct &ekfom_data, PointCloudXYZI:
         if (extrinsic_est)
         {
             V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
-            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+            ekfom_data.h_x.block<1, noise_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
         }
         else
         {
@@ -200,7 +200,7 @@ void RIEKF::observtion_model_parallel(residual_struct &ekfom_data, PointCloudXYZ
                           }
                       });
 
-    int effct_feat_num = 0;
+    effct_feat_num = 0;
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -257,7 +257,7 @@ void RIEKF::observtion_model_parallel(residual_struct &ekfom_data, PointCloudXYZ
                                   // B = lidar_p^ R(L <-- I) * R(I <-- W) * normal_W
                                   V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
                                   // ekfom_data.h_x.block<1, state_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
-                                  ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+                                  ekfom_data.h_x.block<1, noise_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
                               }
                               else
                               {
@@ -459,7 +459,7 @@ void RIEKF::lidar_observation_model(residual_struct &ekfom_data, PointCloudXYZI:
         }
     }
 
-    int effct_feat_num = 0;
+    effct_feat_num = 0;
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -511,7 +511,7 @@ void RIEKF::lidar_observation_model(residual_struct &ekfom_data, PointCloudXYZI:
         if (extrinsic_est)
         {
             V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
-            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+            ekfom_data.h_x.block<1, noise_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
         }
         else
         {
@@ -641,11 +641,11 @@ void RIEKF::lidar_observation_model_tighly_fused(residual_struct &ekfom_data, Po
     corr_normvect->clear();
     // int p_mls = 0, p_als=0;
 
-    #ifdef MP_EN
-    //std::cout<<"run lidar_observation_model_tighly_fused in parallel..."<<std::endl;
-        //omp_set_num_threads(MP_PROC_NUM);
-    #pragma omp parallel for
-    #endif
+#ifdef MP_EN
+// std::cout<<"run lidar_observation_model_tighly_fused in parallel..."<<std::endl;
+// omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
     for (int i = 0; i < feats_down_size; i++)
     {
         PointType &point_body = feats_down_body->points[i];
@@ -735,7 +735,7 @@ void RIEKF::lidar_observation_model_tighly_fused(residual_struct &ekfom_data, Po
 
     // std::cout<<"p_mls:"<<p_mls<<", p_als:"<<p_als<<std::endl;
 
-    int effct_feat_num = 0;
+    effct_feat_num = 0;
     for (int i = 0; i < feats_down_size; i++)
     {
         if (point_selected_surf[i])
@@ -746,7 +746,7 @@ void RIEKF::lidar_observation_model_tighly_fused(residual_struct &ekfom_data, Po
         }
     }
 
-    //std::cout << "effct_feat_num: " << effct_feat_num << "/" << feats_down_size << std::endl;
+    // std::cout << "effct_feat_num: " << effct_feat_num << "/" << feats_down_size << std::endl;
     if (effct_feat_num < 5)
     {
         ekfom_data.valid = false;
@@ -781,7 +781,7 @@ void RIEKF::lidar_observation_model_tighly_fused(residual_struct &ekfom_data, Po
         if (extrinsic_est)
         {
             V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
-            ekfom_data.h_x.block<1, 12>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+            ekfom_data.h_x.block<1, noise_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
         }
         else
         {
@@ -1039,3 +1039,426 @@ void RIEKF::update(const V3D &gnss_position, const V3D &cov_pos_, int maximum_it
         }
     }
 }
+
+//---------------------------------------------------------------------------------------
+
+//#define use_gps_measurements //uncomment this to integrate the gps tighly 
+
+void RIEKF::observation_model_test(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body, const V3D &gps,
+                                   PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                   const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                   std::vector<PointVector> &Nearest_Points, bool extrinsic_est)
+{
+
+    int feats_down_size = feats_down_body->points.size();
+    laserCloudOri->clear();
+    corr_normvect->clear();
+    // int p_mls = 0, p_als=0;
+
+#ifdef MP_EN
+// std::cout<<"run lidar_observation_model_tighly_fused in parallel..."<<std::endl;
+// omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        PointType &point_body = feats_down_body->points[i];
+        PointType point_world;
+
+        V3D p_body(point_body.x, point_body.y, point_body.z);
+        V3D p_global(x_.rot * (x_.offset_R_L_I * p_body + x_.offset_T_L_I) + x_.pos);
+
+        point_world.x = p_global(0);
+        point_world.y = p_global(1);
+        point_world.z = p_global(2);
+        point_world.intensity = point_body.intensity;
+
+        std::vector<int> pointSearchInd(NUM_MATCH_POINTS);
+        std::vector<float> pointSearchSqDis(NUM_MATCH_POINTS);
+
+        auto &points_near = Nearest_Points[i];
+        std::vector<double> point_weights;
+
+        if (ekfom_data.converge)
+        {
+            points_near.clear();
+            point_selected_surf[i] = false;
+
+            // search als neighbours
+            // if (localKdTree_map_als->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+            // {
+            //     if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
+            //     {
+            //         point_selected_surf[i] = true;
+            //         for (int j = 0; j < pointSearchInd.size(); j++)
+            //         {
+            //             points_near.push_back(map_als->points[pointSearchInd[j]]);
+            //             point_weights.push_back(100.);
+            //         }
+            //         // p_als++;
+            //     }
+            // }
+
+            // if (point_selected_surf[i] == false) // not valid neighbours has been found
+            {
+                pointSearchInd.clear();
+                pointSearchSqDis.clear();
+                // search mls neighbours
+                if (localKdTree_map->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+                {
+                    if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
+                    {
+                        point_selected_surf[i] = true;
+
+                        for (int j = 0; j < pointSearchInd.size(); j++)
+                        {
+                            points_near.push_back(map_mls->points[pointSearchInd[j]]);
+                            // points_near.insert(points_near.begin(), map_mls->points[pointSearchInd[j]]);
+                            point_weights.push_back(1.);
+                        }
+                        // p_mls++;
+                    }
+                }
+            }
+            //}
+
+            if (!point_selected_surf[i]) // src point does not have neighbours
+                continue;
+
+            Eigen::Matrix<float, 4, 1> pabcd;
+            point_selected_surf[i] = false;
+
+            if (ekf::esti_plane_pca(pabcd, points_near, .03, point_weights, true))
+            // if (ekf::esti_plane2(pabcd, points_near, .2f)) //.1f
+            {
+                float pd2 = pabcd(0) * point_world.x + pabcd(1) * point_world.y + pabcd(2) * point_world.z + pabcd(3);
+                // float s = 1 - 0.9 * fabs(pd2) / sqrt(p_body.norm());
+                float s = 1 - 0.9 * fabs(pd2) / point_body.intensity;
+
+                if (s > 0.9)
+                {
+                    point_selected_surf[i] = true;
+                    normvec->points[i].x = pabcd(0);
+                    normvec->points[i].y = pabcd(1);
+                    normvec->points[i].z = pabcd(2);
+                    normvec->points[i].intensity = pd2;
+                }
+            }
+        }
+    }
+
+    // std::cout<<"p_mls:"<<p_mls<<", p_als:"<<p_als<<std::endl;
+    effct_feat_num = 0;
+    for (int i = 0; i < feats_down_size; i++)
+    {
+        if (point_selected_surf[i])
+        {
+            laserCloudOri->points[effct_feat_num] = feats_down_body->points[i];
+            corr_normvect->points[effct_feat_num] = normvec->points[i];
+            effct_feat_num++;
+        }
+    }
+
+    // std::cout << "effct_feat_num: " << effct_feat_num << "/" << feats_down_size << std::endl;
+    if (effct_feat_num < 5)
+    {
+        ekfom_data.valid = false;
+        ROS_WARN("No Effective Points! cannot find good planes \n");
+        std::cout << "effct_feat_num:" << effct_feat_num << " cannot find good planes" << std::endl;
+        throw std::runtime_error("Stop here - the system will collapes, no good planes found");
+        return;
+    }
+
+// Calculation of Jacobian matrix H and residual vector
+#ifdef use_gps_measurements
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num + gps_dim, used_state_size); // (m+3) * n  =  m+3 x 24
+    ekfom_data.innovation.resize(effct_feat_num + gps_dim);                            // z_hat
+#else
+    ekfom_data.h_x = Eigen::MatrixXd::Zero(effct_feat_num, used_state_size); // m * 24  =  m x 24   but can be smaller
+    ekfom_data.innovation.resize(effct_feat_num);                            // z_hat
+#endif
+
+#ifdef MP_EN
+    // omp_set_num_threads(MP_PROC_NUM);
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < effct_feat_num; i++)
+    {
+        V3D point_(laserCloudOri->points[i].x, laserCloudOri->points[i].y, laserCloudOri->points[i].z);
+        M3D point_crossmat;
+        point_crossmat << SKEW_SYM_MATRX(point_);
+        V3D point_I_ = x_.offset_R_L_I * point_ + x_.offset_T_L_I;
+        M3D point_I_crossmat;
+        point_I_crossmat << SKEW_SYM_MATRX(point_I_);
+
+        const PointType &norm_p = corr_normvect->points[i];
+        V3D norm_vec(norm_p.x, norm_p.y, norm_p.z);
+
+        V3D C(x_.rot.matrix().transpose() * norm_vec);
+        V3D A(point_I_crossmat * C);
+        if (extrinsic_est)
+        {
+            V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
+            ekfom_data.h_x.block<1, noise_size>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A), VEC_FROM_ARRAY(B), VEC_FROM_ARRAY(C);
+        }
+        else
+        {
+            // d_t, d_R
+            ekfom_data.h_x.block<1, 6>(i, 0) << norm_p.x, norm_p.y, norm_p.z, VEC_FROM_ARRAY(A); //, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
+        }
+
+        ekfom_data.innovation(i) = -norm_p.intensity;
+    }
+
+#ifdef use_gps_measurements
+    // for gps
+    //  Assign to last 3 positions
+    ekfom_data.innovation.tail<3>() = gps - x_.pos; // y - h(x)  where y is measurement h(x) is observation model gps_innovation;
+    // Assign GNSS measurement Jacobian to the bottom block of h_x
+    ekfom_data.h_x.block<gps_dim, gps_dim>(effct_feat_num, 0) = Eye3d; // d e dT is identity put it directly here
+/// ekfom_data.h_x.block<gps_dim, state_size>(effct_feat_num, 0) = H_gnss;// / .05;  //gps_dim x state_size
+#endif
+}
+
+using namespace std::chrono;
+
+bool RIEKF::update_tighly_fused_test(double R, PointCloudXYZI::Ptr &feats_down_body,
+                                     PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                     const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                     std::vector<PointVector> &Nearest_Points,
+                                     const V3D &gps, double R_gps_cov,
+                                     int maximum_iter, bool extrinsic_est)
+{
+    normvec->resize(int(feats_down_body->points.size()));
+
+    std::cout << "update_tighly_fused_test..." << std::endl;
+
+    residual_struct status;
+    status.valid = true;
+    status.converge = true;
+    int t = 0;
+
+    state x_propagated = x_;
+    vectorized_state dx_new = vectorized_state::Zero(); // 24X1
+
+    std::cout << "map_mls:" << map_mls->size() << ", map_als:" << map_als->size() << std::endl;
+    if (map_mls->points.size() < 5)
+    {
+        std::cerr << "Error: map_mls Point cloud is empty! : " << map_mls->points.size() << std::endl;
+        status.valid = false;
+        status.converge = false;
+        return false;
+    }
+
+    localKdTree_map->setInputCloud(map_mls);
+    // localKdTree_map_als->setInputCloud(map_als);
+
+    // #define debug_speed
+
+#ifdef debug_speed
+    // Initialize running averages
+    double avg_time_inverse = 0;
+    double avg_time_ldlt = 0;
+    double avg_time_llt = 0;
+
+#endif
+
+    double inv_R = 1.0 / R;
+    double inv_R_gps = 1.0 / R_gps_cov;
+
+    
+
+    for (int i = -1; i < maximum_iter; i++) // maximum_iter
+    {
+        status.valid = true;
+        // z = y - h(x)
+        // lidar_observation_model_tighly_fused(status, feats_down_body, map_mls, map_als, localKdTree_map_als, Nearest_Points, extrinsic_est);
+
+        observation_model_test(status, feats_down_body, gps, map_mls, map_als, localKdTree_map_als, Nearest_Points, extrinsic_est);
+
+        if (!status.valid)
+        {
+            break;
+        }
+
+        vectorized_state dx;
+        dx_new = boxminus(x_, x_propagated); // x^k - x^
+
+        const auto &H = status.h_x;                          // (m x n) Jacobian    m x 24
+        Eigen::Matrix<double, state_size, Eigen::Dynamic> K; // n x m = 24 x m
+
+        Eigen::MatrixXd Ht_Rinv = H.transpose();                       //   ( n x m)
+        Ht_Rinv.block(0, 0, used_state_size, effct_feat_num) *= inv_R; //(start_row, start_col, num_rows, num_cols) - for the transposed version  runtime, a bit slow
+#ifdef use_gps_measurements
+        Ht_Rinv.block(0, effct_feat_num, used_state_size, gps_dim) *= inv_R_gps; // uncomment this to use GPS
+#endif
+
+        cov HTH = cov::Zero(); // (n x n)
+        HTH.block<used_state_size, used_state_size>(0, 0) = Ht_Rinv * H;
+        auto K_front = (HTH + P_.inverse()).inverse();
+        K = K_front.block<state_size, used_state_size>(0, 0) * Ht_Rinv; // direct inversion fastest for small matrices (n < 50)
+
+        cov KH = cov::Zero();                                // (n x m) * (m x n) -> (n x n)
+        KH.block<state_size, used_state_size>(0, 0) = K * H; // KH = K * H;
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
+
+        {
+#ifdef debug_speed
+
+            // Avoid HTH.inverse() by using another LDLT decomposition
+            // Slower than direct inverse for small matrices, faster for large matrices
+            // K = HTH.ldlt().solve(Ht_Rinv);
+            // K = HTH.selfadjointView<Eigen::Upper>().ldlt().solve(Ht_Rinv);
+            // K = HTH.llt().solve(Ht_Rinv);
+
+            // Method 2: LDLT decomposition
+            auto start2 = high_resolution_clock::now();
+            // Eigen::MatrixXd K_ldlt = HTH.ldlt().solve(Ht_Rinv);
+            Eigen::MatrixXd K_ldlt = HTH.selfadjointView<Eigen::Upper>().ldlt().solve(Ht_Rinv);
+            auto stop2 = high_resolution_clock::now();
+            double time2 = duration_cast<microseconds>(stop2 - start2).count();
+
+            // Method 1: Direct inverse
+            auto start1 = high_resolution_clock::now();
+            Eigen::MatrixXd K_inverse = HTH.inverse() * Ht_Rinv;
+            auto stop1 = high_resolution_clock::now();
+            double time1 = duration_cast<microseconds>(stop1 - start1).count();
+
+            // Method 3: LLT decomposition
+            auto start3 = high_resolution_clock::now();
+            Eigen::MatrixXd K_llt = HTH.llt().solve(Ht_Rinv);
+            auto stop3 = high_resolution_clock::now();
+            double time3 = duration_cast<microseconds>(stop3 - start3).count();
+
+            // Verify results are numerically equivalent
+            double diff = (K_inverse - K_ldlt).norm();
+
+            // Display results
+            std::cout << "Kalman Gain Computation Benchmark (n=" << 24 << ", m=" << m << ")\n";
+            std::cout << "----------------------------------------\n";
+            std::cout << "Numerical difference:      " << diff << " (should be small)\n";
+
+            std::cout << "Symmetry error: " << (HTH - HTH.transpose()).norm() << "\n";
+
+            count++;
+            avg_time_inverse += (time1 - avg_time_inverse) / count;
+            avg_time_ldlt += (time2 - avg_time_ldlt) / count;
+            avg_time_llt += (time3 - avg_time_llt) / count;
+            std::cout << "Average time (direct inverse): " << avg_time_inverse << " μs\n";
+            std::cout << "Average time (LDLT): " << avg_time_ldlt << " μs\n";
+            std::cout << "Average time (LLT): " << avg_time_llt << " μs\n";
+
+            std::cout << "Ratio (inverse/LDLT): " << avg_time_inverse / avg_time_ldlt << "\n";
+
+            Eigen::LDLT<Eigen::MatrixXd> ldlt(HTH);
+            if (ldlt.info() != Eigen::Success || !ldlt.isPositive())
+            {
+                std::cout << "LDLT decomposition failed or not positive definite.\n";
+                throw std::runtime_error("Stop");
+            }
+#endif
+        }
+
+        x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
+
+        status.converge = true;
+        for (int j = 0; j < state_size; j++)
+        {
+            if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_) // If dx_>ESTIMATION_THRESHOLD_ no convergence is considered
+            {
+                status.converge = false;
+                break;
+            }
+        }
+
+        if (status.converge)
+            t++;
+
+        if (!t && i == maximum_iter - 2)
+        {
+            status.converge = true;
+        }
+
+        if (t > 1 || i == maximum_iter - 1)
+        {
+            // Update covariance (Joseph form is more numerically stable)
+            P_ = (cov::Identity() - KH) * P_;
+            break;
+        }
+
+        
+    }
+
+    return status.valid;
+}
+
+////HTH = (HTH + HTH.transpose()) / 2.0;  // Enforce symmetry
+// int m = 0;
+//  Eigen::MatrixXd stacked_H(m + 3, state_size);
+//  stacked_H << H;//, H_gnss;
+//  //stacked_H << H_gnss;
+//  Eigen::MatrixXd s_stacked_H(m + 3, state_size);
+//  s_stacked_H << H / R ;//, H_gnss / R_gps_cov;  //I CAN USE IT THE ACTUAL R matrix format for gps
+//  //s_stacked_H << H / R, H_gnss / R_gps_cov;
+//  // s_stacked_H << H_gnss / R_gps_cov;
+//  Eigen::VectorXd stacked_innovation(m + 3);
+//  stacked_innovation << status.innovation;//, gps_innovation;
+//  // stacked_innovation << gps_innovation;
+//  Eigen::MatrixXd Ht_Rinv = s_stacked_H.transpose();
+//  Eigen::MatrixXd HTH = Ht_Rinv * stacked_H + P_.inverse();
+//  Eigen::Matrix<double, state_size, Eigen::Dynamic> K; // n x m
+//  // K.resize(24, m + 3);                                 // m is runtime-known
+//  // direct inversion fastest for small matrices (n < 50)
+//  K = HTH.inverse() * Ht_Rinv;
+//  cov KH = cov::Zero(); // (n x m) * (m x n) -> (n x n)
+//  KH = K * stacked_H;
+//  vectorized_state dx_ = K * stacked_innovation + (KH - cov::Identity()) * dx_new;
+//{
+////Standard EKF Update
+// auto R_ = R * Eigen::MatrixXd::Identity(m, m);                 // (m x m) measurement covariance
+
+// //very fucking slow ----------------------------------------------------------
+// //Eigen::MatrixXd S = H * P_ * H.transpose() + R_;        // (m x m)
+// //Eigen::MatrixXd K = P_ * H.transpose() * S.inverse();   // (n x m)
+
+// //try the ldlt decomposition - still slow ------------------------------------
+// Eigen::MatrixXd PHt = P_ * H.transpose();  // Compute once, reuse
+// Eigen::MatrixXd S = H * PHt + R_;
+// Eigen::MatrixXd K = S.ldlt().solve(PHt.transpose()).transpose();
+//-------------------------------------------------------------------------------
+
+// auto Rinv = (R * Eigen::MatrixXd::Identity(m,m)).inverse();
+// auto Rinv = (1.0 / R) * Eigen::MatrixXd::Identity(m,m);
+// }
+
+// const auto &H = status.h_x;       // (m x n) Jacobian    m x 24
+//         //int m = status.innovation.size(); // m
+//         int m = 0;
+
+//         Eigen::MatrixXd stacked_H(m + 3, state_size);
+//         stacked_H << H;//, H_gnss;
+//         //stacked_H << H_gnss;
+
+//         Eigen::MatrixXd s_stacked_H(m + 3, state_size);
+//         s_stacked_H << H / R ;//, H_gnss / R_gps_cov;  //I CAN USE IT THE ACTUAL R matrix format for gps
+//         //s_stacked_H << H / R, H_gnss / R_gps_cov;
+//         // s_stacked_H << H_gnss / R_gps_cov;
+
+//         Eigen::VectorXd stacked_innovation(m + 3);
+//         stacked_innovation << status.innovation;//, gps_innovation;
+//         // stacked_innovation << gps_innovation;
+
+//         Eigen::MatrixXd Ht_Rinv = s_stacked_H.transpose();
+
+//         Eigen::MatrixXd HTH = Ht_Rinv * stacked_H + P_.inverse();
+
+//         Eigen::Matrix<double, state_size, Eigen::Dynamic> K; // n x m
+//         // K.resize(24, m + 3);                                 // m is runtime-known
+
+//         // direct inversion fastest for small matrices (n < 50)
+//         K = HTH.inverse() * Ht_Rinv;
+
+//         cov KH = cov::Zero(); // (n x m) * (m x n) -> (n x n)
+//         KH = K * stacked_H;
+
+//         vectorized_state dx_ = K * stacked_innovation + (KH - cov::Identity()) * dx_new;

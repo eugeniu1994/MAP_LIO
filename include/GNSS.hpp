@@ -54,7 +54,7 @@ public:
 
     GeographicLib::LocalCartesian geo_converter;
 
-    Sophus::SE3 gps_pose, postprocessed_gps_pose, first_gps_pose;
+    Sophus::SE3 gps_pose, postprocessed_gps_pose, first_gps_pose, als2mls_T;
     M3D R_GNSS_to_MLS, R_compas; 
     V3D carthesian,GNSS_T_wrt_IMU;
     bool GNSS_extrinsic_init = false, use_postprocessed_gnss = false, gps_init_origin, first_gpsFix_received_ = false;
@@ -80,6 +80,7 @@ public:
         gps_cov = V3D(1,1,1);
         gps_pose = Sophus::SE3();
         postprocessed_gps_pose = Sophus::SE3();
+        als2mls_T = Sophus::SE3();
     };
     
     ~GNSS() {};

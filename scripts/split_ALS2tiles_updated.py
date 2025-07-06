@@ -6,14 +6,15 @@ from collections import defaultdict
 
 tile_size = 50  # Size of each tile in meters
 
-output_directory = '/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped' 
+output_directory = '/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped2' 
 input_laz_directory = '/media/eugeniu/T7/Evo_drone24_from_Jesse' 
 
 # Area of interest as a square
-east_min = 397925.961
-east_max = 399682.961
-north_min = 6785448.985
-north_max = 6786228.985
+# east_min, east_max = 397925.961 , 399682.961
+# north_min, north_max = 6785448.985, 6786228.985
+
+east_min, east_max = 398108., 400183
+north_min, north_max = 6785510, 6786381
 
 def get_tile_key(x, y, tile_size, x_min, y_min):
     tile_x = int((x - x_min) // tile_size)
