@@ -81,7 +81,7 @@ class TrajectoryReader(object):
 
         self.traj_gt, self.traj_model = sync.associate_trajectories(traj_gt, traj_model, max_diff)
 
-        self.traj_model.align(self.traj_gt, correct_scale=False, correct_only_scale=False, n=-1) 
+        #self.traj_model.align(self.traj_gt, correct_scale=False, correct_only_scale=False, n=-1) 
         #self.traj_model.align_origin(traj_ref=self.traj_gt)
         
         print("GT:", traj_gt.positions_xyz.shape)
@@ -366,9 +366,9 @@ class TrajectoryReader(object):
         return avg_z/number, all_z_diffs_concatenated
 
 def overlap_error(est_xyz, label, segment_passes,  plot = False):    
-    if label in ['LI', 'LI-VUX','LI-test']:
+    if label in ['LI', 'LI-VUX']:
         return 0, [0]
-     
+    
     #segment_passes = []  # Stores tuples: (forward_pass_idxs, backward_pass_idxs)
 
     num_plots = len(segment_passes)
@@ -446,9 +446,10 @@ methods = {
     'LI-VUX-sparse-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
 }
 
+#-robust comes from plane uncertanties 
 
 methods = {
-    # 'GT' : '/home/eugeniu/z_tighly_coupled/ref',
+    'GT' : '/home/eugeniu/z_tighly_coupled/ref',
 
     'LI'                    : '/home/eugeniu/z_tighly_coupled/1',
     'LI-VUX'                : '/home/eugeniu/z_tighly_coupled/2',
@@ -457,13 +458,15 @@ methods = {
     # 'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
     # 'LI-VUX-(ppk)GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
 
-    # 'LI-VUX-ALS(l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
-    # 'LI-VUX-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/4',
+    'LI-VUX-ALS(l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
+    'LI-VUX-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/4',
     
     # 'LI-VUX-sparse-ALS(l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
     # 'LI-VUX-sparse-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
 
-    'LI-test'                    : '/home/eugeniu/z_tighly_coupled/test',
+    'LI-robust'                    : '/home/eugeniu/z_tighly_coupled/1.1',
+    'LI-VUX-robust'                    : '/home/eugeniu/z_tighly_coupled/2.1',
+    'LI-VUX-ALS(t-coupled)-robust' : '/home/eugeniu/z_tighly_coupled/4.1',
 }
 
 colors = ['tab:brown', 'tab:red', 'tab:blue', 'tab:green', 'tab:purple', 'tab:orange', 'cyan', 'lime','orange','black']
@@ -665,7 +668,6 @@ data_z_overlap2[label] = all_z_diffs
 
 data_z_overlap2.pop('LI')
 data_z_overlap2.pop('LI-VUX')
-data_z_overlap2.pop('LI-test')
 
 plot_box(data_z_overlap2, 'Overlap z difference (m)')
 

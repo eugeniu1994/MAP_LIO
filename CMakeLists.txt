@@ -5,7 +5,7 @@ SET(CMAKE_BUILD_TYPE "Release") #Release
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread ") #
 
-#set( CMAKE_CXX_FLAGS " -O3 " ) #this will make the execution fast and compilation slow  
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -DNDEBUG")  #this will make the execution fast and compilation slow 
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -60,7 +60,7 @@ message(STATUS "TBB version: ${TBB_VERSION}")
 
 
 find_package(GTSAM REQUIRED)     #if GTSAM is used only
-#find_package(OpenCV 3 REQUIRED)  #only for range image 
+find_package(OpenCV REQUIRED)  #only for range image 
 find_package(PythonLibs 3.6 REQUIRED)
 #find_path(MATPLOTLIB_CPP_INCLUDE_DIRS "matplotlibcpp.h") #for plots
 find_path(MATPLOTLIB_CPP_INCLUDE_DIRS 
@@ -99,7 +99,7 @@ include_directories(
   ${MATPLOTLIB_CPP_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
   ${GTSAM_INCLUDE_DIR}
-  #${OpenCV_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
   ${TBB_INCLUDE_DIRS}
   ${LIBLAS_INCLUDE_DIRS}
   include
@@ -109,7 +109,7 @@ include_directories(
 
 link_directories(
   ${GTSAM_LIBRARY_DIRS}
-  #${OpenCV_LIBRARY_DIRS}
+  ${OpenCV_LIBRARY_DIRS}
   ${LIBLAS_LIBRARY_DIRS}
 
   ${CERES_LIBRARY_DIRS}
@@ -222,4 +222,4 @@ set(SOURCE_FILES_VUX ${MAIN_SOURCE_FILES3} src2/DataHandler_vux.cpp src2/clean_D
 #test tightly coupled
 set(SOURCE_FILES_TEST ${MAIN_SOURCE_FILES3} src3/DataHandler_vux.cpp src2/clean_DataHandler_vux.cpp src2/VuxReader.cpp)
 add_executable(test_fusion src2/main.cpp ${SOURCE_FILES_TEST})
-target_link_libraries(test_fusion ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES})
+target_link_libraries(test_fusion ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ${OpenCV_LIBRARIES})

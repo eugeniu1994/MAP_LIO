@@ -13,6 +13,8 @@
 #include "ALS.hpp"
 #endif
 
+#include <chrono>
+
 #include "Vux_reader.hpp"
 #include <GeographicLib/UTMUPS.hpp>
 #include <liblas/liblas.hpp>
@@ -418,6 +420,7 @@ bool readSE3FromFile(const std::string &filename, Sophus::SE3 &transform_out)
 #include "clean_registration3.hpp"
 
 // using namespace gnss_MLS_fusion;
+//#include "rangeProjection.hpp"
 
 void DataHandler::Subscribe()
 {
@@ -470,6 +473,9 @@ void DataHandler::Subscribe()
 
     ros::Publisher cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("cloud", 1);
     ros::Publisher normals_pub = nh.advertise<visualization_msgs::Marker>("normals", 1);
+
+    ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("tgt_covariance_markers", 1);
+    ros::Publisher marker_pub2 = nh.advertise<visualization_msgs::MarkerArray>("src_covariance_markers", 1);
 
     std::ifstream file(bag_file);
     if (!file)
@@ -589,9 +595,11 @@ void DataHandler::Subscribe()
     double avg_time_update = 0;
     int count = 0;
 
-//#define integrate_vux
+#define integrate_vux
 #define integrate_ppk_gnss
 
+    using namespace std::chrono;
+    
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -663,6 +671,7 @@ void DataHandler::Subscribe()
                 // undistort and provide initial guess
                 imu_obj->Process(Measures, estimator_, feats_undistort);
 
+            
                 double t_IMU_process = omp_get_wtime();
 
                 // publish_frame_debug(pubLaserCloudDebug, feats_undistort);
@@ -728,6 +737,35 @@ void DataHandler::Subscribe()
                     {
                         estimator_.update(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en);
                         
+                        // Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
+                        // const V3D &gnss_in_mls = gnss_pose.translation();
+                        // //just test for now 
+                        // if (!estimator_.update_tighly_fused_test(LASER_POINT_COV, feats_down_body, 
+                        //     laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points,
+                        //     gnss_in_mls, 0.0001, //GNSS_VAR * GNSS_VAR,
+                        //     NUM_MAX_ITERATIONS, extrinsic_est_en))
+                        // {
+                        //     std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
+                        // }
+
+                        //Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> Neighbours;
+                        //Neighbours.resize(N_SCAN, Horizon_SCAN);
+                        //projectToRangeImage(feats_undistort, Neighbours);
+                        // if (!estimator_.update_tighly_fused_test2(LASER_POINT_COV, feats_down_body, feats_undistort, Neighbours,
+                        //     laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points,
+                        //     gnss_in_mls, 0.0001, //GNSS_VAR * GNSS_VAR,
+                        //     NUM_MAX_ITERATIONS, extrinsic_est_en))
+                        // {
+                        //     std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
+                        // }
+
+                        // publishCovarianceEllipsoids(corr_laserCloudTgt, corr_tgt_covs,
+                        //          marker_pub, "world", 2, 5, 1., .2);
+
+                        // publishCovarianceEllipsoids(laserCloudSrc, src_covs,
+                        //          marker_pub2, "world", 2, 5, .2, 1.);
+
+
                         if (gnss_obj->GNSS_extrinsic_init)
                         {
                             *featsFromMap = *laserCloudSurfMap;
@@ -797,7 +835,6 @@ void DataHandler::Subscribe()
                         {
                             std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
                         }
-
 
 
                         auto stop1 = high_resolution_clock::now();
@@ -970,7 +1007,7 @@ void DataHandler::Subscribe()
                     // if (point_cloud_pub.getNumSubscribers() != 0)
                     {
                         pcl::PointCloud<VUX_PointType>::Ptr all_lines(new pcl::PointCloud<VUX_PointType>);
-
+                        bool subscribers = point_cloud_pub.getNumSubscribers() != 0;
                         auto delta_predicted = (prev_mls.inverse() * curr_mls).log();
                         double scan_duration = curr_mls_time - prev_mls_time; // e.g., 0.1s
                         double tod_beg_scan = time_of_day_sec - scan_duration;
@@ -992,8 +1029,8 @@ void DataHandler::Subscribe()
                             Sophus::SE3 vux_pose = interpolated_pose_mls * vux2mls_extrinsics;
 
                             TransformPoints(vux_pose, downsampled_line);
-
-                            *all_lines += *downsampled_line;
+                            if(subscribers)
+                                *all_lines += *downsampled_line;
 
                             auto &pts = downsampled_line->points;
                             all_lines_added_for_mapping->points.reserve(all_lines_added_for_mapping->points.size() + pts.size());
@@ -1006,7 +1043,7 @@ void DataHandler::Subscribe()
 
                         *laserCloudSurfMap += *all_lines_added_for_mapping;
 
-                        if (point_cloud_pub.getNumSubscribers() != 0)
+                        if (subscribers)
                             publishPointCloud_vux(all_lines, point_cloud_pub);
                     }
                 }
@@ -1500,4 +1537,5 @@ void DataHandler::Subscribe()
         }
     }
     bag.close();
+    //cv::destroyAllWindows();
 }

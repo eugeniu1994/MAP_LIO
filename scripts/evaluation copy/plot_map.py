@@ -7,6 +7,7 @@ import numpy as np
 import os
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import matplotlib.image as mpimg
+from scipy.ndimage import rotate
 
 font = 16
 
@@ -155,13 +156,18 @@ start = traj_points_ENU[0]
 print('start:',start)
 end = traj_points_ENU[len(traj_points_ENU) - 1]
 # Create a GeoDataFrame with the EVO location point in the ETRS-TM35FIN projection
+
+middle_index = len(traj_points_ENU) // 2
+middle_point = traj_points_ENU[middle_index]
+
 evo_point = gpd.GeoDataFrame(
     #{'geometry': [Point(398252.412, 6786205.990)]},
-    {'geometry': [Point(start[0],start[1])]},
+    #{'geometry': [Point(start[0],start[1])]},
+    {'geometry': [Point(middle_point[0],middle_point[1])]},
     crs=etrs_tm35fin
 )
 
-evo_area = evo_point.buffer(2000)  # 2000 meters = 2 km
+evo_area = evo_point.buffer(500)  # 2000 meters = 2 km
 
 
 # Define 2D points (East and North) in ETRS-TM35FIN (EPSG:3067)
@@ -175,7 +181,7 @@ trajectory_points_etrstm35fin = np.array([
     [398800.0, 6786205.990], # End point (close to the EVO point)
 ])
 
-trajectory_points_etrstm35fin = traj_points_ENU[::15,:2]
+trajectory_points_etrstm35fin = traj_points_ENU[::30,:2]
 
 # Create GeoDataFrame from the points (ETRS-TM35FIN)
 trajectory_gdf = gpd.GeoDataFrame(
@@ -220,26 +226,32 @@ mls_trees_gdf_mercator = mls_trees_gdf.to_crs(epsg=epsg)
 fig, ax = plt.subplots(figsize=(20, 20))
 
 # Plot the area boundary
-evo_area.boundary.plot(ax=ax, color='red')
+evo_area.boundary.plot(ax=ax, color='gray', linewidth=0)
 # Plot the trajectory points in Web Mercator (projected for plotting)
-trajectory_gdf_mercator.plot(ax=ax, color='red', marker='o', markersize=15, label='Trajectory')
+trajectory_gdf_mercator.plot(ax=ax, color='red', marker='o', markersize=10, label='Trajectory')
 
 
-mls_trees_gdf_mercator.plot(ax=ax, color='tab:orange', marker='o', markersize=40, label='MLS trees')
-als_trees_gdf_mercator.plot(ax=ax,  marker='*', markersize=30, label='Reference ALS trees')
+#mls_trees_gdf_mercator.plot(ax=ax, color='tab:orange', marker='o', markersize=40, label='MLS trees')
+#als_trees_gdf_mercator.plot(ax=ax,  marker='*', markersize=30, label='Reference ALS trees')
 
 
 
 #cloud_gdf_mercator.plot(ax=ax, c=intensity, cmap='rainbow', markersize=.5, label='MLS')
 #print('done plot')
 
-# Add the satellite basemap using ESRI's satellite imagery
-#ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery)
 
 ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, crs=etrs_tm35fin)
+#ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik, crs=etrs_tm35fin)
 
-#ctx.add_basemap(ax, source="http://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}")
-#ctx.add_basemap(ax, source=ctx.providers.Esri.WorldImagery, zoom=30)  # Adjust zoom level for higher detail
+# Define custom tile provider
+from xyzservices import TileProvider
+google_sat = TileProvider(
+    name="Google Satellite",
+    url="http://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    attribution="Google",
+)
+# ctx.add_basemap(ax, source=google_sat, crs=trajectory_gdf.crs)
+
 
 
 # Set axis limits based on the area
@@ -255,15 +267,15 @@ ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.0f}'.format(x)))
 ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}'.format(y)))
 
 image = mpimg.imread('/home/eugeniu/x_vux_mls_als_paper/car_small.png')  # Use a small PNG file
-from scipy.ndimage import rotate
-image = rotate(image, angle=15, reshape=True)
+
+image = rotate(image, angle=120, reshape=True)
 
 # Create the image box
-imagebox = OffsetImage(image, zoom=.2)  # Adjust zoom to make the image smaller or larger
+imagebox = OffsetImage(image, zoom=.15)  # Adjust zoom to make the image smaller or larger
 
 
 # Specify the data coordinates where to place the image
-xy = (end[0], end[1])
+xy = (end[0]-5, end[1])
 
 ab = AnnotationBbox(imagebox, xy,
                     xycoords='data',
@@ -272,5 +284,81 @@ ab = AnnotationBbox(imagebox, xy,
 
 ax.add_artist(ab)
 
+
+plt.draw()
+
+def plot_trajectory(xyz_enu, etrs_tm35fin = 'EPSG:3067'):
+    start = xyz_enu[0]
+    print('start:',start)
+    end = xyz_enu[len(xyz_enu) - 1]
+    # Create a GeoDataFrame with the EVO location point in the ETRS-TM35FIN projection
+
+    middle_index = len(xyz_enu) // 2
+    middle_point = xyz_enu[middle_index]
+
+    evo_point = gpd.GeoDataFrame(
+        #{'geometry': [Point(start[0],start[1])]},
+        {'geometry': [Point(middle_point[0],middle_point[1])]},
+        crs=etrs_tm35fin
+    )
+
+    evo_area = evo_point.buffer(500)  # 500 meters 
+
+    trajectory_points_etrstm35fin = traj_points_ENU[::30,:2]
+
+    # Create GeoDataFrame from the points (ETRS-TM35FIN)
+    trajectory_gdf = gpd.GeoDataFrame(
+        {'geometry': [Point(x, y) for x, y in trajectory_points_etrstm35fin]},
+        crs=etrs_tm35fin
+    )
+
+    # Reproject the trajectory back to Web Mercator (EPSG:3857) for plotting with the basemap
+    trajectory_gdf_mercator = trajectory_gdf.to_crs(epsg=epsg)  
+
+    fig, axis = plt.subplots(figsize=(20, 20))
+
+    # Plot the area boundary
+    evo_area.boundary.plot(ax=axis, color='gray', linewidth=0)
+    # Plot the trajectory points in Web Mercator (projected for plotting)
+    trajectory_gdf_mercator.plot(ax=axis, color='red', marker='o', markersize=10, label='Trajectory')
+
+    #ctx.add_basemap(axaxis, source=ctx.providers.Esri.WorldImagery, crs=etrs_tm35fin)
+    #ctx.add_basemap(axis, source=ctx.providers.OpenStreetMap.Mapnik, crs=etrs_tm35fin)
+
+    # Define custom tile provider
+    from xyzservices import TileProvider
+    google_sat = TileProvider(
+        name="Google Satellite",
+        url="http://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attribution="Google",
+    )
+    ctx.add_basemap(axis, source=google_sat, crs=trajectory_gdf.crs)
+
+    axis.set_xlabel('East (m)')
+    axis.set_ylabel('North (m)')
+    plt.legend()
+
+    # Set the formatter for x and y axis to avoid scientific notation
+    axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.0f}'.format(x)))
+    axis.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}'.format(y)))
+
+    # Specify the data coordinates where to place the image
+    xy = (end[0]-5, end[1])
+
+    image = mpimg.imread('/home/eugeniu/x_vux_mls_als_paper/car_small.png')  # Use a small PNG file
+    image = rotate(image, angle=120, reshape=True)
+    imagebox = OffsetImage(image, zoom=.15)  # Adjust zoom to make the image smaller or larger
+
+    ab = AnnotationBbox(imagebox, xy,
+                        xycoords='data',
+                        frameon=False,
+                        zorder=10)  # No frame around image
+
+    axis.add_artist(ab)
+
+    plt.draw()
+
+
+plot_trajectory(xyz_enu = traj_points_ENU, etrs_tm35fin = 'EPSG:3067')
 
 plt.show()

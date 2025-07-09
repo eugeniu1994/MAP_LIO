@@ -431,6 +431,8 @@ void DataHandler::msg2cloud(const sensor_msgs::PointCloud2::ConstPtr &msg, Point
                 pcl_out->points[index].intensity = sqrt(sqrt(range));             // Save the range in the intensity field
                 pcl_out->points[index].time = point.timestamp - first_point_time; // Time relative to first point
 
+                pcl_out->points[index].ring = point.ring;
+                
                 index++;
             }
             pcl_out->resize(index); // Resize to the actual number of points added

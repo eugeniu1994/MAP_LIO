@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <omp.h>
 
+#include <visualization_msgs/MarkerArray.h>
+
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 #include <gtsam/nonlinear/Values.h>
@@ -862,6 +864,60 @@ void debug_CloudWithNormals2(pcl::PointCloud<pcl::PointXYZINormal>::Ptr &cloud_w
     {
         normals_pub.publish(normals_marker);
     }
+}
+
+
+void publishCovarianceEllipsoids(const std::vector<V3D>& means, const std::vector<M3D>& covs,
+                                 ros::Publisher& marker_pub,
+                                 const std::string& frame_id = "world", double scale = 2.0, int every_k = 10, double r = 1.0, double g = .2) {
+    visualization_msgs::MarkerArray marker_array;
+    int id = 0;
+    
+    for(int i = 1; i<means.size();i++)
+    {
+        if(i % every_k != 0)
+           continue;
+
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(covs[i]);
+        Eigen::Vector3d eigenvalues = solver.eigenvalues();      // λ1, λ2, λ3
+        Eigen::Matrix3d eigenvectors = solver.eigenvectors();    // Columns are the axes
+
+        // Convert eigenvectors to quaternion
+        Eigen::Quaterniond quat(eigenvectors);
+
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = frame_id;
+        marker.header.stamp = ros::Time::now();
+        marker.ns = "cov_ellipsoids";
+        marker.id = id++;
+        marker.type = visualization_msgs::Marker::SPHERE;
+        marker.action = visualization_msgs::Marker::ADD;
+
+        marker.pose.position.x = means[i].x();
+        marker.pose.position.y = means[i].y();
+        marker.pose.position.z = means[i].z();
+
+        marker.pose.orientation.x = quat.x();
+        marker.pose.orientation.y = quat.y();
+        marker.pose.orientation.z = quat.z();
+        marker.pose.orientation.w = quat.w();
+
+        // Scale the sphere using the square root of the eigenvalues (std dev)
+        marker.scale.x = scale * std::sqrt(eigenvalues(0));
+        marker.scale.y = scale * std::sqrt(eigenvalues(1));
+        marker.scale.z = scale * std::sqrt(eigenvalues(2));
+
+        marker.color.r = r;
+        marker.color.g = g;
+        marker.color.b = 0.2;
+        marker.color.a = 0.6;
+
+        marker.lifetime = ros::Duration(0); // forever
+
+        marker_array.markers.push_back(marker);
+    }
+
+    marker_pub.publish(marker_array);
 }
 
 using namespace gtsam;

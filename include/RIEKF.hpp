@@ -78,6 +78,17 @@ extern PointCloudXYZI::Ptr normvec;
 extern PointCloudXYZI::Ptr laserCloudOri;
 extern PointCloudXYZI::Ptr corr_normvect;
 extern std::vector<bool> point_selected_surf;
+extern std::vector<double> normvec_var;
+extern std::vector<double> corr_normvec_var;
+
+extern std::vector<M3D> tgt_covs;
+extern std::vector<M3D> corr_tgt_covs;
+
+extern std::vector<V3D> laserCloudTgt;
+extern std::vector<V3D> corr_laserCloudTgt;
+
+extern std::vector<V3D> laserCloudSrc;
+extern std::vector<M3D> src_covs;
 
 struct residual_struct
 {
@@ -85,26 +96,39 @@ struct residual_struct
     bool converge;                                             // When iterating, whether it has converged
     Eigen::Matrix<double, Eigen::Dynamic, 1> innovation;       // residual
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> h_x; // Jacobian matrix H
+
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> H_T_R_inv;
 };
 
 const int gps_dim = 3;
-
+const int kernel_row = 1, kernel_col = 1;// 10; // pretty fast and accurate
 
 class RIEKF : public Estimator
 {
 public:
+    std::vector<std::pair<int, int>> density_kernel;
     int effct_feat_num;
     pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map;
-    //pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map_als;
+    // pcl::KdTreeFLANN<PointType>::Ptr localKdTree_map_als;
+    pcl::KdTreeFLANN<PointType>::Ptr cloud_tree;
 
-    
     Eigen::Matrix<double, gps_dim, state_size> H_gnss;
-                                                                            // Position part
+    // Position part
 #ifdef ADAPTIVE_KERNEL
     RIEKF()
         : adaptive_threshold(1.0, 0.1, 100.0) // Initialize with constructor initializer list
     {
-
+        for (int i = -kernel_row; i <= kernel_row; i++)
+        { // row
+            for (int j = -kernel_col; j <= kernel_col; j++)
+            {
+                if (j == 0 && i == 0)
+                {
+                    continue;
+                }
+                density_kernel.push_back(std::make_pair(i, j));
+            }
+        }
 #ifdef _OPENMP
 
         int total_threads = omp_get_num_threads();
@@ -121,7 +145,10 @@ public:
             }
         }
         localKdTree_map.reset(new pcl::KdTreeFLANN<PointType>());
-        //localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
+        // localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
+
+        cloud_tree.reset(new pcl::KdTreeFLANN<PointType>());
+
         H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero(); // 3 * n
         H_gnss.block<3, 3>(0, 0) = Eye3d;
 
@@ -130,6 +157,17 @@ public:
 #else
     RIEKF()
     {
+        for (int i = -kernel_row; i <= kernel_row; i++)
+        { // row
+            for (int j = -kernel_col; j <= kernel_col; j++)
+            {
+                // if (j == 0 && i == 0)
+                // {
+                //     continue;
+                // }
+                density_kernel.push_back(std::make_pair(i, j));
+            }
+        }
 
 #ifdef _OPENMP
 
@@ -148,10 +186,12 @@ public:
         }
 #endif
         localKdTree_map.reset(new pcl::KdTreeFLANN<PointType>());
-        //localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
+        // localKdTree_map_als.reset(new pcl::KdTreeFLANN<PointType>());
+
+        cloud_tree.reset(new pcl::KdTreeFLANN<PointType>());
+
         H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero(); // 3 * n
         H_gnss.block<3, 3>(0, 0) = Eye3d;
-
     };
 #endif
 
@@ -181,29 +221,49 @@ public:
 
     bool update(double R, PointCloudXYZI::Ptr &feats_down_body,
                 PointCloudXYZI::Ptr &map, std::vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est);
-    
+
     void lidar_observation_model_tighly_fused(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
-                                 PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
+                                              PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
 
     bool update_tighly_fused(double R, PointCloudXYZI::Ptr &feats_down_body,
-                PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est);
+                             PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, int maximum_iter, bool extrinsic_est);
 
-
-    void observation_model_test(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body, const V3D &gps,
-                                 PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
+    void observation_model_test(const double R, residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body, const V3D &gps,
+                                PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
 
     bool update_tighly_fused_test(double R, PointCloudXYZI::Ptr &feats_down_body,
-                PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
-                const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, 
-                std::vector<PointVector> &Nearest_Points, 
-                const V3D &gps, double R_gps_cov,
-                int maximum_iter, bool extrinsic_est);
+                                  PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                  const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                  std::vector<PointVector> &Nearest_Points,
+                                  const V3D &gps, double R_gps_cov,
+                                  int maximum_iter, bool extrinsic_est);
 
+    void observation_model_test2(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
+                                 const PointCloudXYZI::Ptr &feats_undistort,
+                                 Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> Neighbours,
+                                 const V3D &gps,
+                                 PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als, const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);
 
+    bool update_tighly_fused_test2(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZI::Ptr &feats_undistort, Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> Neighbours,
+                                   PointCloudXYZI::Ptr &map_mls, PointCloudXYZI::Ptr &map_als,
+                                   const pcl::KdTreeFLANN<PointType>::Ptr &localKdTree_map_als,
+                                   std::vector<PointVector> &Nearest_Points,
+                                   const V3D &gps, double R_gps_cov,
+                                   int maximum_iter, bool extrinsic_est);
 
 #endif
     // gnss update
     void update(const V3D &pos, const V3D &cov_pos_, int maximum_iter, bool global_error, M3D R = Eye3d);
+
+    M3D computeCovariance(const PointCloudXYZI::Ptr &cloud,
+                      const pcl::KdTreeFLANN<PointType>::Ptr &kdtree,
+                      const PointType &point,
+                      const PointCloudXYZI::Ptr &feats_undistort,
+                      Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> Neighbours,
+                      V3D &out_mean,
+                      int k_neighbors = 10,
+                      bool use_radius = false,
+                      float radius = 1.0);
 };
 
 #endif

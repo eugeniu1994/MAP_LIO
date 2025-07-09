@@ -354,6 +354,199 @@ namespace ekf
 
         return false;
     }
+
+
+    template <typename T>
+    inline bool esti_plane_pca(Eigen::Matrix<T, 4, 1> &pca_result, const PointVector &points,
+         const double &threshold, const std::vector<double> &point_weights, double &plane_var, bool weighted_mean = false)
+    {
+        const size_t neighbours = points.size();
+        // std::cout<<"N:"<<N<<std::endl;
+        if (neighbours < 3)
+            return false; // Need at least 3 points to define a plane
+
+        // Compute the centroid
+        V3D centroid(0, 0, 0);
+        // Compute covariance matrix
+        M3D covariance;
+        covariance.setZero();
+
+        // Regularize
+        //  double lambda_reg = 1e-6;
+        //  covariance = covariance + lambda_reg * Eye3d;
+
+        if (weighted_mean)
+        {
+            // if (weighted_mean && point_weights.size() < neighbours) {
+            //     std::cerr << "Error: point_weights has fewer elements than points." << std::endl;
+            //     std::cout<<"neighbours:"<<neighbours<<", point_weights.size():"<<point_weights.size()<<std::endl;
+            //     throw std::runtime_error("Error: point_weights has fewer elements than points.");
+            //     return false;
+            // }
+
+            //std::cout<<"\nPerformed weighted..."<<"point_weights[0]:"<<point_weights[0]<<", point_weights[last]:"<<point_weights[neighbours-1]<<std::endl;
+            
+            double weight_sum = 0.0;
+            
+            // Compute weighted centroid
+            for (int j = 0; j < neighbours; j++)
+            {
+                const double &w = point_weights[j];
+
+                centroid(0) += w*points[j].x;
+                centroid(1) += w*points[j].y;
+                centroid(2) += w*points[j].z;
+
+                weight_sum += w;
+            }
+            //std::cout<<"weight_sum:"<<weight_sum<<std::endl;
+            centroid /= weight_sum;
+
+            // Compute weighted covariance matrix
+            for (int j = 0; j < neighbours; j++)
+            {
+                const double &w = point_weights[j];
+                const auto &p = points[j];
+                V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                covariance += w * diff * diff.transpose();
+            }
+            covariance /= weight_sum;
+        }
+        else
+        {
+            for (int j = 0; j < neighbours; j++)
+            {
+                centroid(0) += points[j].x;
+                centroid(1) += points[j].y;
+                centroid(2) += points[j].z;
+            }
+            centroid /= neighbours;
+
+            for (int j = 0; j < neighbours; j++)
+            {
+                const auto &p = points[j];
+                V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                covariance += diff * diff.transpose();
+            }
+            covariance /= neighbours;
+        }
+
+        // Compute Eigenvalues and Eigenvectors
+        Eigen::SelfAdjointEigenSolver<M3D> solver(covariance);
+
+        if (solver.info() != Eigen::Success) {
+            std::cerr << "Eigen solver failed!" << std::endl;
+            throw std::runtime_error("Error: Eigen solver failed!");
+            return false;
+        }
+
+        V3D norm = solver.eigenvectors().col(0); // Smallest eigenvector
+        norm.normalize();
+
+        // Compute plane offset: d = - (n * centroid)
+        double d = -norm.dot(centroid);
+
+        // Compute eigenvalue ratios to assess planarity
+        const auto &eigenvalues = solver.eigenvalues();
+        double lambda0 = eigenvalues(0); // smallest
+        double lambda1 = eigenvalues(1);
+        double lambda2 = eigenvalues(2);
+
+        double curvature = lambda0 / (lambda0 + lambda1 + lambda2);
+
+        if (curvature > .0001 && curvature <= threshold)
+        {
+            pca_result.template head<3>() = norm.template cast<T>();
+            pca_result(3) = static_cast<T>(d);
+
+            plane_var = lambda0;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    inline bool esti_cov(const PointVector &points, 
+         const std::vector<double> &point_weights,
+         M3D &out_cov, V3D &out_center, bool weighted_mean = false)
+    {
+        const size_t neighbours = points.size();
+        // std::cout<<"N:"<<N<<std::endl;
+        if (neighbours < 5)
+            return false; // Need at least 5 points 
+
+        // Compute the centroid
+        V3D centroid(0, 0, 0);
+        // Compute covariance matrix
+        M3D covariance;
+        covariance.setZero();
+
+        // Regularize
+        //  double lambda_reg = 1e-6;
+        //  covariance = covariance + lambda_reg * Eye3d;
+
+        if (weighted_mean)
+        {
+            // if (weighted_mean && point_weights.size() < neighbours) {
+            //     std::cerr << "Error: point_weights has fewer elements than points." << std::endl;
+            //     std::cout<<"neighbours:"<<neighbours<<", point_weights.size():"<<point_weights.size()<<std::endl;
+            //     throw std::runtime_error("Error: point_weights has fewer elements than points.");
+            //     return false;
+            // }
+
+            //std::cout<<"\nPerformed weighted..."<<"point_weights[0]:"<<point_weights[0]<<", point_weights[last]:"<<point_weights[neighbours-1]<<std::endl;
+            
+            double weight_sum = 0.0;
+            
+            // Compute weighted centroid
+            for (int j = 0; j < neighbours; j++)
+            {
+                const double &w = point_weights[j];
+
+                centroid(0) += w*points[j].x;
+                centroid(1) += w*points[j].y;
+                centroid(2) += w*points[j].z;
+
+                weight_sum += w;
+            }
+            //std::cout<<"weight_sum:"<<weight_sum<<std::endl;
+            centroid /= weight_sum;
+
+            // Compute weighted covariance matrix
+            for (int j = 0; j < neighbours; j++)
+            {
+                const double &w = point_weights[j];
+                const auto &p = points[j];
+                V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                covariance += w * diff * diff.transpose();
+            }
+            covariance /= weight_sum;
+        }
+        else
+        {
+            for (int j = 0; j < neighbours; j++)
+            {
+                centroid(0) += points[j].x;
+                centroid(1) += points[j].y;
+                centroid(2) += points[j].z;
+            }
+            centroid /= neighbours;
+
+            for (int j = 0; j < neighbours; j++)
+            {
+                const auto &p = points[j];
+                V3D diff(p.x - centroid(0), p.y - centroid(1), p.z - centroid(2));
+                covariance += diff * diff.transpose();
+            }
+            covariance /= neighbours;
+        }
+
+        out_cov = covariance;
+        out_center = centroid;
+
+        return true;
+    }
 };
 
 namespace gnss
