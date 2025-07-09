@@ -69,8 +69,6 @@ Visualization Manager:
       Frame Timeout: 500
       Frames:
         All Enabled: false
-        MLS:
-          Value: true
         VUX:
           Value: true
         world:
@@ -83,8 +81,6 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
-          MLS:
-            {}
           VUX:
             {}
       Update Interval: 0
@@ -101,7 +97,7 @@ Visualization Manager:
           Channel Name: intensity
           Class: rviz/PointCloud2
           Color: 255; 255; 255
-          Color Transformer: Intensity
+          Color Transformer: FlatColor
           Decay Time: 0
           Enabled: true
           Invert Rainbow: false
@@ -111,7 +107,7 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 1
           Selectable: false
-          Size (Pixels): 3
+          Size (Pixels): 5
           Size (m): 0.8999999761581421
           Style: Points
           Topic: /cloud_registered
@@ -296,6 +292,22 @@ Visualization Manager:
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
+          Value: false
+        - Class: rviz/MarkerArray
+          Enabled: true
+          Marker Topic: /src_covariance_markers
+          Name: src_covs
+          Namespaces:
+            {}
+          Queue Size: 100
+          Value: true
+        - Class: rviz/MarkerArray
+          Enabled: false
+          Marker Topic: /tgt_covariance_markers
+          Name: tgt_covs
+          Namespaces:
+            {}
+          Queue Size: 100
           Value: false
       Enabled: true
       Name: mapping
@@ -706,7 +718,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 45.305419921875
+      Distance: 61.11565399169922
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -714,17 +726,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 19.693082809448242
-        Y: 22.731882095336914
-        Z: 4.4773874833481386e-05
+        X: -4.692373275756836
+        Y: 14.99826431274414
+        Z: 3.128058597212657e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.934796929359436
+      Pitch: 1.1697965860366821
       Target Frame: global
-      Yaw: 0.8367485404014587
+      Yaw: 1.5167428255081177
     Saved: ~
 Window Geometry:
   Displays:

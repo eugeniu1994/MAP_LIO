@@ -38,7 +38,7 @@ enum NoiseID
 const int state_size = 24;
 const int noise_size = 12;
 
-const int used_state_size = 6;// 12;
+const int used_state_size = 12;// 6;// 12;
 
 typedef Eigen::Matrix<double, state_size, state_size> cov;     // 24X24 covariance matrix
 typedef Eigen::Matrix<double, state_size, 1> vectorized_state; // 24X1 vector
