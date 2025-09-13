@@ -8,6 +8,24 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 import glob
 import matplotlib.pyplot as plt
+import pandas as pd
+
+# Read the CSV file
+df = pd.read_csv("/home/eugeniu/Downloads/combined_sync.csv")
+# Access each column
+cam_ts = df["Cam_ts"]
+thermal_left_ts = df["Thermal_left_ts"]
+thermal_center_ts = df["Thermal_center_ts"]
+thermal_right_ts = df["Thermal_right_ts"]
+cam_pps = df["Cam_PPS"]
+thermal_left_pps = df["Thermal_left_PPS"]
+thermal_center_pps = df["Thermal_center_PPS"]
+thermal_right_pps = df["Thermal_right_PPS"]
+
+# Example: print first 5 entries of Cam_ts
+print(cam_ts.head())
+
+cam_ts_np = df["Cam_ts"].to_numpy()
 
 
 
@@ -19,7 +37,7 @@ bags_folder = "/media/eugeniu/T7/calibration/rosbags/"
 basler_pattern = "extrinsic_cameras_camera_basler_front_*.bag"
 thermal_pattern = "_extrinsic_cameras_thermal_camera_Flir_Center_*.bag"
 
-basler_pattern = "extrinsic_cameras_camera_basler_front_24219235_2025-08-11-16-02-29_0.bag"
+#basler_pattern = "extrinsic_cameras_camera_basler_front_24219235_2025-08-11-16-02-29_0.bag"
 
 basler_files = glob.glob(bags_folder+basler_pattern)
 thermal_files = glob.glob(bags_folder+thermal_pattern)
@@ -30,20 +48,20 @@ basler_topic = "/camera_basler_front_24219235/image_raw"
 basler_extras = "/camera_basler_front_24219235/extras"
 
 
-todo - read the baseler and gnss 
-for each baseler - save it into a buffer 
+# todo - read the baseler and gnss 
+# for each baseler - save it into a buffer 
 
-when trigger got -> use the start and end gnss time to interpolate the time of the triggering
-for thermal - where to get the time ? 
+# when trigger got -> use the start and end gnss time to interpolate the time of the triggering
+# for thermal - where to get the time ? 
 
 
 
 bags = []
-for f in basler_files + thermal_files:
+for f in [basler_files + thermal_files]:
     bags.append(rosbag.Bag(f, "r"))
 
 
-for f in basler_files + thermal_files:
+for f in [basler_files + thermal_files]:
     print("F",f)
 
 bag_iters = [bag.read_messages() for bag in bags]
@@ -70,6 +88,11 @@ try:
                 continue  # skip if bag is done
 
             if topic in basler_topic:
+                #ts = msg.header.stamp.to_sec()
+                #print("\n")
+                print("t               :",t)
+                #print("Camera timestamp:",ts)  
+
                 cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
                 window_name = topic.split("/")[-2] + "_basler"
                 cv2.imshow("window_name", cv2.resize(cv_image, None, fx=.4, fy=.4))
@@ -95,7 +118,9 @@ try:
 finally:
     for bag in bags:
         bag.close()
-    cv2.destroyAllWindows()
+
+
+cv2.destroyAllWindows()
 
 
 

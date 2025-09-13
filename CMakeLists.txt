@@ -237,9 +237,9 @@ target_link_libraries(test_fusion ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${O
 
 
 #test tightly coupled
-set(SOURCE_FILES_TEST ${MAIN_SOURCE_FILES3} src_georeference_gnss_only/georeference.cpp src2/clean_DataHandler_vux.cpp src2/VuxReader.cpp)
-add_executable(georeference src2/main.cpp ${SOURCE_FILES_TEST})
-target_link_libraries(georeference ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${OpenCV_LIBRARIES}
+# set(SOURCE_FILES_TEST ${MAIN_SOURCE_FILES3} src_georeference_gnss_only/georeference.cpp src2/clean_DataHandler_vux.cpp src2/VuxReader.cpp)
+# add_executable(georeference src2/main.cpp ${SOURCE_FILES_TEST})
+# target_link_libraries(georeference ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${OpenCV_LIBRARIES}
 
 
 #------------------------
