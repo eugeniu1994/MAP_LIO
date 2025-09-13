@@ -786,10 +786,11 @@ void DataHandler::Subscribe()
     Sophus::SE3 first_ppk_gnss_pose_inverse = Sophus::SE3();
 
 #define integrate_vux
-#define integrate_ppk_gnss
+//#define integrate_ppk_gnss
 
     using namespace std::chrono;
 
+    int tmp_count = 0;
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -971,21 +972,21 @@ void DataHandler::Subscribe()
                             readSE3FromFile(als2mls_filename, known_als2mls);
                             std::cout << "Read the known transformation" << std::endl;
 
-                            als_obj->init(known_als2mls);
+                            //als_obj->init(known_als2mls);
 
-                            // if (!this->downsample) // if it is sparse ALS data from NLS
-                            // {
-                            //     V3D t = known_als2mls.translation();
-                            //     t.z() += 20.;
-                            //     Sophus::SE3 als2mls_for_sparse_ALS = Sophus::SE3(known_als2mls.so3().matrix(), t);
-                            //     std::cout << "Init ALS from known T map refinement" << std::endl;
-                            //     als_obj->init(als2mls_for_sparse_ALS, laserCloudSurfMap); // with refinement
-                            // }
-                            // else
-                            // {
-                            //     std::cout << "Init ALS from known T" << std::endl;
-                            //     als_obj->init(known_als2mls);
-                            // }
+                            if (!this->downsample) // if it is sparse ALS data from NLS
+                            {
+                                V3D t = known_als2mls.translation();
+                                t.z() += 20.;
+                                Sophus::SE3 als2mls_for_sparse_ALS = Sophus::SE3(known_als2mls.so3().matrix(), t);
+                                std::cout << "Init ALS from known T map refinement" << std::endl;
+                                als_obj->init(als2mls_for_sparse_ALS, laserCloudSurfMap); // with refinement
+                            }
+                            else
+                            {
+                                std::cout << "Init ALS from known T" << std::endl;
+                                als_obj->init(known_als2mls);
+                            }
 
                             //als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
 
@@ -1001,13 +1002,13 @@ void DataHandler::Subscribe()
                     {
                         als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
 
-                        // update only MLS
+                        // // update only MLS
                         // if (!estimator_.update(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
                         // {
                         //     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                         // }
 
-                        // update only ALS
+                        // // update only ALS
                         // if (!estimator_.update(LASER_POINT_COV / 4, feats_down_body, als_obj->als_cloud, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
                         // {
                         //     std::cout << "\n------------------ ALS update failed --------------------------------" << std::endl;
@@ -1015,25 +1016,29 @@ void DataHandler::Subscribe()
                         // }
 
                         // update tighly fusion from MLS and ALS
-                        // if (!estimator_.update_tighly_fused(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
-                        // {
-                        //     std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
-                        // }
-
-                        //update tighly fusion from MLS and ALS
-                        double R_gps_cov = .0001; // GNSS_VAR * GNSS_VAR;
-                        Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
-                        const V3D &gnss_in_mls = gnss_pose.translation();
-
-                        bool tightly_coupled = true;
-                        bool use_gnss = false; 
-                        bool use_als = false;// true;
-
-                        if (!estimator_.update_final(
-                            LASER_POINT_COV, R_gps_cov, feats_down_body, gnss_in_mls, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als,
-                            Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en, use_gnss, use_als, tightly_coupled))
+                        if (!estimator_.update_tighly_fused(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
                         {
                             std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
+                        }    
+
+                        
+
+                        if(false){ //this was used so far
+                            //update tighly fusion from MLS and ALS
+                            double R_gps_cov = .0001; // GNSS_VAR * GNSS_VAR;
+                            Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
+                            const V3D &gnss_in_mls = gnss_pose.translation();
+
+                            bool tightly_coupled = true;
+                            bool use_gnss = false; 
+                            bool use_als = false;// true;
+
+                            if (!estimator_.update_final(
+                                LASER_POINT_COV, R_gps_cov, feats_down_body, gnss_in_mls, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als,
+                                Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en, use_gnss, use_als, tightly_coupled))
+                            {
+                                std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
+                            }
                         }
 
                         als_integrated = true;
@@ -1050,13 +1055,13 @@ void DataHandler::Subscribe()
                     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                 }
 
-                use_als = false;
-                als_integrated = true; // remove this later
+                //use_als = false;
+                //als_integrated = true; // remove this later
 
-                // double t_LiDAR_update = omp_get_wtime();
-                // std::cout << "\nIMU_process time(ms):  " << (t_IMU_process - t00) * 1000 <<
-                //", cloud_voxelization (ms): " << (t_cloud_voxelization - t_IMU_process) * 1000 <<
-                //", LiDAR_update (ms): " << (t_LiDAR_update - t_cloud_voxelization) * 1000 << std::endl;
+                double t_LiDAR_update = omp_get_wtime();
+                std::cout << "\nIMU_process time(ms):  " << (t_IMU_process - t00) * 1000 <<
+                ", cloud_voxelization (ms): " << (t_cloud_voxelization - t_IMU_process) * 1000 <<
+                ", LiDAR_update (ms): " << (t_LiDAR_update - t_cloud_voxelization) * 1000 << std::endl;
 
                 // Crop the local map------
                 state_point = estimator_.get_x();
@@ -1214,7 +1219,7 @@ void DataHandler::Subscribe()
                     // is is based on IMU
                     // imu_obj->Propagate2D(vux_scans, vux_scans_time, Measures.lidar_beg_time, Measures.lidar_end_time, time_of_day_sec, prev_mls, prev_mls_time);
 
-                    if (false) // integrate vux into MLS mapping
+                    if (true) // integrate vux into MLS mapping
                     {
                         pcl::PointCloud<VUX_PointType>::Ptr all_lines(new pcl::PointCloud<VUX_PointType>);
                         bool subscribers = point_cloud_pub.getNumSubscribers() != 0;
@@ -1278,7 +1283,7 @@ void DataHandler::Subscribe()
                             publishPointCloud_vux(all_lines, point_cloud_pub);
                     }
 
-                    if (true) // map based extrinsic estimation
+                    if (false) // map based extrinsic estimation
                     {
                         // save some data
                         if (curr_mls.translation().norm() < 1)

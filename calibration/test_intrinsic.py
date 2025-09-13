@@ -12,6 +12,7 @@ dist = np.array([-0.05857507, -5.11546886 , 0.00207716 , 0.00055662 ,59.30916158
 
 
 img_path  = "/media/eugeniu/T7/calibration/saved_data_raw/intr_thermal_center/image_0010.npy"
+img_path  = "/media/eugeniu/T7/calibration/extrinsic_saved_data_raw/center/thermal/image_0000.npy"
 
 def convert_16bit_to_8bit_auto(img16, clehe = False, lower_pct=2, upper_pct=98):
     nonzero = img16[img16 > 0]
@@ -32,8 +33,10 @@ cv2.waitKey(1)
 
 img = np.array(256 - img8, dtype='uint8')
 
-cv2.imshow("img", img)
+cv2.imshow("img original ", img)
 cv2.waitKey(0)
+
+
 
 gray = img 
 

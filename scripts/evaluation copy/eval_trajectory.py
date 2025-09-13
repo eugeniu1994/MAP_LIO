@@ -60,6 +60,7 @@ from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import matplotlib.image as mpimg
 from scipy.ndimage import rotate
 # Define custom tile provider
+from matplotlib.ticker import FuncFormatter
 
 from xyzservices import TileProvider
 from PIL import Image
@@ -80,6 +81,8 @@ markersize = 8
 sns.set_style("whitegrid")
 #----------------------------------------------------------------
 
+
+
 translation_ENU_to_origin = np.array([4525805.18109165318310260773, 5070965.88124799355864524841,  114072.22082747340027708560])
 rotation_ENU_to_origin = np.array([[-0.78386212744029792887, -0.62091317757072628236,  0.00519529438949398702],
                                     [0.62058202788821892337, -0.78367126767620609584, -0.02715310076057271885],
@@ -89,8 +92,11 @@ R_origin_to_ENU = rotation_ENU_to_origin.T
 t_origin_to_ENU = -R_origin_to_ENU @ translation_ENU_to_origin
 
 
-bbox_to_anchor=(0.5, -0.12)
+bbox_to_anchor=(0.5, -0.12) #bottom
+bbox_to_anchor=(0.5, 1.3)   #top
+
 ncol = 3
+#ncol = 2
 def plot_trajectory_(xyz_enu, etrs_tm35fin = 'EPSG:3067', epsg = 3067):
     start = xyz_enu[0]
     print('start:',start)
@@ -283,10 +289,13 @@ class TrajectoryReader(object):
             T_enu = T_origin_to_ENU @ T_local
             new_poses_se3.append(T_enu)
 
-        test_no_fail = 815 # 9999999# 4650
-        # if self.model_name in ['LI', 'LI-VUX', 'before LI', 'before LI-VUX', 'test', 'test_now']:
-        #     test_no_fail = 4650
-        #     test_no_fail = 2500
+        #test_no_fail = 815 # 9999999# 4650
+
+        test_no_fail = 9999999
+        if self.model_name in ['LI', 'LI-VUX', 'before LI', 'before LI-VUX', 'test', 'test_now']:
+            test_no_fail = 4650
+            test_no_fail = 2500
+            #test_no_fail = 815
 
         return PoseTrajectory3D(
             poses_se3=new_poses_se3[:test_no_fail],
@@ -535,6 +544,7 @@ class TrajectoryReader(object):
         avg_z = 0
         number = 0
         all_z_diffs = []
+        first_time = True
         for idx, ((forward_pass, backward_pass), ax) in enumerate(zip(self.segment_passes, axes)):
 
             if len(forward_pass) < 5 or len(backward_pass) < 5:
@@ -564,18 +574,31 @@ class TrajectoryReader(object):
             number+= 1
             print(f"Segment {idx+1}: Matched {len(z_diff)} pairs — z-RMSE = {rmse:.2f} m, mean = {mean:.2f} m")
 
-            ax.plot(z1, label='Forward Pass z-axis', linestyle='--', color='tab:blue')
-            ax.plot(z2, label='Backward Pass z-axis', linestyle='-.', color='tab:orange')
-            ax.fill_between(range(len(z_diff)), z1, z2, color='gray', alpha=0.3, label='z-axis Error')
-            ax.set_ylabel("z-axis [m]")
+            ax.plot(z1, label='Forward Pass $z$-axis', linestyle='--', color='tab:blue')
+            ax.plot(z2, label='Backward Pass $z$-axis', linestyle='-.', color='tab:orange')
+            ax.fill_between(range(len(z_diff)), z1, z2, color='gray', alpha=0.3, label='$z$-axis error')
+            ax.set_ylabel("$z$-axis (m)")
             #ax.set_xlabel("Points")
             ax.set_title(f"Segment {idx+1} — Mean Δz-axis: {mean:.2f} m, RMSE: {rmse:.2f} m")
             ax.grid(True)
+
+            f, a = plt.subplots()
+            a.plot(z1, label='Forward Pass $z$-axis', linestyle='--', color='tab:blue')
+            a.plot(z2, label='Backward Pass $z$-axis', linestyle='-.', color='tab:orange')
+            a.fill_between(range(len(z_diff)), z1, z2, color='gray', alpha=0.3, label='$z$-axis error')
+            a.set_ylabel("$z$-axis (m)")
+            a.set_xlabel("Points")
+            #a.set_title(f"Segment {idx+1} — Mean Δz-axis: {mean:.2f} m, RMSE: {rmse:.2f} m")
+            a.grid(True)
+            if first_time:
+                first_time = False
+                a.legend(loc='upper center', bbox_to_anchor=bbox_to_anchor,
+                ncol = ncol, fancybox=True, shadow=True)
         
         axes[1].legend(loc='upper center', bbox_to_anchor=bbox_to_anchor,
           ncol = ncol, fancybox=True, shadow=True)
 
-        fig.suptitle(f"z-axis Comparison Across Overlapping Segments ({label})")
+        fig.suptitle(f"$z$-axis Comparison Across Overlapping Segments ({label})")
         #fig.tight_layout(rect=[0, 0.03, 1, 0.97])
         plt.draw()
 
@@ -642,10 +665,10 @@ def overlap_error(est_xyz, label, segment_passes,  plot = False):
         number+= 1
         print(f"Segment {idx+1}: Matched {len(z_diff)} pairs — z-RMSE = {rmse:.2f} m, mean = {mean:.2f} m")
 
-        ax.plot(z1, label='Forward Pass z-axis',linestyle='--', color='tab:blue')
-        ax.plot(z2, label='Backward Pass z-axis', linestyle='-.', color='tab:orange')
-        ax.fill_between(range(len(z_diff)), z1, z2, color='gray', alpha=0.3, label='z-axis Error')
-        ax.set_ylabel("z-axis [m]")
+        ax.plot(z1, label='Forward Pass $z$-axis',linestyle='--', color='tab:blue')
+        ax.plot(z2, label='Backward Pass $z$-axis', linestyle='-.', color='tab:orange')
+        ax.fill_between(range(len(z_diff)), z1, z2, color='gray', alpha=0.3, label='$z$-axis error')
+        ax.set_ylabel("$z$-axis [m]")
         ax.set_xlabel("Points")
         ax.set_title(f"Segment {idx+1} — Mean Δz-axis: {mean:.2f} m, RMSE: {rmse:.2f} m")
         ax.grid(True)
@@ -680,20 +703,20 @@ methods = {
 #-robust comes from plane uncertanties 
 
 methods = {
-    #'GT' : '/home/eugeniu/z_tighly_coupled/ref',
-    'test'                         : '/home/eugeniu/z_tighly_coupled/test1',
-    'test2'                         : '/home/eugeniu/z_tighly_coupled/test2',
-    'test_now'                         : '/home/eugeniu/z_tighly_coupled/test',
+    'GT' : '/home/eugeniu/z_tighly_coupled/ref',
+    # 'test'                         : '/home/eugeniu/z_tighly_coupled/test1',
+    # 'test2'                         : '/home/eugeniu/z_tighly_coupled/test2',
+    # 'test_now'                         : '/home/eugeniu/z_tighly_coupled/test',
 
-    #'before LI'                    : '/home/eugeniu/z_tighly_coupled/1',
-    #'before LI-VUX'                : '/home/eugeniu/z_tighly_coupled/2',
+    # 'before LI'                    : '/home/eugeniu/z_tighly_coupled/1',
+    # 'before LI-VUX'                : '/home/eugeniu/z_tighly_coupled/2',
     
-    'LI'                        : '/home/eugeniu/z_tighly_coupled/1.1',    #robust
-    #'LI-VUX'                    : '/home/eugeniu/z_tighly_coupled/2.1', #robust
+    # 'LI'                        : '/home/eugeniu/z_tighly_coupled/1.1',    #robust
+    # 'LI-VUX'                    : '/home/eugeniu/z_tighly_coupled/2.1', #robust
 
-    # '(ppk)GNSS'             : '/home/eugeniu/z_tighly_coupled/0',
-    # 'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
-    # 'LI-VUX-(ppk)GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
+    #'(ppk)GNSS'             : '/home/eugeniu/z_tighly_coupled/0',
+    #'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
+    #'LI-VUX-(ppk)GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
 
     # 'LI-VUX-ALS(l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
     # 'LI-VUX-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/4',
@@ -747,7 +770,7 @@ lt = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 obj_gt = TrajectoryReader(path_gt, path_gt)
 
 
-if True:
+if False:
     est_xyz = obj_gt.traj_model.positions_xyz
 
     xyz_1 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/1.1/MLS.txt', 'LI', False).traj_model.positions_xyz
@@ -916,7 +939,7 @@ def plot_box(data, metric = '',  show_legend = True):
     # if first_got_legend:
     #     plt.legend().set_visible(False)
     plt.draw()
-
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{val:.1f}"))    
     plt.figure(figsize=(10, 5))
 
     values = [data[label] for label in labels]
@@ -963,7 +986,7 @@ def plot_z_overlap(data, metric_name=''):
     plt.draw()
 
 
-plot_box(data_ape_t, 'APE translation (m)', show_legend = False)
+plot_box(data_ape_t, 'APE translation (m)', show_legend = True)
 #plot_box(data_ape_r, 'APE rotation (deg)')
 plot_box(data_rpe_t, 'RPE translation (m)', show_legend = True)
 #plot_box(data_rpe_r, 'RPE rotation (deg)')
@@ -976,8 +999,9 @@ plot_box(data_rpe_t, 'RPE translation (m)', show_legend = True)
 # data_z_overlap2.pop('LI')
 # data_z_overlap2.pop('LI-VUX')
 
-plot_box(data_z_overlap2, 'Overlap z-axis error (m)')
+plot_box(data_z_overlap2, 'Overlap $z$-axis error (m)', show_legend = True)
 
 #plot_z_overlap(data_z_overlap, 'Mean z error overlap')
+
 
 plt.show()
