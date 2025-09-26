@@ -48,6 +48,8 @@ thermal_ts = df["Thermal_left_ts"].to_numpy()
 baseler_step = 890 #right
 
 
+save_dir = "/media/eugeniu/T7/calibration/extrinsic_saved_data_raw/test/"
+
 
 pattern_size = (10, 7)  
 square_size = 0.1 #m  
@@ -139,10 +141,10 @@ try:
                     continue 
             
                 #print("idx_b:",idx_b,", e_t_t:",e_t_t)
-                #found_b, corners = cv2.findChessboardCorners(img_b, pattern_size)
+                found_b, corners = cv2.findChessboardCorners(img_b, pattern_size)
                 copy_b = img_b.copy()
-                #if found_b:
-                #     cv2.drawChessboardCorners(copy_b, pattern_size, corners, found_b)
+                if found_b:
+                     cv2.drawChessboardCorners(copy_b, pattern_size, corners, found_b)
 
                 found_b = True 
                 cv2.imshow("img_b", cv2.resize(copy_b, None, fx=.4, fy=.4))
@@ -168,6 +170,9 @@ try:
                         
                         cv2.imshow("img_t", copy_t)
                         key = cv2.waitKey(0) 
+
+                        found_t = True 
+
                         if key == ord('s') or key == ord('S'):
                             if found_b and found_t:
                                 filename_t = os.path.join(save_dir, f"thermal/image_{image_counter:04d}.npy")

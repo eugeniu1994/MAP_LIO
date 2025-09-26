@@ -38,6 +38,12 @@ thermal_intrinsic = np.load(intr_thermal_, allow_pickle=True)
 K_thermal = thermal_intrinsic["K"]
 D_thermal = thermal_intrinsic["dist"]
 
+K_thermal = np.array( [[1612.26241364 ,   0.   ,       409.91189903],
+ [   0.   ,      1607.40899763,  227.9029271 ],
+ [   0.    ,        0.         ,   1.        ]])
+D_thermal = np.array([[-0.13352532 , 0.02932648, -0.00101115,  0.01103758 , 0.        ]])
+
+
 b_path, t_path =  save_dir + "basler/", save_dir + "thermal/"
 
 def load_images(folder):
@@ -106,6 +112,7 @@ def stereo_calibrate():
     print('Translation T')
     print(T)
 
+    return 
     np.savez(
             save_result,
             objpoints = np.array(objpoints, dtype=object),
@@ -135,7 +142,7 @@ def stereo_calibrate():
     print("dist match:", np.allclose(D_thermal, dist_loaded))
 
 
-#stereo_calibrate()
+stereo_calibrate()
 
 def test_extrinsics():
     loaded = np.load(save_result, allow_pickle=True)

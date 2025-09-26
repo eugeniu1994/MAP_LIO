@@ -18,9 +18,13 @@ save_path = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_left_thermal
 save_path_filt = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_left_thermal_filt_{}.npz"
 
 
-save_dir = "/media/eugeniu/T7/calibration/saved_data_raw/intr_center" 
-save_path = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_center_thermal_{}.npz"
-save_path_filt = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_center_thermal_filt_{}.npz"
+save_path = "/media/eugeniu/T7/calibration/saved_data_raw/2intrinsic_left_thermal_{}.npz"
+save_path_filt = "/media/eugeniu/T7/calibration/saved_data_raw/2intrinsic_left_thermal_filt_{}.npz"
+
+
+# save_dir = "/media/eugeniu/T7/calibration/saved_data_raw/intr_center" 
+# save_path = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_center_thermal_{}.npz"
+# save_path_filt = "/media/eugeniu/T7/calibration/saved_data_raw/intrinsic_center_thermal_filt_{}.npz"
 
 is_thermal = True 
 
@@ -86,18 +90,18 @@ objp = generate_object_points(pattern_size, square_size)
 
 Distorsion_models = {    
      'ST': ['Standard', 0, 'Standard'],
-                             'RAT': ['Rational', cv2.CALIB_RATIONAL_MODEL, 'CALIB_RATIONAL_MODEL'],
-                             'THP': ['Thin Prism', cv2.CALIB_THIN_PRISM_MODEL, 'CALIB_THIN_PRISM_MODEL'],
-                             'TIL': ['Tilded', cv2.CALIB_TILTED_MODEL, 'CALIB_TILTED_MODEL'],  # }
-                             'RAT+THP': ['Rational+Thin Prism', cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_THIN_PRISM_MODEL,
-                                         'CALIB_RATIONAL_MODEL + CALIB_THIN_PRISM_MODEL'],
-                             'THP+TIL': ['Thin Prism+Tilded', cv2.CALIB_THIN_PRISM_MODEL + cv2.CALIB_TILTED_MODEL,
-                                         'CALIB_THIN_PRISM_MODEL + CALIB_TILTED_MODEL'],
-                             'RAT+TIL': ['Rational+Tilded', cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_TILTED_MODEL,
-                                         'CALIB_RATIONAL_MODEL + CALIB_TILTED_MODEL'],
-                             'CMP': ['Complete',
-                                     cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_THIN_PRISM_MODEL + cv2.CALIB_TILTED_MODEL,
-                                     'Complete']
+                            #  'RAT': ['Rational', cv2.CALIB_RATIONAL_MODEL, 'CALIB_RATIONAL_MODEL'],
+                            #  'THP': ['Thin Prism', cv2.CALIB_THIN_PRISM_MODEL, 'CALIB_THIN_PRISM_MODEL'],
+                            #  'TIL': ['Tilded', cv2.CALIB_TILTED_MODEL, 'CALIB_TILTED_MODEL'],  # }
+                            #  'RAT+THP': ['Rational+Thin Prism', cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_THIN_PRISM_MODEL,
+                            #              'CALIB_RATIONAL_MODEL + CALIB_THIN_PRISM_MODEL'],
+                            #  'THP+TIL': ['Thin Prism+Tilded', cv2.CALIB_THIN_PRISM_MODEL + cv2.CALIB_TILTED_MODEL,
+                            #              'CALIB_THIN_PRISM_MODEL + CALIB_TILTED_MODEL'],
+                            #  'RAT+TIL': ['Rational+Tilded', cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_TILTED_MODEL,
+                            #              'CALIB_RATIONAL_MODEL + CALIB_TILTED_MODEL'],
+                            #  'CMP': ['Complete',
+                            #          cv2.CALIB_RATIONAL_MODEL + cv2.CALIB_THIN_PRISM_MODEL + cv2.CALIB_TILTED_MODEL,
+                            #          'Complete']
                                      }
 
 def calibrate_scenario(label, convert16bit_2_8bit, d_model = "", flags=None):
@@ -280,7 +284,11 @@ for key in Distorsion_models:
     print()
     print(key, '->', Distorsion_models[key][0], ' , ', Distorsion_models[key][1], ' , ',
                   Distorsion_models[key][2])
-    flags = Distorsion_models[key][1]
+    #flags = Distorsion_models[key][1]
+
+    flags = (cv2.CALIB_FIX_K3 |  # keep k3 = 0
+            Distorsion_models[key][1])
+
 
     method = methods[0]
     label = labels[0]

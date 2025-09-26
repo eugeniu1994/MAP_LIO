@@ -16,6 +16,7 @@ Panels:
         - /Refined-vux1/Shape1
         - /Refined-vux1/Covariance1
         - /Refined-vux21/Shape1
+        - /Gravity1
       Splitter Ratio: 0.6140127182006836
     Tree Height: 1800
   - Class: rviz/Selection
@@ -35,7 +36,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: LiDAR
+    SyncSource: ""
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -68,10 +69,6 @@ Visualization Manager:
       Frame Timeout: 500
       Frames:
         All Enabled: false
-        GPSFix:
-          Value: true
-        MLS:
-          Value: true
         VUX:
           Value: true
         world:
@@ -84,10 +81,6 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
-          GPSFix:
-            {}
-          MLS:
-            {}
           VUX:
             {}
       Update Interval: 0
@@ -153,15 +146,15 @@ Visualization Manager:
         - Alpha: 0.4000000059604645
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 26.59920310974121
-            Min Value: 0.15827515721321106
+            Max Value: 40.49650573730469
+            Min Value: -21.346920013427734
             Value: true
           Axis: Z
           Channel Name: z
           Class: rviz/PointCloud2
           Color: 255; 255; 255
           Color Transformer: AxisColor
-          Decay Time: 1000
+          Decay Time: 11
           Enabled: false
           Invert Rainbow: true
           Max Color: 255; 255; 255
@@ -173,7 +166,7 @@ Visualization Manager:
           Size (Pixels): 2
           Size (m): 0.009999999776482582
           Style: Points
-          Topic: /cloud_registered
+          Topic: /cloud_debug
           Unreliable: false
           Use Fixed Frame: false
           Use rainbow: true
@@ -730,6 +723,14 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: true
       Value: false
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /acceleration_marker
+      Name: Gravity
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 0; 0; 0
@@ -758,7 +759,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 140.7735137939453
+      Distance: 74.65447998046875
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -766,17 +767,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 5.140137672424316
-        Y: 55.236968994140625
-        Z: 3.608642873587087e-05
+        X: -10.114900588989258
+        Y: 33.7513427734375
+        Z: 7.5704465416492894e-06
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.1797969341278076
       Target Frame: global
-      Yaw: 1.7362844944000244
+      Yaw: 1.4762845039367676
     Saved: ~
 Window Geometry:
   Displays:
