@@ -1080,19 +1080,19 @@ void RIEKF::observation_model_test(const double R, residual_struct &ekfom_data, 
             point_weights.clear();
 
             // search als neighbours
-            // if (localKdTree_map_als->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
-            // {
-            //     if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
-            //     {
-            //         point_selected_surf[i] = true;
-            //         for (int j = 0; j < pointSearchInd.size(); j++)
-            //         {
-            //             points_near.push_back(map_als->points[pointSearchInd[j]]);
-            //             point_weights.push_back(100.);
-            //         }
-            //         // p_als++;
-            //     }
-            // }
+            if (localKdTree_map_als->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+            {
+                if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
+                {
+                    point_selected_surf[i] = true;
+                    for (int j = 0; j < pointSearchInd.size(); j++)
+                    {
+                        points_near.push_back(map_als->points[pointSearchInd[j]]);
+                        point_weights.push_back(100.);
+                    }
+                    // p_als++;
+                }
+            }
 
             // if (point_selected_surf[i] == false) // not valid neighbours has been found
             {
@@ -1147,7 +1147,7 @@ void RIEKF::observation_model_test(const double R, residual_struct &ekfom_data, 
                 // std::cout<<"plane_var:"<<plane_var<<std::endl;
 
                 if (travelled_distance > 5)
-                    normvec_var[i] = 1. / (9. * plane_var); // 3 sigma
+                    normvec_var[i] = 1./plane_var; //1. / (9. * plane_var); // 3 sigma
                 else
                     normvec_var[i] = R_inv;
             }

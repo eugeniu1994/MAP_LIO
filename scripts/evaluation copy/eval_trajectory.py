@@ -67,6 +67,13 @@ from PIL import Image
 
 font = 14
 
+font = 22 #used for google map images 
+
+font = 26 #for plots 
+font_legend = 18
+
+
+
 matplotlib.rc('xtick', labelsize=font)
 matplotlib.rc('ytick', labelsize=font)
 plt.rcParams.update({'font.size': font})
@@ -74,10 +81,10 @@ plt.rc('axes', titlesize=font)     # Set the font size of the title
 plt.rc('axes', labelsize=font)     # Set the font size of the x and y labels
 plt.rc('xtick', labelsize=font)    # Set the font size of the x tick labels
 plt.rc('ytick', labelsize=font)    # Set the font size of the y tick labels
-plt.rc('legend', fontsize=font)    # Set the font size of the legend
+plt.rc('legend', fontsize=font_legend)    # Set the font size of the legend
 plt.rc('font', size=font)          # Set the general font size'''
 
-markersize = 8
+# markersize = 8
 sns.set_style("whitegrid")
 #----------------------------------------------------------------
 
@@ -95,8 +102,10 @@ t_origin_to_ENU = -R_origin_to_ENU @ translation_ENU_to_origin
 bbox_to_anchor=(0.5, -0.12) #bottom
 bbox_to_anchor=(0.5, 1.3)   #top
 
+bbox_to_anchor=(0.5, 1.2)   #top
+
 ncol = 3
-#ncol = 2
+# ncol = 4
 def plot_trajectory_(xyz_enu, etrs_tm35fin = 'EPSG:3067', epsg = 3067):
     start = xyz_enu[0]
     print('start:',start)
@@ -149,8 +158,8 @@ def plot_trajectory_(xyz_enu, etrs_tm35fin = 'EPSG:3067', epsg = 3067):
     plt.grid(False)
 
     # Set the formatter for x and y axis to avoid scientific notation
-    axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.0f}'.format(x)))
-    axis.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}'.format(y)))
+    # axis.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: '{:.0f}'.format(x)))
+    # axis.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: '{:.0f}'.format(y)))
 
     # Specify the data coordinates where to place the image
     xy = (end[0]-5, end[1])
@@ -201,7 +210,7 @@ def plot_trajectory(xyz_enu, other_traj = [], other_labels=[], etrs_tm35fin = 'E
     # Plot the area boundary
     evo_area.boundary.plot(ax=axis, color='gray', linewidth=0)
     # Plot the trajectory points in Web Mercator (projected for plotting)
-    trajectory_gdf_mercator.plot(ax=axis, color='red', marker='o', markersize=12, label='GT', zorder=10)
+    trajectory_gdf_mercator.plot(ax=axis, color='red', marker='o', markersize=12, label='Trajectory', zorder=10)
 
     colors = ["#1f77b4",  
             '#ff7f0e',   
@@ -219,7 +228,7 @@ def plot_trajectory(xyz_enu, other_traj = [], other_labels=[], etrs_tm35fin = 'E
             crs=etrs_tm35fin
         )
         trajectory_gdf_mercator = trajectory_gdf.to_crs(epsg=epsg)
-        trajectory_gdf_mercator.plot(ax=axis, color=colors[i], marker=markers[i], markersize=8, alpha=.7, label=l, zorder=11)
+        trajectory_gdf_mercator.plot(ax=axis, color=colors[i], marker=markers[i], markersize=12, alpha=.7, label=l, zorder=11)
 
 
     #ctx.add_basemap(axaxis, source=ctx.providers.Esri.WorldImagery, crs=etrs_tm35fin)
@@ -254,8 +263,19 @@ def plot_trajectory(xyz_enu, other_traj = [], other_labels=[], etrs_tm35fin = 'E
                         zorder=10)  # No frame around image
 
     axis.add_artist(ab)
-
+    plt.legend(markerscale=3) 
     return fig, axis
+
+#used so far
+search_radius = 3.0
+min_time_diff = 100
+distance_upper_bound = 1.0
+
+
+#new better config - redoo the tests
+# search_radius = 1. # 3.0
+# min_time_diff = 280
+# distance_upper_bound = 0.1 # 1.0
 
 class TrajectoryReader(object):
     def __init__(self, path_gt, path_model, model_name = '', align = True):
@@ -289,13 +309,10 @@ class TrajectoryReader(object):
             T_enu = T_origin_to_ENU @ T_local
             new_poses_se3.append(T_enu)
 
-        #test_no_fail = 815 # 9999999# 4650
-
         test_no_fail = 9999999
-        if self.model_name in ['LI', 'LI-VUX', 'before LI', 'before LI-VUX', 'test', 'test_now']:
-            test_no_fail = 4650
-            test_no_fail = 2500
-            #test_no_fail = 815
+        #this is used to show when it fails the ablation study 
+        # if self.model_name in ['LI', 'LI-VUX', '*-LI', '*-LI-VUX', 'test', 'test_now']:
+        #     test_no_fail = 4650
 
         return PoseTrajectory3D(
             poses_se3=new_poses_se3[:test_no_fail],
@@ -340,7 +357,7 @@ class TrajectoryReader(object):
         ax.grid(True)
         ax.set_aspect('equal', adjustable='box')
         #ax.legend()
-        ax.legend(title="Method", loc='upper center', bbox_to_anchor=bbox_to_anchor,
+        ax.legend( loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
           ncol = ncol, fancybox=True, shadow=True)
 
         plt.draw()
@@ -399,7 +416,8 @@ class TrajectoryReader(object):
 
         self.rpe_r_error_vectors = rpe_metric.error
 
-    def overlap_error(self, est_xyz, label, search_radius = 3.0, min_time_diff = 100, plot = False):
+    
+    def overlap_error(self, est_xyz, label, search_radius = search_radius, min_time_diff = min_time_diff, plot = False):
         traj = est_xyz
         xy = traj[:, :2]
         # Build KD-tree on XY coordinates
@@ -441,7 +459,7 @@ class TrajectoryReader(object):
             for idx, segment in enumerate(overlap_segments):
                 pts = xy[segment]
                 plt.plot(pts[:, 0], pts[:, 1], '.', color=colors(idx), label=f'Overlapped segment {idx+1}')
-                print('idx:', idx)
+                print('idx:', idx, ', pts:', np.shape(pts), ', segment:', np.shape(segment))
                 axis_map.plot(pts[::30, 0], pts[::30, 1], '*', markersize=12, alpha=0.7, color=cols_[i], label=f'Overlapped segment {idx+1}')
                 i+=1
 
@@ -449,13 +467,15 @@ class TrajectoryReader(object):
             plt.ylabel('North [m]')
             plt.title('Trajectory with Overlapping Segments Highlighted')
             #plt.legend()
-            plt.legend(title="Method", loc='upper center', bbox_to_anchor=bbox_to_anchor,ncol = ncol, fancybox=True, shadow=True)
+            plt.legend( loc='upper center', bbox_to_anchor=bbox_to_anchor, ncol = ncol, fancybox=True, shadow=True) #title="Method",
             plt.axis('equal')
             plt.grid(False)
             plt.draw()
 
             axis_map.legend()
             plt.draw()
+
+            # plt.show()
 
         #-----------------------------------------------------------------------
         if plot: # and False:
@@ -524,7 +544,7 @@ class TrajectoryReader(object):
                 ax.set_zlim3d([z_middle - radius, z_middle + radius])
 
             set_axes_equal(ax3d)
-            ax3d.legend(title="Method",loc='best')
+            ax3d.legend(loc='best') #title="Method",
 
 
 
@@ -648,9 +668,9 @@ def overlap_error(est_xyz, label, segment_passes,  plot = False):
 
         # KD-Tree to find nearest backward point for each forward point
         bwd_tree = cKDTree(bwd_pts[:, :3])
-        distances, indices = bwd_tree.query(fwd_pts[:, :3], distance_upper_bound=1.0)
+        distances, indices = bwd_tree.query(fwd_pts[:, :3], distance_upper_bound=distance_upper_bound) #1.0
 
-        valid = distances != np.inf
+        valid = (distances != np.inf) 
         fwd_valid = fwd_pts[valid]
         bwd_valid = bwd_pts[indices[valid]]
 
@@ -703,20 +723,23 @@ methods = {
 #-robust comes from plane uncertanties 
 
 methods = {
-    'GT' : '/home/eugeniu/z_tighly_coupled/ref',
-    # 'test'                         : '/home/eugeniu/z_tighly_coupled/test1',
-    # 'test2'                         : '/home/eugeniu/z_tighly_coupled/test2',
-    # 'test_now'                         : '/home/eugeniu/z_tighly_coupled/test',
+    # 'GT' : '/home/eugeniu/z_tighly_coupled/ref',
+    #'test'                         : '/home/eugeniu/z_tighly_coupled/test',
+    #'test_now'                         : '/home/eugeniu/z_tighly_coupled/test',
 
-    # 'before LI'                    : '/home/eugeniu/z_tighly_coupled/1',
-    # 'before LI-VUX'                : '/home/eugeniu/z_tighly_coupled/2',
     
-    # 'LI'                        : '/home/eugeniu/z_tighly_coupled/1.1',    #robust
-    # 'LI-VUX'                    : '/home/eugeniu/z_tighly_coupled/2.1', #robust
+    
+    'LI'                        : '/home/eugeniu/z_tighly_coupled/1.1',    #robust
+    'LI-VUX'                    : '/home/eugeniu/z_tighly_coupled/2.1', #robust
 
-    #'(ppk)GNSS'             : '/home/eugeniu/z_tighly_coupled/0',
-    #'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
-    #'LI-VUX-(ppk)GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
+    #the methods with fixed covariance as before 
+    '*-LI'                    : '/home/eugeniu/z_tighly_coupled/1',
+    '*-LI-VUX'                : '/home/eugeniu/z_tighly_coupled/2',
+
+
+    # '(ppk)GNSS'             : '/home/eugeniu/z_tighly_coupled/0',
+    # 'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
+    # 'LI-VUX-(ppk)GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
 
     # 'LI-VUX-ALS(l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
     # 'LI-VUX-ALS(t-coupled)' : '/home/eugeniu/z_tighly_coupled/4',
@@ -741,8 +764,8 @@ methods_data = {
 
     'GT' : ['#d62728','L'],
 
-    'before LI' : ['#EFD700','M'],
-    'before LI-VUX' : ['#04f810','N'],
+    '*-LI' : ['#EFD700','M'],
+    '*-LI-VUX' : ['#04f810','N'],
 
     'test' : ["#648099",'Z'],
     'test2' : ["#26391B",'Z'],
@@ -776,17 +799,17 @@ if False:
     xyz_1 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/1.1/MLS.txt', 'LI', False).traj_model.positions_xyz
     xyz_2 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/2.1/MLS.txt', 'LI-VUX', False).traj_model.positions_xyz
 
-    before_xyz_1 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/1/MLS.txt', 'before LI', False).traj_model.positions_xyz
-    before_xyz_2 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/2/MLS.txt', 'before LI-VUX', False).traj_model.positions_xyz
+    before_xyz_1 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/1/MLS.txt', '*-LI', False).traj_model.positions_xyz
+    before_xyz_2 = TrajectoryReader(path_gt, '/home/eugeniu/z_tighly_coupled/2/MLS.txt', '*-LI-VUX', False).traj_model.positions_xyz
 
     other_traj = [xyz_1, xyz_2, before_xyz_1, before_xyz_2]
-    other_labels = ['LI', 'LI-VUX', 'before LI', 'before LI-VUX']
+    other_labels = ['LI', 'LI-VUX', '*-LI', '*-LI-VUX']
 
     f_map,axis_map = plot_trajectory(est_xyz, other_traj=other_traj, other_labels = other_labels)
     plt.show()
 
 
-obj_gt.overlap_error(obj_gt.traj_model.positions_xyz, "GT", plot = True)
+obj_gt.overlap_error(obj_gt.traj_model.positions_xyz, "Trajectory GT", plot = True)
 all_traj = [obj_gt.traj_gt]
 # 3D Plot
 fig_3d = plt.figure(figsize=(10, 7))
@@ -797,11 +820,11 @@ ax_3d.set_ylabel("North [m]")
 ax_3d.set_zlabel("Height [m]")
 
 # 2D Plot (XY Plane)
-fig_2d = plt.figure(figsize=(10, 7))
-ax_2d = fig_2d.add_subplot(111)
-ax_2d.set_title("XY Plane Trajectories")
-ax_2d.set_xlabel("East [m]")
-ax_2d.set_ylabel("North [m]")
+# fig_2d = plt.figure(figsize=(10, 7))
+# ax_2d = fig_2d.add_subplot(111)
+# ax_2d.set_title("XY Plane Trajectories")
+# ax_2d.set_xlabel("East [m]")
+# ax_2d.set_ylabel("North [m]")
 
 data_ape_t = {}
 data_ape_r = {}
@@ -812,7 +835,7 @@ data_z_overlap2 = {}
 
 positions = all_traj[0].positions_xyz 
 ax_3d.plot(positions[:, 0], positions[:, 1], positions[:, 2],label="GT", color="black")
-ax_2d.plot(positions[:, 0], positions[:, 1],label="GT", color="black",) 
+# ax_2d.plot(positions[:, 0], positions[:, 1],label="GT", color="black",) 
 x_limits = [np.min(positions[:, 0]), np.max(positions[:, 0])]
 y_limits = [np.min(positions[:, 1]), np.max(positions[:, 1])]
 z_limits = [np.min(positions[:, 2]), np.max(positions[:, 2])]
@@ -871,10 +894,10 @@ for idx, (label, path) in enumerate(methods.items()):
         label=label, color=colors[idx % len(colors)], linestyle=linestyles[idx % len(linestyles)]
     )
 
-    ax_2d.plot(
-        positions[:, 0], positions[:, 1],
-        label=label, color=colors[idx % len(colors)], linestyle=linestyles[idx % len(linestyles)]
-    )
+    # ax_2d.plot(
+    #     positions[:, 0], positions[:, 1],
+    #     label=label, color=colors[idx % len(colors)], linestyle=linestyles[idx % len(linestyles)]
+    # )
 
     z_overlap_error, all_z_diffs = overlap_error(obj.traj_model.positions_xyz, label, obj_gt.segment_passes,  plot = False)
     data_z_overlap[label] = z_overlap_error
@@ -884,13 +907,13 @@ for idx, (label, path) in enumerate(methods.items()):
 
 #ax_3d.legend()
 #ax_2d.legend()
-ax_3d.legend(title="Method",loc='upper center', bbox_to_anchor=bbox_to_anchor,
+ax_3d.legend(loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
           ncol = ncol, fancybox=True, shadow=True)
-ax_2d.legend(title="Method",loc='upper center', bbox_to_anchor=bbox_to_anchor,
-          ncol = ncol, fancybox=True, shadow=True)
+# ax_2d.legend(title="Method",loc='upper center', bbox_to_anchor=bbox_to_anchor,
+#   ncol = ncol, fancybox=True, shadow=True)
 
 ax_3d.grid(True)
-ax_2d.grid(True)
+# ax_2d.grid(True)
 plt.draw()
 
 def plot_box(data, metric = '',  show_legend = True):
@@ -929,7 +952,7 @@ def plot_box(data, metric = '',  show_legend = True):
     plt.ylabel(metric)
     plt.xticks(np.arange(1, len(labels) + 1), labels)
     if show_legend:
-        plt.legend(handles=legend_handles, title="Method", loc='upper center', bbox_to_anchor=bbox_to_anchor,
+        plt.legend(handles=legend_handles,  loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
             ncol = ncol, fancybox=True, shadow=True)
     plt.grid(True)
     #plt.tight_layout()
@@ -939,7 +962,10 @@ def plot_box(data, metric = '',  show_legend = True):
     # if first_got_legend:
     #     plt.legend().set_visible(False)
     plt.draw()
-    plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{val:.1f}"))    
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{val:.1f}"))   
+
+    # plt.gca().xaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{val:.2f}"))  
+
     plt.figure(figsize=(10, 5))
 
     values = [data[label] for label in labels]
@@ -955,7 +981,7 @@ def plot_box(data, metric = '',  show_legend = True):
         plt.xlabel(metric)
         plt.ylabel("Cumulative Probability")
         if show_legend:
-            plt.legend(title="Method", loc='upper center', bbox_to_anchor=bbox_to_anchor,
+            plt.legend( loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
             ncol = ncol, fancybox=True, shadow=True)
         plt.grid(True)
         #plt.tight_layout()
@@ -977,7 +1003,7 @@ def plot_z_overlap(data, metric_name=''):
     plt.ylabel(metric_name)
     #plt.xticks(x, labels)
     plt.xticks([])
-    plt.legend(title="Method", loc='upper center', bbox_to_anchor=bbox_to_anchor,
+    plt.legend( loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
           ncol = ncol, fancybox=True, shadow=True)
     #plt.xticks(rotation=90)
     #plt.tight_layout()
@@ -988,7 +1014,7 @@ def plot_z_overlap(data, metric_name=''):
 
 plot_box(data_ape_t, 'APE translation (m)', show_legend = True)
 #plot_box(data_ape_r, 'APE rotation (deg)')
-plot_box(data_rpe_t, 'RPE translation (m)', show_legend = True)
+plot_box(data_rpe_t, 'RPE translation (%)', show_legend = True)
 #plot_box(data_rpe_r, 'RPE rotation (deg)')
 
 # label = "GT"

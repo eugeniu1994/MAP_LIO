@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import glob
 
-fontsize = 14
+fontsize = 24
 
 def read_all_runs(pattern):
     """Read all txt files matching pattern and return as 2D array (runs x timesteps)."""

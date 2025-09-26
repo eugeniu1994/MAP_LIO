@@ -31,21 +31,21 @@ void SigHandle(int sig)
     flg_exit = true; // Set the flag to stop the loop
 }
 
-void publish_refined_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
-{
-    tf::Transform transformGPS;
-    tf::Quaternion q;
-    static tf::TransformBroadcaster br;
+// void publish_refined_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
+// {
+//     tf::Transform transformGPS;
+//     tf::Quaternion q;
+//     static tf::TransformBroadcaster br;
 
-    auto t = _pose.translation();
-    auto R_yaw = _pose.so3().matrix();
+//     auto t = _pose.translation();
+//     auto R_yaw = _pose.so3().matrix();
 
-    transformGPS.setOrigin(tf::Vector3(t[0], t[1], t[2]));
-    Eigen::Quaterniond quat_(R_yaw);
-    q = tf::Quaternion(quat_.x(), quat_.y(), quat_.z(), quat_.w());
-    transformGPS.setRotation(q);
-    br.sendTransform(tf::StampedTransform(transformGPS, ros::Time().fromSec(msg_time), "world", "VUX_B"));
-}
+//     transformGPS.setOrigin(tf::Vector3(t[0], t[1], t[2]));
+//     Eigen::Quaterniond quat_(R_yaw);
+//     q = tf::Quaternion(quat_.x(), quat_.y(), quat_.z(), quat_.w());
+//     transformGPS.setRotation(q);
+//     br.sendTransform(tf::StampedTransform(transformGPS, ros::Time().fromSec(msg_time), "world", "VUX_B"));
+// }
 
 void publish_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
 {
@@ -65,65 +65,6 @@ void publish_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
     // tf::Transform transform_inv = transformGPS.inverse();
     // static tf::TransformBroadcaster br2;
     // br2.sendTransform(tf::StampedTransform(transform_inv, ros::Time().fromSec(msg_time), "PPK_GNSS", "world"));
-}
-
-// Estimate rotation + translation from point sets
-Sophus::SE3 estimateRigidTransformFromPoints(const std::vector<V3D> &lidar_positions,
-                                             const std::vector<V3D> &gnss_positions)
-{
-    assert(lidar_positions.size() == gnss_positions.size());
-    size_t N = lidar_positions.size();
-
-    // Compute centroids
-    V3D centroid_lidar = V3D::Zero();
-    V3D centroid_gnss = V3D::Zero();
-    for (size_t i = 0; i < N; ++i)
-    {
-        centroid_lidar += lidar_positions[i];
-        centroid_gnss += gnss_positions[i];
-    }
-    centroid_lidar /= N;
-    centroid_gnss /= N;
-
-    // Center the points
-    Eigen::MatrixXd H = Eigen::MatrixXd::Zero(3, 3);
-    double sum_errors_init = 0., sum_errors_after = 0.;
-    for (size_t i = 0; i < N; ++i)
-    {
-        V3D p_L = lidar_positions[i] - centroid_lidar;
-        V3D p_G = gnss_positions[i] - centroid_gnss;
-        H += p_G * p_L.transpose(); // Note the order: from GNSS to LiDAR
-
-        sum_errors_init += (lidar_positions[i] - gnss_positions[i]).norm();
-    }
-    sum_errors_init /= N;
-
-    // Compute rotation via SVD
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
-    Eigen::Matrix3d U = svd.matrixU();
-    Eigen::Matrix3d V = svd.matrixV();
-    Eigen::Matrix3d R = V * U.transpose();
-
-    if (R.determinant() < 0)
-    {
-        V.col(2) *= -1;               // Reflect V to correct for reflection
-        R = V * U.transpose();       // Recompute proper rotation
-    }
-
-    // Compute translation
-    Eigen::Vector3d t = centroid_lidar - R * centroid_gnss;
-
-    for (size_t i = 0; i < N; ++i)
-    {
-        V3D p_L = lidar_positions[i];
-        V3D p_G = R * gnss_positions[i] + t;
-        sum_errors_after += (p_L - p_G).norm();
-    }
-    sum_errors_after /= N;
-
-    std::cout << "sum_errors_init:" << sum_errors_init << ", sum_errors_after:" << sum_errors_after << std::endl;
-
-    return Sophus::SE3(R, t);
 }
 
 struct vux_gnss_post
@@ -262,10 +203,9 @@ std::vector<vux_gnss_post> readMeasurements(const std::string &filename)
 std::vector<vux_gnss_post> readMeasurements2(const std::string &filename)
 {
     M3D T;
-                    T <<    -1,  0,  0,
-                            0,  0,  -1,
-                            0,  -1,  0;
-                    
+    T << -1, 0, 0,
+        0, 0, -1,
+        0, -1, 0;
 
     std::ifstream file(filename);
     if (!file.is_open())
@@ -531,10 +471,47 @@ bool readSE3FromFile(const std::string &filename, Sophus::SE3 &transform_out)
     return true;
 }
 
-//#include "clean_registration3.hpp"
-#include "../src3/clean_registration3.hpp"
-// using namespace gnss_MLS_fusion;
-// #include "rangeProjection.hpp"
+void publishAccelerationArrow(ros::Publisher &marker_pub, const Eigen::Vector3d &acceleration, const double &msg_time)
+{
+    visualization_msgs::Marker arrow;
+
+    arrow.header.frame_id = "PPK_GNSS"; // the location of the ppk gnss imu
+    arrow.header.stamp = ros::Time().fromSec(msg_time);
+    arrow.ns = "acceleration_arrow";
+    arrow.id = 0;
+    arrow.type = visualization_msgs::Marker::ARROW;
+    arrow.action = visualization_msgs::Marker::ADD;
+
+    // Define arrow start (origin) and end (acceleration direction)
+    geometry_msgs::Point start, end;
+    start.x = 0.0;
+    start.y = 0.0;
+    start.z = 0.0;
+
+    end.x = acceleration.x();
+    end.y = acceleration.y();
+    end.z = acceleration.z();
+
+    arrow.points.push_back(start);
+    arrow.points.push_back(end);
+
+    // Set arrow properties
+    arrow.scale.x = 0.3;
+    arrow.scale.y = 0.3;
+    arrow.scale.z = 0.3;
+
+    arrow.color.r = 1.0; // Full red
+    arrow.color.g = 0.5; // Medium green
+    arrow.color.b = 0.0; // No blue
+    arrow.color.a = 1.0; // Fully opaque
+
+    marker_pub.publish(arrow);
+}
+
+
+// #include "../src3/clean_registration3.hpp"
+
+#include "TrajectoryReader.hpp"
 
 void DataHandler::Subscribe()
 {
@@ -542,15 +519,7 @@ void DataHandler::Subscribe()
     std::cout << std::fixed << std::setprecision(12);
     std::cerr << std::fixed << std::setprecision(12);
 
-    std::mt19937 rng(42); // Fixed seed for reproducibility
-
-    // ros::TransportHints().tcpNoDelay()
-    std::cout << "\n=============================== BagHandler VUX ===============================" << std::endl;
-#ifdef MP_EN
-    std::cout << "Open_MP is available " << std::endl;
-#else
-    std::cout << "Open_MP is not available" << std::endl;
-#endif
+    std::cout << "\n=============================== Georeference the data ===============================" << std::endl;
 
 #ifdef USE_EKF
     std::shared_ptr<IMU_Class> imu_obj(new IMU_Class());
@@ -561,21 +530,16 @@ void DataHandler::Subscribe()
     std::shared_ptr<GNSS> gnss_obj(new GNSS());
 
     Sophus::SE3 Lidar_wrt_IMU = Sophus::SE3(Lidar_R_wrt_IMU, Lidar_T_wrt_IMU);
-
     imu_obj->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, 10. * acc_cov),
                        V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, 10. * b_acc_cov));
-
     gnss_obj->set_param(GNSS_T_wrt_IMU, GNSS_IMU_calibration_distance, postprocessed_gnss_path);
 
 #define USE_ALS
-#ifdef USE_ALS
-    std::shared_ptr<ALS_Handler> als_obj = std::make_shared<ALS_Handler>(folder_root, downsample, closest_N_files, filter_size_surf_min);
 
-    ros::Publisher pubLaserALSMap = nh.advertise<sensor_msgs::PointCloud2>("/ALS_map", 1000);
-// #ifndef USE_EKF
-//     std::shared_ptr<GlobalGraph> global_graph_obj(new GlobalGraph());
-// #endif
-#endif
+    // #ifdef USE_ALS
+    //     std::shared_ptr<ALS_Handler> als_obj = std::make_shared<ALS_Handler>(folder_root, downsample, closest_N_files, filter_size_surf_min);
+    //     ros::Publisher pubLaserALSMap = nh.advertise<sensor_msgs::PointCloud2>("/ALS_map", 1000);
+    // #endif
 
     ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
     ros::Publisher pubLaserCloudLocal = nh.advertise<sensor_msgs::PointCloud2>("/cloud_local", 100000);
@@ -588,92 +552,129 @@ void DataHandler::Subscribe()
     ros::Publisher pubOptimizedVUX = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized", 10);
 
     ros::Publisher pubOptimizedVUX2 = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized2", 10);
+    ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>("acceleration_marker", 10);
 
-    ros::Publisher cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("cloud", 1);
-    ros::Publisher normals_pub = nh.advertise<visualization_msgs::Marker>("normals", 1);
+    std::cout << "\n\nStart reading the data..." << std::endl;
 
-    ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("tgt_covariance_markers", 1);
-    ros::Publisher marker_pub2 = nh.advertise<visualization_msgs::MarkerArray>("src_covariance_markers", 1);
+    // for the car used so far - from the back antena
+    std::string ppk_gnss_imu_file = "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt";
 
-    std::ifstream file(bag_file);
-    if (!file)
+    //from the front antena - bad no proper orientation 
+    //ppk_gnss_imu_file = "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt";
+
+    //ppk_gnss_imu_file = "/media/eugeniu/T71/Lowcost_trajs/Lieksa/Kiimasuo/Lieksa_20250519_1.txt";
+
+    //prev approach 
+    // std::vector<vux_gnss_post> gnss_vux_data = readMeasurements(ppk_gnss_imu_file);
+    // std::cout << "gnss_vux_data:" << gnss_vux_data.size() << std::endl;
+
+    //------------------------------------------------------------------------------
+    TrajectoryReader reader;
+    reader.read(ppk_gnss_imu_file);
+
+    // --- Access lever arms ---
+    const auto &lever = reader.leverArms();
+    std::cout << "Lever arms (IMU -> GNSS): " << lever.transpose() << std::endl;
+
+    // --- Access body to IMU rotations ---
+    const auto &rot = reader.bodyToIMU();
+    std::cout << "Body->IMU Rotations: " << rot.transpose() << std::endl;
+
+    // --- Access measurements ---
+    const auto &measurements = reader.measurements();
+    std::cout << "Parsed " << measurements.size() << " measurements." << std::endl;
+    int total_m = measurements.size();
+
+    if (!measurements.empty())
     {
-        std::cerr << "Error: Bag file does not exist or is not accessible: " << bag_file << std::endl;
-        return;
+        const auto &m = measurements[0]; // first measurement
+        std::cout << "First measurement:" << std::endl;
+        std::cout << "  GPSTime = " << m.GPSTime << " sec" << std::endl;
+        std::cout << "  Position (E,N,H) = ("
+                  << m.Easting << ", "
+                  << m.Northing << ", "
+                  << m.H_Ell << ")" << std::endl;
+        std::cout << "  Orientation (Phi, Omega, Kappa) = ("
+                  << m.Phi << ", "
+                  << m.Omega << ", "
+                  << m.Kappa << ")" << std::endl;
+        std::cout << "  AccBias (X,Y,Z) = ("
+                  << m.AccBiasX << ", "
+                  << m.AccBiasY << ", "
+                  << m.AccBiasZ << ")" << std::endl;
+
+        std::cout << "  AngRate (X,Y,Z) = ("
+                  << m.AngRateX << ", "
+                  << m.AngRateY << ", "
+                  << m.AngRateZ << ")" << std::endl;
+
+        std::cout << "  VelBdy (X,Y,Z) = ("
+                  << m.VelBdyX << ", "
+                  << m.VelBdyY << ", "
+                  << m.VelBdyZ << ")" << std::endl;
+
+        std::cout << "First measurement m.utc_usec:"<< m.utc_usec << std::endl;       
+        std::cout << "First measurement m.utc_usec2:"<< m.utc_usec2 << std::endl;
+
+        // First measurement m.utc_usec :   1721898390000000.000000000000
+        // First measurement m.utc_usec2:   1721898390.000000000000
+
+        //pcl_cbk msg->  .stamp.toSec():    1721900923.978538036346
     }
 
-    rosbag::Bag bag;
-    bag.open(bag_file, rosbag::bagmode::Read);
+    auto m0 = measurements[0];
 
-    std::vector<std::string> topics;
-    topics.push_back(lid_topic);
-    topics.push_back(imu_topic);
-    topics.push_back(gnss_topic);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
+    V3D raw_gyro;
+    V3D raw_acc, gravity_free_acc = V3D(m0.AccBdyX, m0.AccBdyY, m0.AccBdyZ);
+    reader.addEarthGravity(measurements[reader.curr_index], raw_gyro, raw_acc, G_m_s2); //this will add the world gravity
+    //reader.addGravity(measurements[reader.curr_index], se3, raw_gyro, raw_acc, G_m_s2); //gravity in curr body frame 
 
-    signal(SIGINT, SigHandle); // Handle Ctrl+C (SIGINT)
-    flg_exit = false;
+    std::cout << "gravity_free_acc:" << gravity_free_acc.transpose() << std::endl;
+    std::cout << "raw_acc:" << raw_acc.transpose() << std::endl;
 
-    std::cout << "Start reading the data..." << std::endl;
+    Sophus::SE3 first_ppk_gnss_pose_inverse = Sophus::SE3();
+    reader.toSE3(m0, first_ppk_gnss_pose_inverse);
+    first_ppk_gnss_pose_inverse = first_ppk_gnss_pose_inverse.inverse();
 
-    // get this as param
-    std::string folder_path = "/media/eugeniu/T7/roamer/03_RIEGL_RAW/02_RXP/VUX-1HA-22-2022-B/";
-    // folder_path = "/media/eugeniu/T7/roamer/03_RIEGL_RAW/02_RXP/VUX-1HA-22-2022-A/";
+    /*
+    --setup the proper GNSS reader for the better trajectory
+    --option to add the raw acc with gravity
+    --publish the data
+    --publish the gravity vector
+    --option to transform it into first IMU frame
 
-    vux::VuxAdaptor readVUX(std::cout, 75.);
-    if (!readVUX.setUpReader(folder_path)) // get all the rxp files
-    {
-        std::cerr << "Cannot set up the VUX reader" << std::endl;
-        return;
-    }
 
-    // for the car used so far
-    std::string post_processed_gnss_imu_vux_file = "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt";
-    std::vector<vux_gnss_post> gnss_vux_data = readMeasurements(post_processed_gnss_imu_vux_file);
+
+    read the bag files at it is but do not do anything with the data yet
+    synch the data
+
+    add the gravity into it too
+
+    transform everything into frame of the first pose
+
+    */
 
     // test for drone data
-    //std::string post_processed_gnss_imu_vux_file = "/home/eugeniu/Desktop/Evo_HesaiALS_20250709/Hesai_ALS_20250709_Evo_1014.txt";
-    //std::vector<vux_gnss_post> gnss_vux_data = readMeasurements2(post_processed_gnss_imu_vux_file);
+    // std::string ppk_gnss_imu_file = "/home/eugeniu/Desktop/Evo_HesaiALS_20250709/Hesai_ALS_20250709_Evo_1014.txt";
+    // std::vector<vux_gnss_post> gnss_vux_data = readMeasurements2(ppk_gnss_imu_file);
 
-    
-    std::cout << "gnss_vux_data:" << gnss_vux_data.size() << std::endl;
-    auto first_m = gnss_vux_data[0];
-    V3D first_t(first_m.easting, first_m.northing, first_m.h_ell), first_t_ned;
-    std::cout << "\n gps_tod:" << first_m.gps_tod << ", easting:" << first_m.easting << ", northing:" << first_m.northing << ", h_ell:" << first_m.h_ell << "\n"
-              << std::endl;
-    std::cout << "gps_tow:" << first_m.gps_tow << ", omega:" << first_m.omega << ", phi:" << first_m.phi << ", kappa:" << first_m.kappa << std::endl;
+    // std::cout << "gnss_vux_data:" << gnss_vux_data.size() << std::endl;
+    // auto first_m = gnss_vux_data[0];
+    // V3D first_t(first_m.easting, first_m.northing, first_m.h_ell), first_t_ned;
+    // std::cout << "\n gps_tod:" << first_m.gps_tod << ", easting:" << first_m.easting << ", northing:" << first_m.northing << ", h_ell:" << first_m.h_ell << "\n"
+    //           << std::endl;
+    // std::cout << "gps_tow:" << first_m.gps_tow << ", omega:" << first_m.omega << ", phi:" << first_m.phi << ", kappa:" << first_m.kappa << std::endl;
     int tmp_index = 0, init_guess_index = 0;
 
     ros::Rate rate(500);
 
-    bool time_aligned = false;
-    int some_index = 0;
-
-    pcl::PointCloud<VUX_PointType>::Ptr next_line(new pcl::PointCloud<VUX_PointType>);
-    pcl::PointCloud<PointType>::Ptr downsampled_als_cloud(new pcl::PointCloud<PointType>);
-
-    bool vux_mls_time_aligned = false;
-    pcl::VoxelGrid<VUX_PointType> downSizeFilter_vux;
-    downSizeFilter_vux.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
-
-    // just a test for now
-    // downSizeFilter_vux.setLeafSize(1.0, 1.0, 1.0);
-
-    int scan_id = 0, vux_scan_id = 0;
-    Sophus::SE3 first_vux_pose;
+    int scan_id = 0;
 
     Sophus::SE3 prev_mls, curr_mls;
     double prev_mls_time, curr_mls_time;
     cov prev_P, curr_P;
 
-    V3D prev_enu, curr_enu;
-    double prev_raw_gnss_diff_time, curr_raw_gnss_diff_time;
-
-    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_with_normals(new pcl::PointCloud<pcl::PointNormal>());
-    bool raw_vux_imu_time_aligned = false;
     bool perform_mls_registration = true;
-    bool als_integrated = false;
-    Sophus::SE3 als2mls = Sophus::SE3();
 
     //----------------------------------------------------------------------------
     M3D Rz;
@@ -682,18 +683,11 @@ void DataHandler::Subscribe()
         sin(angle), cos(angle), 0,
         0, 0, 1;
 
-    M3D R_vux2mls; // from vux scanner to mls point cloud
-    R_vux2mls << 0.0064031121, -0.8606533346, -0.5091510953,
-        -0.2586398121, 0.4904106092, -0.8322276624,
-        0.9659526116, 0.1370155907, -0.2194590626;
-    V3D t_vux2mls(-0.2238580597, -3.0124498678, -0.8051626709);
-    Sophus::SE3 vux2mls_extrinsics = Sophus::SE3(R_vux2mls, t_vux2mls); // refined - vux to mls cloud
-
     Eigen::Matrix4d T_lidar2gnss;
     T_lidar2gnss << 0.0131683606, -0.9998577263, 0.0105414145, 0.0154123047,
-                    0.9672090675, 0.0100627670, -0.2537821120, -2.6359450601,
-                    0.2536399297, 0.0135376461, 0.9672039693, -0.5896374492,
-                    0.0, 0.0, 0.0, 1.0;
+        0.9672090675, 0.0100627670, -0.2537821120, -2.6359450601,
+        0.2536399297, 0.0135376461, 0.9672039693, -0.5896374492,
+        0.0, 0.0, 0.0, 1.0;
 
     M3D R_lidar2gnss = T_lidar2gnss.block<3, 3>(0, 0); // Rotation
     V3D t_lidar2gnss = T_lidar2gnss.block<3, 1>(0, 3); // Translation
@@ -702,27 +696,116 @@ void DataHandler::Subscribe()
     Sophus::SE3 lidar2gnss(R_lidar2gnss, t_lidar2gnss); // FROM LIDAR 2 GNSS   T_lidar = T_gnss * lidar2gnss.inverse()
     Sophus::SE3 gnss2lidar = lidar2gnss.inverse();
     //----------------------------------------------------------------------------
-    ros::Publisher pose_pub2 = nh.advertise<nav_msgs::Odometry>("/se3_pose2", 100);
 
     bool use_als = true;
-
-    std::vector<pcl::PointCloud<VUX_PointType>::Ptr> vux_scans;
-    std::vector<double> vux_scans_time;
-
-    std::vector<double> mls_times, gnss_times;
-
-    std::vector<pcl::PointCloud<PointType>::Ptr> mls_clouds;
-    int estimated_total_points = 0;
-
-    Sophus::SE3 first_ppk_gnss_pose_inverse = Sophus::SE3();
-
-#define integrate_vux
-#define integrate_ppk_gnss
 
     using namespace std::chrono;
 
     bool ppk_gnss_synced = false;
     Sophus::SE3 se3 = Sophus::SE3();
+
+
+
+    
+
+    std::vector<std::string> topics{lid_topic, imu_topic, gnss_topic};
+
+    // std::ifstream file(bag_file);
+    // if (!file)
+    // {
+    //     std::cerr << "Error: Bag file does not exist or is not accessible: " << bag_file << std::endl;
+    //     return;
+    // }
+    //rosbag::Bag bag;
+    //bag.open(bag_file, rosbag::bagmode::Read);
+    //rosbag::View view(bag, rosbag::TopicQuery(topics));
+
+    //{
+        std::string bag_pattern = "/media/eugeniu/T71/Lowcost_trajs/Lieksa/Kiimasuo/Kiimasuo_hesai_*.bag";
+        bag_pattern = bag_file;
+
+        std::vector<std::string> bag_files = expandBagPattern(bag_pattern);
+        std::cout<<"bag_files:"<<bag_files.size()<<std::endl;
+        if(bag_files.size() == 0)
+        {
+            std::cerr << "Error: Bag file does not exist or is not accessible: " << bag_file << std::endl;
+            return;
+        }
+        for (auto &f : bag_files)
+            std::cout << "Matched: " << f << std::endl;
+
+        // Open all bags
+        std::vector<std::shared_ptr<rosbag::Bag>> bags;
+        for (const auto &file : bag_files)
+        {
+            auto bag = std::make_shared<rosbag::Bag>();
+            bag->open(file, rosbag::bagmode::Read);
+            bags.push_back(bag);
+            ROS_INFO_STREAM("Opened bag: " << file);
+        }
+
+        // Build a single view from all bags
+        rosbag::View view;
+        for (auto &b : bags)
+        {
+            view.addQuery(*b, rosbag::TopicQuery(topics));
+        }
+    //}
+
+
+
+
+    {
+        // for timimg check the following
+        // from Petris code 
+        
+        // std::uint64_t fullWeekSecs = 0;
+        // if (row[0] == "Project:") { // a.g., row = Project:     Hanhivaara_20250520_2
+        //     std::vector<std::string> splitProjectName = Utils::splitStr(row[1], "_");
+        //     std::vector<unsigned int> yearMonthDay = {std::stod (splitProjectName[0].substr (0,4)),
+        //                                                 std::stod (splitProjectName[0].substr (4,2)),
+        //                                                 std::stod (splitProjectName[0].substr (6,2))};
+        //     fullWeekSecs = Utils::dateTime2UnixTime(yearMonthDay[0], yearMonthDay[1], yearMonthDay[2]);
+        //     fullWeekSecs -= 86400. * Utils::getDayOfWeekIndex(fullWeekSecs);
+        // }
+        // convert the ppk gnss to rostimestamp time 
+        // double weekTimeSec = std::stod (row [paramMap ["UTCTime"]]);
+        // m.utc_usec = static_cast<std::uint64_t> (fullWeekSecs * 1e6 + weekTimeSec * 1e6);
+        // measLowerIt->utc_usec
+        // measLowerIt->utc_usec - scan->header.stamp
+    }
+
+    {
+        
+
+        
+
+          
+
+        // ros::Time gpsTowToRosTime(int gps_week, double tow_sec)
+        // {
+        //     // Convert GPS week + TOW -> UNIX time
+        //     int64_t unix_sec = GPS_UNIX_OFFSET + gps_week * 7 * 24 * 3600 + static_cast<int64_t>(tow_sec);
+
+        //     // Adjust for leap seconds
+        //     unix_sec -= LEAP_SECONDS;
+
+        //     // Fractional seconds
+        //     double frac = tow_sec - static_cast<int64_t>(tow_sec);
+
+        //     return ros::Time(unix_sec, static_cast<uint32_t>(frac * 1e9));
+        // }
+    }
+
+
+
+
+
+
+
+    signal(SIGINT, SigHandle); // Handle Ctrl+C (SIGINT)
+    flg_exit = false;
+    
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -767,12 +850,11 @@ void DataHandler::Subscribe()
                 break;
             }
 
-
-            if (scan_id > 1000) 
-            {
-                std::cout << "Stop here... enough data 8000 scans" << std::endl;
-                break;
-            }
+            // if (scan_id > 1000)
+            // {
+            //     std::cout << "Stop here... enough data 8000 scans" << std::endl;
+            //     break;
+            // }
 
             perform_mls_registration = true;
             if (perform_mls_registration)
@@ -821,98 +903,105 @@ void DataHandler::Subscribe()
                 }
 
                 gnss_obj->Process(gps_buffer, lidar_end_time, state_point.pos);
+
                 double time_of_day_sec = gnss_obj->tod;
 
-                if(!ppk_gnss_synced)
+                if(!reader.init(time_of_day_sec))
                 {
-                    std::cout<<"Start time sync..."<<std::endl;
-                    double time_start = time_of_day_sec - .1;
-                    double time_end   = time_of_day_sec;
-                    while (tmp_index < gnss_vux_data.size() - 1)
+                    std::cerr<<"Cannot initialize the GNSS-IMU reader..."<<std::endl;
+                    return;
+                }
+                
+                if (reader.initted)
+                {
+                    tmp_index = reader.curr_index;
+                    if (!ppk_gnss_synced)
                     {
-                        tmp_index++;
-                        double time_diff_curr = fabs(time_start - gnss_vux_data[tmp_index].gps_tod);
-                        double time_diff_next = fabs(time_start - gnss_vux_data[tmp_index + 1].gps_tod);
-                        // std::cout << "time_diff_curr:" << time_diff_curr << ", time_diff_next:" << time_diff_next << std::endl;
-                        std::cout << "Closest GNSS time diff = " << time_diff_curr << std::endl;
-                        if (time_diff_curr > time_diff_next) // get to the closest message on time
-                        {
-                            continue; // continue to go to the next message
-                        }
+                        const auto &m = measurements[tmp_index];
+                        Sophus::SE3 interpolated_pose;
+                        reader.toSE3(m, interpolated_pose);
+                        // take only the position of the first pose - keeps the orientation as it it, so gravity = earth gravity
+                        first_ppk_gnss_pose_inverse = Sophus::SE3(M3D::Identity(), interpolated_pose.translation()).inverse();
                         
+                        //doing this we put everything in the frame of the first pose - gravity here is not the earth gravity
+                        
+                        //first_ppk_gnss_pose_inverse = interpolated_pose.inverse(); //this will rotate the world - so that gravity 
+                        //the earth gravity can be added using the current system rotation in the world frame 
+
+                        
+
+                        // Convert to Euler (ZYX: yaw-pitch-roll)
+                        Eigen::Vector3d euler = interpolated_pose.so3().matrix().eulerAngles(2, 1, 0);
+                        // euler[0] = yaw (around Z), euler[1] = pitch (around Y), euler[2] = roll (around X)
+                        std::cout << "Euler angles (rad): " << euler.transpose() << std::endl;
+                        std::cout << "Euler angles (deg): " << euler.transpose() * 180.0 / M_PI << std::endl;
+
                         ppk_gnss_synced = true;
-                        // auto ppk_gnss_imu = als2mls * gnss_vux_data[tmp_index].se3; // in mls frame
-                        auto interpolated_pose = interpolateSE3(
-                                                        gnss_vux_data[tmp_index].se3, gnss_vux_data[tmp_index].gps_tod,
-                                                        gnss_vux_data[tmp_index + 1].se3, gnss_vux_data[tmp_index + 1].gps_tod,
-                                                        time_start) * gnss2lidar;
-                        
-                        first_ppk_gnss_pose_inverse = interpolated_pose.inverse();
                         std::cout << "\nsynchronised\n, press enter..." << std::endl;
                         std::cin.get();
-                        break;
+                        continue;
                     }
-                }   
+
+                    double time_start = time_of_day_sec - .1;
+                    double time_end = time_of_day_sec;
+
+                    auto interpolated_pose = reader.closestPose(time_end); // * gnss2lidar;
+                    tmp_index = reader.curr_index;
+                    const auto &msg_time = measurements[tmp_index].tod;
+                    se3 = first_ppk_gnss_pose_inverse * interpolated_pose; // in first frame
+                    publish_ppk_gnss(se3, msg_time);
+
+                    //reader.addEarthGravity(measurements[reader.curr_index], raw_gyro, raw_acc, G_m_s2); //this will add the world gravity
+                    reader.addGravity(measurements[reader.curr_index], se3, raw_gyro, raw_acc, G_m_s2); //gravity in curr body frame 
+
+                    //todo - we can do it the other way around and add the gravity in IMU body frame 
+                    publishAccelerationArrow(marker_pub, raw_acc, msg_time);
+
+                    {
+                        
+
+                        // while (tmp_index < gnss_vux_data.size() - 1)
+                        // {
+                        //     const auto &msg_time = gnss_vux_data[tmp_index].gps_tod;
+
+                        //     std::cout << "\ntime_start:" << time_start << std::endl;
+                        //     std::cout << "time_end  :" << time_end << std::endl;
+                        //     std::cout << "msg_time  :" << msg_time << std::endl;
+
+                        //     if (msg_time <= time_end)
+                        //     {
+                        //         // auto ppk_gnss_imu = als2mls * gnss_vux_data[tmp_index].se3; // in mls frame
+                        //         auto interpolated_pose = interpolateSE3(
+                        //                                      gnss_vux_data[tmp_index].se3, gnss_vux_data[tmp_index].gps_tod,
+                        //                                      gnss_vux_data[tmp_index + 1].se3, gnss_vux_data[tmp_index + 1].gps_tod,
+                        //                                      time_of_day_sec) * gnss2lidar;
+
+                        //         se3 = first_ppk_gnss_pose_inverse * interpolated_pose; // in first IMU frame
+                        //         //publish_ppk_gnss(se3, msg_time);
+                        //         tmp_index++;
+                        //     }
+                        //     else
+                        //     {
+                        //         break;
+                        //     }
+                        // }
+
+                        //add the reader.Rz.transpose()  before the gnss2lidar, since gnss2lidar contains it 
+                        se3 = first_ppk_gnss_pose_inverse * interpolated_pose * Sophus::SE3(reader.Rz.transpose(),V3D(0,0,0)) * gnss2lidar;
+
+                        // auto T = se3 * Lidar_wrt_IMU;
+                        TransformPoints(Lidar_wrt_IMU, feats_undistort); // lidar to IMU frame
+
+                        TransformPoints(se3, feats_undistort); // georeference with se3 in IMU frame
+
+                        publish_frame_debug(pubLaserCloudDebug, feats_undistort);
+                    }
+                }
                 else
                 {
-                    double time_start = time_of_day_sec - .1;
-                    double time_end   = time_of_day_sec;
-                    
-                    while (tmp_index < gnss_vux_data.size() - 1)
-                    {
-                        const auto &msg_time = gnss_vux_data[tmp_index].gps_tod;
-
-                        std::cout<<"\ntime_start:"<<time_start<<std::endl;
-                        std::cout<<"time_end  :"<<time_end<<std::endl;
-                        std::cout<<"msg_time  :"<<msg_time<<std::endl;
-
-                        if(msg_time <= time_end)
-                        {
-                            // auto ppk_gnss_imu = als2mls * gnss_vux_data[tmp_index].se3; // in mls frame
-                            auto interpolated_pose = interpolateSE3(
-                                                                gnss_vux_data[tmp_index].se3, gnss_vux_data[tmp_index].gps_tod,
-                                                                gnss_vux_data[tmp_index + 1].se3, gnss_vux_data[tmp_index + 1].gps_tod,
-                                                                time_of_day_sec) * gnss2lidar;
-        
-                            
-
-
-                            se3 = first_ppk_gnss_pose_inverse * interpolated_pose; //in first IMU frame 
-                            publish_ppk_gnss(se3, msg_time);
-                            tmp_index++;
-                        }
-                        else
-                        {
-                            break;
-                        }  
-                    }
-
-                    //todo
-                    /*
-                    take all the raw gnss measurements from start-end scan time
-                    convert them to tod 
-                    get tod start and tod end of the scan 
-                    use that to get all the ppk poses
-                    undistort the point cloud 
-                    */
-
-
-                    // the issue before was that gnss should have been transformed to IMU 
-                    //     but now it works 
-
-
-                    //auto T = se3 * Lidar_wrt_IMU;
-                    TransformPoints(Lidar_wrt_IMU, feats_undistort); //lidar to IMU frame 
-
-                    TransformPoints(se3, feats_undistort); //georeference with se3 in IMU frame
-
-                    publish_frame_debug(pubLaserCloudDebug, feats_undistort);
-
-
+                    std::cout << "GNSS reader not initted..." << std::endl;
                 }
-
-                 
-
+                continue; //------------------------------------------------------------
 
                 double t11 = omp_get_wtime();
                 std::cout << "Mapping time(ms):  " << (t11 - t00) * 1000 << ", feats_down_size: " << feats_down_size << ", lidar_end_time:" << lidar_end_time << "\n"
@@ -920,6 +1009,9 @@ void DataHandler::Subscribe()
             }
         }
     }
-    bag.close();
-    // cv::destroyAllWindows();
+    //bag.close();
+    for (auto &b : bags)
+        b->close();
+
+    // cv::destroyAllWindows(); */
 }

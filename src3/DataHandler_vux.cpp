@@ -677,13 +677,19 @@ void DataHandler::Subscribe()
     // get this as param
     std::string folder_path = "/media/eugeniu/T7/roamer/03_RIEGL_RAW/02_RXP/VUX-1HA-22-2022-B/";
     // folder_path = "/media/eugeniu/T7/roamer/03_RIEGL_RAW/02_RXP/VUX-1HA-22-2022-A/";
-
+    
+    
+//#define integrate_vux
+//#define integrate_ppk_gnss
+    
+    #ifdef integrate_vux
     vux::VuxAdaptor readVUX(std::cout, 75.);
     if (!readVUX.setUpReader(folder_path)) // get all the rxp files
     {
         std::cerr << "Cannot set up the VUX reader" << std::endl;
         return;
     }
+    #endif 
 
     // for the car used so far
     // std::string post_processed_gnss_imu_vux_file = "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt";
@@ -785,19 +791,65 @@ void DataHandler::Subscribe()
     bool ppk_gnss_init = false;
     Sophus::SE3 first_ppk_gnss_pose_inverse = Sophus::SE3();
 
-#define integrate_vux
-//#define integrate_ppk_gnss
+
 
     using namespace std::chrono;
 
     int tmp_count = 0;
+
+    bool do_this_once = false, dropped = false;
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
         if (flg_exit || !ros::ok())
             break;
 
+        
+
         std::string topic = m.getTopic();
+        // if(!dropped){
+        //     std::cout<<"\ntest this now"<<std::endl;
+        //     std::cout<<"last_timestamp_imu  :"<<last_timestamp_imu<<std::endl;
+        //     std::cout<<"last_timestamp_lidar:"<<last_timestamp_lidar<<std::endl;
+        //     std::cout<<"dt:"<<(last_timestamp_lidar - last_timestamp_imu)<<std::endl;
+
+        //     if (topic == lid_topic)
+        //     {
+        //         sensor_msgs::PointCloud2::ConstPtr pcl_msg = m.instantiate<sensor_msgs::PointCloud2>();
+        //         if (pcl_msg)
+        //         {
+        //             pcl_cbk(pcl_msg);
+        //         }
+        //         do_this_once = true;
+        //     }
+
+        //     if (do_this_once && topic == imu_topic)
+        //     {
+        //         sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
+        //         if (imu_msg)
+        //         {
+        //             last_timestamp_imu = imu_msg->header.stamp.toSec();
+                    
+        //             auto dt = (last_timestamp_lidar - last_timestamp_imu);
+        //             if(dt <= .01)
+        //             {
+        //                 std::cout << "\nsynchronised\n, press enter..." << std::endl;
+        //                 std::cin.get();
+        //                 dropped = true;
+        //                 imu_buffer.clear();
+        //                 lidar_pushed = false;
+        //             }
+        //             else{
+        //                 std::cout<<"dropping..."<<std::endl;
+        //             }
+        //             continue;
+        //         }
+        //     }
+            //last_timestamp_imu  :1747564211.222993135452
+            //last_timestamp_lidar:1747564211.323302984238
+            //continue;
+        //}
+
         if (topic == imu_topic)
         {
             sensor_msgs::Imu::ConstPtr imu_msg = m.instantiate<sensor_msgs::Imu>();
@@ -835,12 +887,11 @@ void DataHandler::Subscribe()
                 break;
             }
 
-
-            if (scan_id > 1000) 
-            {
-                std::cout << "Stop here... enough data 8000 scans" << std::endl;
-                break;
-            }
+            // if (scan_id > 1000) 
+            // {
+            //     std::cout << "Stop here... enough data 8000 scans" << std::endl;
+            //     break;
+            // }
 
             perform_mls_registration = true;
             if (perform_mls_registration)
@@ -927,6 +978,8 @@ void DataHandler::Subscribe()
 
                 // register to MLS map  ----------------------------------------------
                 Nearest_Points.resize(feats_down_size);
+
+                use_als = false;
 
                 if (use_als)
                 {
@@ -1031,7 +1084,7 @@ void DataHandler::Subscribe()
 
                             bool tightly_coupled = true;
                             bool use_gnss = false; 
-                            bool use_als = false;// true;
+                            bool use_als = true;
 
                             if (!estimator_.update_final(
                                 LASER_POINT_COV, R_gps_cov, feats_down_body, gnss_in_mls, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als,
@@ -2266,9 +2319,14 @@ std::cout<<"save_poses:"<<save_poses<<", save_clouds_path:"<<save_clouds_path<<s
                 std::cout << "Mapping time(ms):  " << (t11 - t00) * 1000 << ", feats_down_size: " << feats_down_size << ", lidar_end_time:" << lidar_end_time << "\n"
                           << std::endl;
 
+                std::cout<<"extrinsic R:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
+                std::cout<<"extrinsic t:"<<state_point.offset_T_L_I.transpose()<<std::endl;
+
                 als2mls = als_obj->als_to_mls;
                 // std::cout<<"Debug als2mls:\n"<<als2mls.matrix()<<std::endl;
             }
+        }else{
+            std::cout<<"Sync failed..."<<std::endl;
         }
     }
     bag.close();

@@ -41,7 +41,10 @@ constexpr int MAX_NUM_ITERATIONS_ = 500; // icp
 constexpr double ESTIMATION_THRESHOLD_ = 0.001;
 
 // 1.0 for no gravity
-const double G_m_s2 = 9.81;
+const double G_m_s2 = 9.81;   //positive as before z axis up
+
+//the new system has the z-axis down therefore negative
+//const double G_m_s2 = -9.81;
 
 #define NUM_MATCH_POINTS (5)
 
@@ -676,5 +679,7 @@ Sophus::SE3 registerClouds(pcl::PointCloud<PointType>::Ptr &src, pcl::PointCloud
 void TransformPoints(const Sophus::SE3 &T, pcl::PointCloud<VUX_PointType>::Ptr &cloud);
 
 void TransformPoints(const Sophus::SE3 &T, pcl::PointCloud<PointType>::Ptr &cloud);
+
+std::vector<std::string> expandBagPattern(const std::string &pattern_path);
 
 #endif

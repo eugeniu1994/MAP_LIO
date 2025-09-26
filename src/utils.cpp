@@ -2,6 +2,7 @@
 
 #include <tbb/parallel_for.h>
 #include <tbb/blocked_range.h>
+#include <regex>
 
 #include <pcl/registration/gicp.h>
 
@@ -401,6 +402,44 @@ std::vector<double> NormalizeTimestamps(const std::vector<double> &timestamps)
                        return (timestamp - min_timestamp) / (max_timestamp - min_timestamp);
                    });
     return timestamps_normalized;
+}
+
+std::vector<std::string> expandBagPattern(const std::string &pattern_path)
+{
+    namespace fs = boost::filesystem;
+    std::vector<std::string> results;
+
+    fs::path p(pattern_path);
+    fs::path dir = p.parent_path();          // directory part
+    std::string filename = p.filename().string(); // e.g. "1_hesai-CPT_2024-*.bag"
+
+    if (dir.empty())
+        dir = ".";
+
+    // Convert shell-style * into regex
+    std::string regex_pattern = std::regex_replace(filename, std::regex("\\*"), ".*");
+    std::regex re(regex_pattern);
+
+    if (!fs::exists(dir) || !fs::is_directory(dir))
+    {
+        std::cerr << "Directory does not exist: " << dir << std::endl;
+        return results;
+    }
+
+    for (auto &entry : fs::directory_iterator(dir))
+    {
+        if (fs::is_regular_file(entry.path()))
+        {
+            std::string fname = entry.path().filename().string();
+            if (std::regex_match(fname, re))
+            {
+                results.push_back(entry.path().string());
+            }
+        }
+    }
+
+    std::sort(results.begin(), results.end());
+    return results;
 }
 
 #include <pcl/visualization/pcl_visualizer.h>
