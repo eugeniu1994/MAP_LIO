@@ -628,40 +628,6 @@ bool DataHandler::sync_packages(MeasureGroup &meas)
 #endif
     }
 
-    // { //remove this later  - added for the changed IMU
-    //     if (!time_sync_en && abs(last_timestamp_imu - last_timestamp_lidar) > 5.0 && !imu_buffer.empty())
-    //     {
-           
-
-    //         printf("sync_packages IMU and LiDAR not Synced, IMU time: %lf, lidar header time: %lf \n", last_timestamp_imu, last_timestamp_lidar);
-    //         std::cout<<"Drop the IMU data till first LiDAR points"<<std::endl;
-    //          std::cout << "\nsynchronised\n, press enter..." << std::endl;
-    //                     std::cin.get();
-                        
-    //         while(!imu_buffer.empty())
-    //         {
-    //             double imu_time = imu_buffer.front()->header.stamp.toSec();
-    //             imu_buffer.pop_front();
-    //             std::cout<<"\nimu_buffer size:"<<imu_buffer.size()<<std::endl;
-    //             last_timestamp_imu = imu_time;
-
-    //             std::cout<<"last_timestamp_imu  :"<<last_timestamp_imu<<std::endl;
-    //             std::cout<<"last_timestamp_lidar:"<<last_timestamp_lidar<<std::endl;
-    //             std::cout<<"dt:"<<(last_timestamp_lidar - last_timestamp_imu)<<std::endl;
-    //             std::cout<<"imu_buffer.empty():"<<imu_buffer.empty()<<std::endl;
-    //             if (imu_time > last_timestamp_lidar)
-    //             {
-    //                 std::cout<<"Stop...----------------------------"<<std::endl;
-                    
-    //                 break;
-    //             }
-    //         }
-    //         lidar_pushed = false;
-    //         std::cout<<"Out of while... return false"<<std::endl;
-    //         return false;
-    //     }
-    // }
-
     if (last_timestamp_imu < lidar_end_time) // If lst imu timestamp is less than the lidar final time, it means that not enough imu data has been collected.
     {
         std::cout<<"last_timestamp_imu is smaller than lidar_end_time,  return False in the sync"<<std::endl;

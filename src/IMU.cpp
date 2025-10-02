@@ -184,8 +184,40 @@ void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
 void IMU_Class::IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, const Sophus::SE3 &gt)
 {
     std::cout << "IMU_init_from_GT" << std::endl;
+    V3D cur_acc, cur_gyr;
+
+    int N = 1;
+    if (b_first_frame_)
+    {
+        reset();
+        N = 1;
+        b_first_frame_ = false;
+        const auto &imu_acc = meas.imu.front()->linear_acceleration;
+        const auto &gyr_acc = meas.imu.front()->angular_velocity;
+        mean_acc << imu_acc.x, imu_acc.y, imu_acc.z;
+        mean_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+    }
+
+    for (const auto &imu : meas.imu)
+    {
+        const auto &imu_acc = imu->linear_acceleration;
+        const auto &gyr_acc = imu->angular_velocity;
+        cur_acc << imu_acc.x, imu_acc.y, imu_acc.z;
+        cur_gyr << gyr_acc.x, gyr_acc.y, gyr_acc.z;
+
+        mean_acc += (cur_acc - mean_acc) / N;
+        mean_gyr += (cur_gyr - mean_gyr) / N;
+
+        cov_acc = cov_acc * (N - 1.0) / N + (cur_acc - mean_acc).cwiseProduct(cur_acc - mean_acc) / N;
+        cov_gyr = cov_gyr * (N - 1.0) / N + (cur_gyr - mean_gyr).cwiseProduct(cur_gyr - mean_gyr) / N / N * (N - 1);
+
+        N++;
+    }
 
     state init_state = kf_state.get_x();
+
+    std::cout << "Initialization will be done with:" << meas.imu.size() << " measurements " << std::endl;
+
     Rbw = gt.so3().matrix();
     std::cout << "gt rotation:\n"
               << Rbw << std::endl;
@@ -197,9 +229,46 @@ void IMU_Class::IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, 
     init_state.grav = Eigen::Vector3d(0, 0, -G_m_s2);
     init_state.rot = Sophus::SO3(Rbw); //
 
+    //TODO
+    /*
+    add option to pass directly the values of the gravity 
+    */
+
     kf_state.set_x(init_state);
     std::cout << "Init state gravity:" << init_state.grav.transpose() << std::endl;
     init_from_GT = true;
+
+    //to be done - set the acceleration bias
+    //V3D ba = mean_acc - Rbw * _gravity;
+
+    init_state.bg = mean_gyr;
+
+    init_state.offset_T_L_I = Lidar_T_wrt_IMU;
+    init_state.offset_R_L_I = Sophus::SO3(Lidar_R_wrt_IMU);
+    kf_state.set_x(init_state);
+    std::cout << "Init state gravity:" << init_state.grav.transpose() << std::endl;
+
+    cov init_P = kf_state.get_P();
+    init_P.block(Re_ID, Re_ID, 3, 3) = Eye3d * 0.00001;
+    init_P.block(Te_ID, Te_ID, 3, 3) = Eye3d * 0.00001;
+    init_P.block(BG_ID, BG_ID, 3, 3) = Eye3d * 0.0001;
+    init_P.block(BA_ID, BA_ID, 3, 3) = Eye3d * 0.001;
+    init_P.block(G_ID, G_ID, 3, 3) = Eye3d * 0.00001;
+
+    kf_state.set_P(init_P);
+    last_imu_ = meas.imu.back();
+
+    std::cout<<"IMU_init\n"<<std::endl;
+    std::cout<<"cov_gyr:"<<cov_gyr.transpose()<<", cov_acc:"<<cov_acc.transpose()<<std::endl;
+    std::cout<<"cov_bias_gyr:"<<cov_bias_gyr.transpose()<<", cov_bias_acc:"<<cov_bias_acc.transpose()<<std::endl;
+
+    Q.block<3, 3>(G_VAR_ID, G_VAR_ID).diagonal() = cov_gyr;
+    Q.block<3, 3>(A_VAR_ID, A_VAR_ID).diagonal() = cov_acc;
+    Q.block<3, 3>(BG_VAR_ID, BG_VAR_ID).diagonal() = cov_bias_gyr;
+    Q.block<3, 3>(BA_VAR_ID, BA_VAR_ID).diagonal() = cov_bias_acc;
+
+    std::cout<<"Q G_VAR imu:\n"<<Q.block<3, 3>(G_VAR_ID, G_VAR_ID)<<std::endl;
+    std::cout<<"Q A_VAR_ID imu:\n"<<Q.block<3, 3>(A_VAR_ID, A_VAR_ID)<<std::endl;
 }
 
 void IMU_Class::Propagate2D(std::vector<pcl::PointCloud<VUX_PointType>::Ptr> &vux_scans,
@@ -538,8 +607,17 @@ void IMU_Class::Process(const MeasureGroup &meas, Estimator &kf_state, PointClou
     // std::cout<<"cov_acc_scale:"<<cov_acc_scale.transpose()<<std::endl;
     if (imu_need_init_)
     {
-        std::cout << "IMU_init ..." << std::endl;
-        IMU_init(meas, kf_state, init_iter_num);
+        std::cout << "IMU_init from the raw acceleration values ..." << std::endl;
+        if(!init_from_GT)
+        {
+            IMU_init(meas, kf_state, init_iter_num);
+        }
+        else
+        {
+            std::cout<<"IMU was initialized from GT data..."<<std::endl;
+            init_iter_num = meas.imu.size();
+        }
+            
         imu_need_init_ = true;
         last_imu_ = meas.imu.back();
         if (init_iter_num > MIN_INIT_COUNT)
