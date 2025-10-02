@@ -18,25 +18,21 @@
 #include "csv_parser.hpp"
 #include "utils.h"
 
-
 // GPS epoch (1980-01-06T00:00:00Z) UTC in UNIX seconds
 constexpr int64_t GPS_UNIX_OFFSET = 315964800; // seconds since 1970-01-01
 // GPS-UNIX leap seconds (update this if needed)
 constexpr int LEAP_SECONDS = 18;
 
-
-
 struct Measurement
 {
-    double GPSTime = 0.0;  //time of the week in seconds
+    double GPSTime = 0.0; // time of the week in seconds
     double UTCTime = 0.0;
     double tod = 0.0; // time of the day
 
     double utc_usec = 0.0;
     double utc_usec2 = 0.0;
 
-
-    // position (m) 
+    // position (m)
     double Easting = 0.0;
     double Northing = 0.0;
     double H_Ell = 0.0;
@@ -74,14 +70,13 @@ struct Measurement
     double E_Sep = 0.0;
     double N_Sep = 0.0;
     double H_Sep = 0.0;
-
-    
 };
 
-struct MeasurementQueryResult {
-    const Measurement* closest = nullptr;
-    const Measurement* prev = nullptr;
-    const Measurement* next = nullptr;
+struct MeasurementQueryResult
+{
+    const Measurement *closest = nullptr;
+    const Measurement *prev = nullptr;
+    const Measurement *next = nullptr;
 };
 
 double gpsTowToRosTime(const int gps_week, const double tow_sec)
@@ -91,13 +86,12 @@ double gpsTowToRosTime(const int gps_week, const double tow_sec)
 
     // Adjust for leap seconds
     unix_time -= LEAP_SECONDS;
-    //return unix_time;
+    // return unix_time;
 
     // Fractional seconds
     double frac = tow_sec - static_cast<int64_t>(tow_sec);
 
     return ros::Time(unix_time, static_cast<uint32_t>(frac * 1e9)).toSec();
-
 
     // // Full UNIX seconds (with fraction)
     // double unix_time = GPS_UNIX_OFFSET + gps_week * 604800.0 + tow_sec;
@@ -110,63 +104,64 @@ double gpsTowToRosTime(const int gps_week, const double tow_sec)
     // return ros::Time(sec, nsec).toSec();
 }
 
+inline std::vector<std::string> splitStr(const std::string &str, const std::string &delims = " ")
+{
+    std::vector<std::string> strings;
+    boost::split(strings, str, boost::is_any_of(delims));
 
-
-
-
-inline std::vector<std::string> splitStr(const std::string& str, const std::string& delims = " ") {
-  std::vector<std::string> strings;
-  boost::split(strings, str, boost::is_any_of(delims));
-
-  return strings;
+    return strings;
 }
 
 // Convert calendar date to UNIX time (seconds since 1970-01-01)
-inline std::time_t dateTime2UnixTime(const int &year  = 1970,
-                                const int &month =    1,
-                                const int &day   =    1,
-                                const int &hour  =    0,
-                                const int &min   =    0,
-                                const int &sec   =    0) {
+inline std::time_t dateTime2UnixTime(const int &year = 1970,
+                                     const int &month = 1,
+                                     const int &day = 1,
+                                     const int &hour = 0,
+                                     const int &min = 0,
+                                     const int &sec = 0)
+{
 
-  struct tm timeinfo;
-  timeinfo.tm_year = year - 1900;
-  timeinfo.tm_mon  = month - 1;
-  timeinfo.tm_mday = day;
-  timeinfo.tm_hour = hour;
-  timeinfo.tm_min  = min;
-  timeinfo.tm_sec  = sec;
+    struct tm timeinfo;
+    timeinfo.tm_year = year - 1900;
+    timeinfo.tm_mon = month - 1;
+    timeinfo.tm_mday = day;
+    timeinfo.tm_hour = hour;
+    timeinfo.tm_min = min;
+    timeinfo.tm_sec = sec;
 
-  return timegm(&timeinfo);
+    return timegm(&timeinfo);
 }
 
 // Compute GPS week and seconds-of-week
-void unixToGps(std::time_t unix_time, int &gps_week, double &tow_sec) {
+void unixToGps(std::time_t unix_time, int &gps_week, double &tow_sec)
+{
     std::time_t gps_seconds = unix_time - GPS_UNIX_OFFSET;
     gps_week = gps_seconds / 604800;
-    tow_sec  = gps_seconds % 604800;
+    tow_sec = gps_seconds % 604800;
 }
 
-inline int getDayOfWeekIndex(const time_t &unixTime) {
-  struct tm *timeinfo;
-  timeinfo = gmtime(&unixTime);
+inline int getDayOfWeekIndex(const time_t &unixTime)
+{
+    struct tm *timeinfo;
+    timeinfo = gmtime(&unixTime);
 
-  return timeinfo->tm_wday;
+    return timeinfo->tm_wday;
 }
-
 
 class TrajectoryReader
 {
 public:
     TrajectoryReader() = default;
 
-    void read(const std::string &filepath)
-    {   
-        std::cout<<"TrajectoryReader: read:"<<filepath<<std::endl;
-        double angle = -M_PI / 2.0; // -90 degrees in radians
-        Rz << cos(angle), -sin(angle), 0,
-                sin(angle), cos(angle), 0,
-                0, 0, 1;
+    void read(const std::string &filepath, const Sophus::SE3 &extrinsic)
+    {
+        std::cout << "TrajectoryReader: read:" << filepath << std::endl;
+        // double angle = -M_PI / 2.0; // -90 degrees in radians
+        // Rz << cos(angle), -sin(angle), 0,
+        //     sin(angle), cos(angle), 0,
+        //     0, 0, 1;
+
+        extrinsic_ = extrinsic;
 
         std::ifstream infile(filepath);
         if (!infile.is_open())
@@ -177,36 +172,36 @@ public:
         bool inMeasurements = false;
         std::unordered_map<std::string, int> paramMap;
 
-
         for (auto &row : parser)
         {
             if (row.size() == 0)
                 continue;
-            
+
             // first  fullWeekSecs: 1721865600
             // second fullWeekSecs: 1721520000
             // GPS Week: 2324 TOW at midnight: 345600.000000000000 sec
-                  
-            if (row[0] == "Project:") { // e.g., row = Project:     Hanhivaara_20250520_2
-                try{
-                    std::cout<<"Date - row[1]:"<<row[1]<<std::endl;
+
+            if (row[0] == "Project:")
+            { // e.g., row = Project:     Hanhivaara_20250520_2
+                try
+                {
+                    std::cout << "Date - row[1]:" << row[1] << std::endl;
                     std::vector<std::string> splitProjectName = splitStr(row[1], "_");
-                    for (int i=0;i<splitProjectName.size();i++)
+                    for (int i = 0; i < splitProjectName.size(); i++)
                     {
-                        std::cout<<" "<<splitProjectName[i]<<std::endl;
+                        std::cout << " " << splitProjectName[i] << std::endl;
                     }
-                    std::vector<unsigned int> yearMonthDay = {std::stod (splitProjectName[1].substr (0,4)),
-                                                                std::stod (splitProjectName[1].substr (4,2)),
-                                                                std::stod (splitProjectName[1].substr (6,2))};
-                    
+                    std::vector<unsigned int> yearMonthDay = {std::stod(splitProjectName[1].substr(0, 4)),
+                                                              std::stod(splitProjectName[1].substr(4, 2)),
+                                                              std::stod(splitProjectName[1].substr(6, 2))};
+
                     // Convert YYYY-MM-DD midnight -> UNIX time (seconds since 1970)
                     fullWeekSecs = dateTime2UnixTime(yearMonthDay[0], yearMonthDay[1], yearMonthDay[2]);
-                    std::cout<<"first fullWeekSecs:"<<fullWeekSecs<<std::endl;
-                    
-                    // Move back to Sunday 00:00 of that GPS week
-                    fullWeekSecs -= 86400. * getDayOfWeekIndex(fullWeekSecs);   //86,400 seconds in a day (24 hours * 60 minutes * 60 seconds).
-                    std::cout<<"second fullWeekSecs:"<<fullWeekSecs<<std::endl;
+                    std::cout << "first fullWeekSecs:" << fullWeekSecs << std::endl;
 
+                    // Move back to Sunday 00:00 of that GPS week
+                    fullWeekSecs -= 86400. * getDayOfWeekIndex(fullWeekSecs); // 86,400 seconds in a day (24 hours * 60 minutes * 60 seconds).
+                    std::cout << "second fullWeekSecs:" << fullWeekSecs << std::endl;
 
                     std::time_t unix_time = dateTime2UnixTime(yearMonthDay[0], yearMonthDay[1], yearMonthDay[2]);
                     unixToGps(unix_time, gps_week, tow_sec);
@@ -214,7 +209,7 @@ public:
                 }
                 catch (const std::exception &e)
                 {
-                    std::cout<<"Got error in the time parsing"<<std::endl;
+                    std::cout << "Got error in the time parsing" << std::endl;
                     std::cerr << "Error at: " << e.what() << std::endl;
                     return;
                 }
@@ -263,9 +258,10 @@ public:
                     std::cout << "Parsed Body-to-IMU rotations: " << bodyToIMU_.transpose() << std::endl;
 
                     // Use ZYX Euler convention (NovAtel uses x-y-z rotations)
-                    R_body = (Eigen::AngleAxisd(bodyToIMU_[2]* M_PI / 180.0, Eigen::Vector3d::UnitZ()) *
-                            Eigen::AngleAxisd(bodyToIMU_[1]* M_PI / 180.0, Eigen::Vector3d::UnitY()) *
-                            Eigen::AngleAxisd(bodyToIMU_[0]* M_PI / 180.0, Eigen::Vector3d::UnitX())).toRotationMatrix();
+                    R_body = (Eigen::AngleAxisd(bodyToIMU_[2] * M_PI / 180.0, Eigen::Vector3d::UnitZ()) *
+                              Eigen::AngleAxisd(bodyToIMU_[1] * M_PI / 180.0, Eigen::Vector3d::UnitY()) *
+                              Eigen::AngleAxisd(bodyToIMU_[0] * M_PI / 180.0, Eigen::Vector3d::UnitX()))
+                                 .toRotationMatrix();
                 }
                 else
                 {
@@ -314,16 +310,14 @@ public:
                     m.UTCTime = m.GPSTime - 18.;           // convert to UTC
                     m.tod = std::fmod(m.UTCTime, 86400.0); // Get the time of the day from time of the week;
 
-                    m.UTCTime = get("UTCTime"); //warning - this might be 0 if UTCTime field does not exist 
+                    m.UTCTime = get("UTCTime"); // warning - this might be 0 if UTCTime field does not exist
 
-                    
                     // double weekTimeSec = std::stod (row [paramMap ["UTCTime"]]);
-                    double weekTimeSec = m.GPSTime - 18.; 
-                    m.utc_usec = static_cast<std::uint64_t> (fullWeekSecs * 1e6 + weekTimeSec * 1e6);
+                    double weekTimeSec = m.GPSTime - 18.;
+                    m.utc_usec = static_cast<std::uint64_t>(fullWeekSecs * 1e6 + weekTimeSec * 1e6);
                     // m.utc_usec - scan->header.stamp
 
                     m.utc_usec2 = gpsTowToRosTime(gps_week, m.GPSTime);
-
 
                     m.Easting = get("Easting");
                     m.Northing = get("Northing");
@@ -364,11 +358,23 @@ public:
                     std::cerr << "Skipping invalid row: " << e.what() << std::endl;
                 }
             }
+        }
 
+        std::cout << "Finished data reading with " << measurements_.size() << " measurements" << std::endl;
+        if(measurements_.size() > 1)
+        {
+            auto dt = measurements_[1].GPSTime - measurements_[0].GPSTime;
+            if (dt > 1e-9)
+            {
+                freq = 1.0 / dt;
+                std::cout << "Frequency ≈ " << freq << " Hz"<<std::endl;
+            }
+            else
+            {
+                std::cout<<"dt is "<<dt<<", cannot find Frequency."<<std::endl;
+            }
             
         }
-        
-        std::cout<<"Finished data reading with "<<measurements_.size()<<" measurements"<<std::endl;
     }
 
     bool init(const double tod)
@@ -381,18 +387,18 @@ public:
 
         if ((tod < measurements_[0].tod) || (tod > measurements_[measurements_.size() - 1].tod))
         {
-            std::cout << "Given tod("<< tod << ") is in out of the GNSS time range" << std::endl;
+            std::cout << "Given tod(" << tod << ") is in out of the GNSS time range" << std::endl;
             std::cout << "Start:" << measurements_[0].tod << "(s), end:" << measurements_[measurements_.size() - 1].tod << "(s)" << std::endl;
             return false;
         }
 
         // simple linear scan to find initial closest index
         size_t idx = 0;
-        double minDiff = std::abs(measurements_[0].tod - tod);
-        for (size_t i = 1; i < measurements_.size(); ++i)
+        double minDiff = 9999999999999; // std::abs(measurements_[0].tod - tod);
+        for (size_t i = 0; i < measurements_.size(); ++i)
         {
             double diff = std::abs(measurements_[i].tod - tod);
-            // std::cout << "dt:" << diff << std::endl;
+            // std::cout << "dt:" << diff<<", minDiff:"<<minDiff << std::endl;
             if (diff < minDiff)
             {
                 minDiff = diff;
@@ -400,9 +406,10 @@ public:
             }
             else
             {
+                std::cout << "dt:" << diff << ", minDiff:" << minDiff << std::endl;
                 initted = true;
                 std::cout << "Sync at GNSS time:" << measurements_[i].tod << ", and given tod:" << tod << std::endl;
-
+                std::cout << " with minDiff:" << minDiff << std::endl;
                 // measurements are sorted by TOD, diff increasing -> break
                 break;
             }
@@ -414,7 +421,7 @@ public:
 
     bool init_unix(const double rost_time)
     {
-        std::cout<<"init_unix..."<<std::endl;
+        std::cout << "init_unix..." << std::endl;
         if (measurements_.empty())
         {
             curr_index = 0;
@@ -423,7 +430,7 @@ public:
 
         if ((rost_time < measurements_[0].utc_usec2) || (rost_time > measurements_[measurements_.size() - 1].utc_usec2))
         {
-            std::cout << "Given rost_time("<< rost_time << ") is in out of the UNIX GNSS time range" << std::endl;
+            std::cout << "Given rost_time(" << rost_time << ") is in out of the UNIX GNSS time range" << std::endl;
             std::cout << "Start:" << measurements_[0].utc_usec2 << "(s), end:" << measurements_[measurements_.size() - 1].utc_usec2 << "(s)" << std::endl;
             return false;
         }
@@ -431,7 +438,7 @@ public:
         // simple linear scan to find initial closest index
         size_t idx = 0;
         double minDiff = std::abs(measurements_[0].utc_usec2 - rost_time);
-        std::cout<<"init minDiff:"<<minDiff<<std::endl;
+        std::cout << "init minDiff:" << minDiff << std::endl;
         // for (size_t i = 1; i < 15; ++i)
         // {
         //     std::cout<<"\n utc_usec:"<<measurements_[i].utc_usec<<std::endl;
@@ -440,7 +447,7 @@ public:
         for (size_t i = 1; i < measurements_.size(); ++i)
         {
             double diff = std::abs(measurements_[i].utc_usec2 - rost_time);
-            //std::cout << "dt:" << diff << std::endl;
+            // std::cout << "dt:" << diff << std::endl;
             if (diff < minDiff)
             {
                 minDiff = diff;
@@ -448,13 +455,13 @@ public:
             }
             else
             {
-                if(minDiff < 0.5)
+                if (minDiff < 0.5)
                     initted = true;
                 else
-                    std::cout<<"to big time difference, minDiff:"<<minDiff<<std::endl;
+                    std::cout << "to big time difference, minDiff:" << minDiff << std::endl;
 
                 std::cout << "Sync at UNIX GNSS time:" << measurements_[i].utc_usec2 << ", and given ros_time:" << rost_time << std::endl;
-                std::cout << "dt:" << diff<<", minDiff:"<<minDiff << std::endl;
+                std::cout << "dt:" << diff << ", minDiff:" << minDiff << std::endl;
                 // measurements are sorted by TOD, diff increasing -> break
                 break;
             }
@@ -495,8 +502,8 @@ public:
 
     void addGravity(const Measurement &m, const Sophus::SE3 &curr_pose, V3D &raw_gyro, V3D &raw_acc, const double &g)
     {
-        //auto R = RotationMatrix(m);
-        const auto &R = curr_pose.so3().matrix(); 
+        // auto R = RotationMatrix(m);
+        const auto &R = curr_pose.so3().matrix();
 
         V3D acceleration_in_body_no_gravity(m.AccBdyX, m.AccBdyY, m.AccBdyZ);
         V3D accel_body_with_g = R.inverse() * ((R * acceleration_in_body_no_gravity) + V3D(0, 0, g));
@@ -529,21 +536,14 @@ public:
         auto R = RotationMatrix(m);
         V3D t(m.Easting, m.Northing, m.H_Ell);
 
-        auto pose = Sophus::SE3(R, t); //in GNSS
+        auto pose = Sophus::SE3(R, t); // in GNSS
 
-        // axes rotation: NovAtel -> IMU        
-        // body to IMU rotation (from Inertial Explorer)
-
-        //rotate -90 z axis to match the imu orientation x- right, y - forward
-        //IMU to GNSS Antenna Lever Arms: x=0.000, y=0.142, z=-0.400 m (x-right, y-fwd, z-up)
-        
-        //out = pose * Sophus::SE3(Rz, leverArms_);
-        //do not use the leverArms_, the trajectory is in IMU already, just rotate to match the IMU installation
-        
-        out = pose * Sophus::SE3(Rz, V3D(0,0,0));
+        //out = pose * Sophus::SE3(Rz, V3D(0, 0, 0));
+        out = pose * extrinsic_;
     }
 
-    MeasurementQueryResult queryMeasurement(const double tod) {
+    MeasurementQueryResult queryMeasurement(const double tod)
+    {
         MeasurementQueryResult result;
         if (measurements_.empty())
             return result;
@@ -551,37 +551,47 @@ public:
         size_t idx = curr_index;
 
         // walk forward
-        while (idx + 1 < measurements_.size() && measurements_[idx + 1].tod < tod) {
+        while (idx + 1 < measurements_.size() && measurements_[idx + 1].tod < tod)
+        {
             ++idx;
         }
 
         // walk backward if necessary
-        while (idx > 0 && measurements_[idx].tod > tod) {
+        while (idx > 0 && measurements_[idx].tod > tod)
+        {
             --idx;
         }
 
         curr_index = idx;
 
         // determine closest
-        const Measurement* prevM = (idx > 0) ? &measurements_[idx - 1] : nullptr;
-        const Measurement* nextM = (idx + 1 < measurements_.size()) ? &measurements_[idx + 1] : nullptr;
-        const Measurement* currentM = &measurements_[idx];
+        const Measurement *prevM = (idx > 0) ? &measurements_[idx - 1] : nullptr;
+        const Measurement *nextM = (idx + 1 < measurements_.size()) ? &measurements_[idx + 1] : nullptr;
+        const Measurement *currentM = &measurements_[idx];
 
-        if (!prevM) {
+        if (!prevM)
+        {
             result.closest = currentM;
             result.prev = nullptr;
             result.next = nextM;
-        } else if (!nextM) {
+        }
+        else if (!nextM)
+        {
             result.closest = currentM;
             result.prev = prevM;
             result.next = nullptr;
-        } else {
+        }
+        else
+        {
             // closest between current and next
             double diffCurr = std::abs(currentM->tod - tod);
             double diffNext = std::abs(nextM->tod - tod);
-            if (diffCurr <= diffNext) {
+            if (diffCurr <= diffNext)
+            {
                 result.closest = currentM;
-            } else {
+            }
+            else
+            {
                 result.closest = nextM;
                 idx = idx + 1;
                 curr_index = idx;
@@ -593,7 +603,8 @@ public:
         return result;
     }
 
-    MeasurementQueryResult queryMeasurementUnix(const double ros_time) {
+    MeasurementQueryResult queryMeasurementUnix(const double ros_time)
+    {
         MeasurementQueryResult result;
         if (measurements_.empty())
             return result;
@@ -601,37 +612,47 @@ public:
         size_t idx = curr_index;
 
         // walk forward
-        while (idx + 1 < measurements_.size() && measurements_[idx + 1].utc_usec2 < ros_time) {
+        while (idx + 1 < measurements_.size() && measurements_[idx + 1].utc_usec2 < ros_time)
+        {
             ++idx;
         }
 
         // walk backward if necessary
-        while (idx > 0 && measurements_[idx].utc_usec2 > ros_time) {
+        while (idx > 0 && measurements_[idx].utc_usec2 > ros_time)
+        {
             --idx;
         }
 
         curr_index = idx;
 
         // determine closest
-        const Measurement* prevM = (idx > 0) ? &measurements_[idx - 1] : nullptr;
-        const Measurement* nextM = (idx + 1 < measurements_.size()) ? &measurements_[idx + 1] : nullptr;
-        const Measurement* currentM = &measurements_[idx];
+        const Measurement *prevM = (idx > 0) ? &measurements_[idx - 1] : nullptr;
+        const Measurement *nextM = (idx + 1 < measurements_.size()) ? &measurements_[idx + 1] : nullptr;
+        const Measurement *currentM = &measurements_[idx];
 
-        if (!prevM) {
+        if (!prevM)
+        {
             result.closest = currentM;
             result.prev = nullptr;
             result.next = nextM;
-        } else if (!nextM) {
+        }
+        else if (!nextM)
+        {
             result.closest = currentM;
             result.prev = prevM;
             result.next = nullptr;
-        } else {
+        }
+        else
+        {
             // closest between current and next
             double diffCurr = std::abs(currentM->utc_usec2 - ros_time);
             double diffNext = std::abs(nextM->utc_usec2 - ros_time);
-            if (diffCurr <= diffNext) {
+            if (diffCurr <= diffNext)
+            {
                 result.closest = currentM;
-            } else {
+            }
+            else
+            {
                 result.closest = nextM;
                 idx = idx + 1;
                 curr_index = idx;
@@ -653,10 +674,10 @@ public:
         }
 
         MeasurementQueryResult result = queryMeasurement(tod);
-        Sophus::SE3 p1,p2;
+        Sophus::SE3 p1, p2;
         toSE3(*result.prev, p1);
         toSE3(*result.next, p2);
-        return interpolateSE3(p1,result.prev->tod, p2,result.next->tod,tod);
+        return interpolateSE3(p1, result.prev->tod, p2, result.next->tod, tod);
     }
 
     Sophus::SE3 closestPoseUnix(const double &ros_time)
@@ -669,10 +690,145 @@ public:
         }
 
         MeasurementQueryResult result = queryMeasurementUnix(ros_time);
-        Sophus::SE3 p1,p2;
+        Sophus::SE3 p1, p2;
         toSE3(*result.prev, p1);
         toSE3(*result.next, p2);
-        return interpolateSE3(p1,result.prev->utc_usec2, p2,result.next->utc_usec2,ros_time);
+        return interpolateSE3(p1, result.prev->utc_usec2, p2, result.next->utc_usec2, ros_time);
+    }
+
+    bool undistort_imu(const double &tod_cloud_start, PointCloudXYZI::Ptr &pcl_in)
+    {
+        //motion compensation using the imu values from the ppk gnss-imu file
+        //note that this works better with high frequency data, with 10 Hz const vel is better
+        bool rv = false;
+        try
+        {
+            int n = pcl_in->points.size();
+            auto first_point_time = pcl_in->points[0].time;
+            auto last_point_time = pcl_in->points[n - 1].time;
+            double delta_time = last_point_time - first_point_time; // first point time is zero
+            if (delta_time <= 1e-9){
+                std::cout<<"error in undistort : delta_time is "<<delta_time<<std::endl;
+                return false;
+            } 
+
+            auto start_pose = closestPose(tod_cloud_start);
+            int index_start = curr_index; 
+            auto finish_pose = closestPose(tod_cloud_start + delta_time);
+            int index_end = curr_index; 
+            int measurements = index_end - index_start;
+            std::cout<<"index_start:"<<index_start<<", index_end:"<<index_end<<",measurements:"<<measurements<<std::endl;
+            if(measurements == 0)
+            {
+                std::cout<<"measurements:"<<measurements<<", perform const velocity instead..."<<std::endl;
+                rv = undistort_const_vel(tod_cloud_start, pcl_in);
+            }else{
+
+                auto it_pcl = pcl_in->points.end() - 1;
+                auto begin_pcl = pcl_in->points.begin();
+                
+                toSE3(measurements_[index_end], finish_pose); //note that this one has Rz included 
+                M3D R_end_T = finish_pose.so3().matrix().transpose();
+                V3D T_end = finish_pose.translation(); // reference scan position
+                M3D extrinsic_R = extrinsic_.so3().matrix();
+                V3D extrinsic_T = extrinsic_.translation();
+                // iterate backwards over IMU measurements
+                for (auto it_kp = measurements_.begin() + index_end; it_kp != measurements_.begin() + index_start; it_kp--)
+                {
+                    const auto &head = it_kp - 1;
+                    const auto &tail = it_kp;
+                    
+                    //const auto &head = it_kp;
+                    //const auto &tail = it_kp+1;
+                    
+                    //position & rotation at head
+                    V3D pos_imu(head->Easting, head->Northing, head->H_Ell);  
+                    M3D R_imu = RotationMatrix(*head); //doe not have the extrinsic yet
+
+                    V3D vel_imu(head->VelBdyX, head->VelBdyY, head->VelBdyZ); //linear velocity
+                    V3D acc_imu(tail->AccBdyX, tail->AccBdyY, tail->AccBdyZ); //acceleration
+                    
+                    //V3D omega(tail->AngRateX*M_PI/180., tail->AngRateY*M_PI/180., tail->AngRateZ*M_PI/180.);
+                    V3D omega(head->AngRateX*M_PI/180., head->AngRateY*M_PI/180., head->AngRateZ*M_PI/180.);
+                    
+                    for (; it_pcl->time > head->tod - tod_cloud_start; it_pcl--)
+                    {                        
+                        //(head->tod - tod_cloud_start) - time of the head measurement relative to scan start.
+                        double dt = it_pcl->time - (head->tod - tod_cloud_start); // (relative to head)
+                        //std::cout<<"it_pcl->time :"<<it_pcl->time <<", dt:"<<dt<<std::endl;
+
+                        V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
+                        Sophus::SE3 motion = Sophus::SE3(R_imu * Sophus::SO3::exp(omega * dt).matrix(), pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt);
+
+                        V3D P_compensate = R_end_T * (motion * extrinsic_ * P_i - T_end);
+
+                        it_pcl->x = P_compensate(0);
+                        it_pcl->y = P_compensate(1);
+                        it_pcl->z = P_compensate(2);
+
+                        if (it_pcl == begin_pcl) break;
+                    }
+                }
+
+                rv = true;
+            }
+        }catch(std::exception &e)
+        {
+            std::cout << "Error in undistort_imu:" << e.what() << std::endl;
+            return false;
+        }
+
+        return rv;
+    }
+
+    bool undistort_const_vel(const double &tod_cloud_start, PointCloudXYZI::Ptr &pcl_in)
+    {
+        /*
+        This does constant velocity model undistortion
+        the scan is in same frame as the trajectory
+        */
+        bool rv = false;
+        try
+        {
+            int n = pcl_in->points.size();
+            auto first_point_time = pcl_in->points[0].time;
+            auto last_point_time = pcl_in->points[n - 1].time;
+            double delta_time = last_point_time - first_point_time; // first point time is zero
+            auto start_pose = closestPose(tod_cloud_start);
+            auto finish_pose = closestPose(tod_cloud_start + delta_time);
+            
+            if (delta_time <= 1e-9){
+                std::cout<<"error in undistort : delta_time is "<<delta_time<<std::endl;
+                return false;
+            } 
+
+            const auto delta_pose = (start_pose.inverse() * finish_pose).log() / delta_time;
+
+            tbb::parallel_for(tbb::blocked_range<int>(0, n),
+                              [&](const tbb::blocked_range<int> &r)
+                              {
+                                  for (int i = r.begin(); i < r.end(); ++i)
+                                  {
+                                      const auto motion = Sophus::SE3::exp(pcl_in->points[i].time * delta_pose);
+
+                                      V3D P_i(pcl_in->points[i].x, pcl_in->points[i].y, pcl_in->points[i].z);
+
+                                      V3D P_compensate = motion * P_i;
+
+                                      pcl_in->points[i].x = P_compensate(0);
+                                      pcl_in->points[i].y = P_compensate(1);
+                                      pcl_in->points[i].z = P_compensate(2);
+                                  }
+                              });
+            rv = true;
+        }
+        catch (const std::exception &e)
+        {
+            std::cout << "Error in undistort_const_vel:" << e.what() << std::endl;
+            return false;
+        }
+
+        return rv;
     }
 
     const std::vector<Measurement> &measurements() const { return measurements_; }
@@ -680,13 +836,14 @@ public:
     const Eigen::Vector3d &bodyToIMU() const { return bodyToIMU_; }
     bool initted = false;
     int curr_index = 0;
-    M3D Rz;
+    //M3D Rz;
+    Sophus::SE3 extrinsic_ = Sophus::SE3();
 
     std::uint64_t fullWeekSecs = 0;
     int gps_week;
-    double tow_sec;
+    double tow_sec, freq = 0.;
 
-private:    
+private:
     std::vector<Measurement> measurements_;
 
     Eigen::Vector3d leverArms_{0, 0, 0}; // (x, y, z) meters
@@ -695,7 +852,7 @@ private:
     M3D R_axes = M3D::Identity();
     // Use ZYX Euler convention (NovAtel uses x-y-z rotations)
     Eigen::Matrix3d R_body;
-    
+
     void parseAxes(const std::vector<std::string> &row)
     {
         if (row.size() < 4)
@@ -747,20 +904,18 @@ private:
         R.col(0) = xVec;
         R.col(1) = yVec;
         R.col(2) = zVec;
-        
-        T_axes = Sophus::SE3(R, V3D(0,0,0));
+
+        T_axes = Sophus::SE3(R, V3D(0, 0, 0));
         std::cout << "Parsed axes rotation matrix:\n"
                   << R << std::endl;
 
-        R_axes << 0, -1, 0,   // x (forward) -> -y
-                  1,  0, 0,   // y (left)    -> x
-                  0,  0, 1;   // z (up)      -> z
-// | Trajectory axis | IMU axis |
-// | --------------- | -------- |
-// | x-forward       | y        |
-// | y-left          | -x       |
-// | z-up            | z        |
-
-                
+        R_axes << 0, -1, 0, // x (forward) -> -y
+            1, 0, 0,        // y (left)    -> x
+            0, 0, 1;        // z (up)      -> z
+                            // | Trajectory axis | IMU axis |
+                            // | --------------- | -------- |
+                            // | x-forward       | y        |
+                            // | y-left          | -x       |
+                            // | z-up            | z        |
     }
 };
