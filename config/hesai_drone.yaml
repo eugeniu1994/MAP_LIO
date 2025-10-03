@@ -27,7 +27,7 @@ mapping:
     #               -1, 0, 0,
     #                0, 0, 1]
 
-    extrinsic_T: [0.009, 0.12, -0.006] # [ 0.009,  0.13,  0.09 ] #given by Teemu 
+    extrinsic_T: [0.009, 0.12, -0.006] #given by Teemu 
     extrinsic_R: [ 0, 1, 0,    
                    0, 0, 1,
                    1, 0, 0]
@@ -62,7 +62,7 @@ als:
 
     use_ransac_alignment: false # true
     #if this is not empty we'll use the postprocessed GNSS solution 
-    postprocessed_gnss_path: "" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"  
+    postprocessed_gnss_path: "/home/eugeniu/Desktop/Evo_HesaiALS_20250709/Hesai_ALS_20250709_Evo_1014.txt"  
     saveALS_NN_2_MLS: false             #MLS map update with ALS points 
 
 publish:

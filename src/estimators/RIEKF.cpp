@@ -974,6 +974,100 @@ void RIEKF::update(const V3D &gnss_position, const V3D &cov_pos_, int maximum_it
     }
 }
 
+// Eigen provides fixed-size types
+using Vector6d = Eigen::Matrix<double, 6, 1>;
+using Matrix6d = Eigen::Matrix<double, 6, 6>;
+
+// Compute numerical measurement Jacobian J (6x6) for:
+//   residual r = log( measured.inverse() * X )
+// using central differences: H[:,i] = (r(X*exp(+eps*e_i)) - r(X*exp(-eps*e_i))) / (2*eps)
+// measured: measurement (Sophus::SE3d)
+// X: current state pose (Sophus::SE3d)
+// eps: finite-difference step (default 1e-6)
+// Returns: Eigen::Matrix<double,6,6>
+Eigen::Matrix<double,6,6> numericalMeasurementJacobian(const Sophus::SE3 &X, const Sophus::SE3 &measured, double eps = 1e-5)
+{
+    Eigen::Matrix<double,6,6> J;
+    J.setZero();
+    for (int i = 0; i < 6; ++i) {
+        Vector6d d = Vector6d::Zero();
+        d(i) = eps;
+
+        // right perturbation: X * exp(+/- d)
+        Sophus::SE3 X_plus  = X * Sophus::SE3::exp(d);
+        Sophus::SE3 X_minus = X * Sophus::SE3::exp(-d);
+
+        Vector6d r_plus  = (measured.inverse() * X_plus).log();
+        Vector6d r_minus = (measured.inverse() * X_minus).log();
+
+        // central difference
+        J.col(i) = (r_plus - r_minus) / (2.0 * eps);
+    }
+
+    return J;
+}
+
+void RIEKF::update_gnss_full(const Sophus::SE3 &measured, int maximum_iter, bool global_error)
+{
+    // h(x)=   [x.t]      //position part
+    //       [Log(x.R)​]    //rotation part
+    std::cout << "update_gnss_full EKF with gps..." << std::endl;
+
+    const int gps_dim = 6;
+
+    residual_struct status;
+    status.valid = true;
+    status.converge = true;
+    state x_propagated = x_;                            // the initial guess
+    vectorized_state dx_new = vectorized_state::Zero(); // 24X1
+
+    double std_pos = .5; //half m
+    double std_rot = 5.0 * M_PI / 180.;// 5degree in radians 
+
+    Eigen::Matrix<double, gps_dim, state_size> H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero();
+    Eigen::Matrix<double, gps_dim, gps_dim> R = Eigen::Matrix<double, gps_dim, gps_dim>::Identity();
+    R.block<3, 3>(0, 0) *= std_pos * std_pos; // position
+    R.block<3, 3>(0, 0) *= std_rot * std_rot; // orientation
+
+    for (int i = -1; i < maximum_iter; i++)
+    {
+        Sophus::SE3 X(x_.rot, x_.pos);
+        Eigen::Matrix<double, 6, 1> residual = (measured.inverse() * X).log(); // Innovation: z - h(x) 
+
+        H_gnss.block<6, 6>(0, 0) = -numericalMeasurementJacobian(X, measured, 1e-5);
+
+        // Compute Kalman Gain
+        // K_k =  P_k   *   H_k.T * inv( H_k  *  P_k  * H_k.T + R_k )
+        //       24X24  *   24x6  * inv(6x24  * 24x24 * 24x6  + 6x6
+
+        Eigen::Matrix<double, state_size, gps_dim> K; // this should be 24 x 6
+        K = P_ * H_gnss.transpose() * ((H_gnss * P_ * H_gnss.transpose() + R).inverse());
+
+        // for iekf
+        dx_new = boxminus(x_, x_propagated); // x^k - x^     // 24X1
+        // vectorized_state dx_ = K * residual; //used before for gps_ins
+        cov KH = cov::Zero(); //  matrix K * H
+        KH = K * H_gnss;      // 24 x 6  * 6 x 24
+        vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new;
+        x_ = boxplus(x_, dx_);
+        status.converge = true;
+        for (int j = 0; j < state_size; j++)
+        {
+            if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_)
+            {
+                status.converge = false;
+                break;
+            }
+        }
+
+        if (status.converge || i == maximum_iter - 1)
+        {
+            P_ = (cov::Identity() - K * H_gnss) * P_;
+            break;
+        }
+    }
+}
+
 //---------------------------------------------------------------------------------------
 
 // #define use_gps_measurements //uncomment this to integrate the gps tighly
@@ -1147,7 +1241,7 @@ void RIEKF::observation_model_test(const double R, residual_struct &ekfom_data, 
                 // std::cout<<"plane_var:"<<plane_var<<std::endl;
 
                 if (travelled_distance > 5)
-                    normvec_var[i] = 1./plane_var; //1. / (9. * plane_var); // 3 sigma
+                    normvec_var[i] = 1. / plane_var; // 1. / (9. * plane_var); // 3 sigma
                 else
                     normvec_var[i] = R_inv;
             }
@@ -1494,7 +1588,8 @@ void RIEKF::h(residual_struct &ekfom_data,
                 point_weights.clear();
 
                 // search als neighbours
-                if(use_als){
+                if (use_als)
+                {
                     if (localKdTree_map_als->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
                     {
                         if (pointSearchSqDis[NUM_MATCH_POINTS - 1] <= 1)
@@ -1553,7 +1648,7 @@ void RIEKF::h(residual_struct &ekfom_data,
                     normvec->points[i].intensity = pd2;
 
                     if (travelled_distance > 5)
-                        normvec_var[i] = 1./plane_var; // 1. / (9. * plane_var); // 3 sigma 1 sigma is better
+                        normvec_var[i] = 1. / plane_var; // 1. / (9. * plane_var); // 3 sigma 1 sigma is better
                     else
                         normvec_var[i] = R_inv_lidar;
                 }

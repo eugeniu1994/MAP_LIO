@@ -28,14 +28,11 @@
 #include <iostream>
 #include <chrono>
 
-// #include "sophus/se3.h"
-// #include "sophus/so3.h"
+#include <Pose6D.h>
+#include <point_definitions.hpp>
 
 #include <sophus/se3.h>
 #include <sophus/so3.h>
-
-#include <Pose6D.h>
-#include <point_definitions.hpp>
 
 constexpr int MAX_NUM_ITERATIONS_ = 500; // icp
 constexpr double ESTIMATION_THRESHOLD_ = 0.001;

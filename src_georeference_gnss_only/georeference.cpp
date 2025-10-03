@@ -51,30 +51,6 @@ void publish_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
     // br2.sendTransform(tf::StampedTransform(transform_inv, ros::Time().fromSec(msg_time), "PPK_GNSS", "world"));
 }
 
-struct vux_gnss_post
-{
-    double gps_tod;
-    double gps_tow;
-    double easting, northing, h_ell;
-    double omega, phi, kappa;
-    Sophus::SE3 se3;
-
-    V3D acc_no_gravity, acc, gyro, velocity;
-
-    // V3D pos_cov;
-    // V3D rot_cov;
-    double stdev;
-};
-
-// for drone we had this
-//     M3D T;
-//     T << -1, 0, 0,
-//         0, 0, -1,
-//         0, -1, 0;
-
-//     M3D R_enu = R_heikki * T;
-//     m.se3 = Sophus::SE3(Eigen::Quaterniond(R_enu), translation);
-
 bool readSE3FromFile(const std::string &filename, Sophus::SE3 &transform_out)
 {
     std::ifstream file(filename);
@@ -215,17 +191,19 @@ void DataHandler::Subscribe()
 
 
     std::cout << "\n\nStart reading the data..." << std::endl;
-
-    // for the car used so far - from the back antena
-    std::string ppk_gnss_imu_file = "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt";
-
-    // from the front antena - bad no proper orientation
-    // ppk_gnss_imu_file = "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt";
-    // ppk_gnss_imu_file = "/media/eugeniu/T71/Lowcost_trajs/Lieksa/Kiimasuo/Lieksa_20250519_1.txt";
-
     //------------------------------------------------------------------------------
     TrajectoryReader reader;
-    reader.read(ppk_gnss_imu_file, gnss2lidar);
+    
+
+    // //for drone we had this
+    // M3D T;
+    // T << -1,  0,  0,
+    //       0,  0, -1,
+    //       0, -1,  0;
+    // gnss2lidar = Sophus::SE3(T, V3D::Zero()); //this was required for the drone 
+
+    //an extrinsic transformation is passed here to transform the ppk gnss-imu orientaiton into mls frame 
+    reader.read(postprocessed_gnss_path, gnss2lidar);
 
     // --- Access measurements ---
     const auto &measurements = reader.measurements();
@@ -298,21 +276,7 @@ void DataHandler::Subscribe()
     Sophus::SE3 T_LG = Sophus::SE3();
     std::vector<std::string> topics{lid_topic, imu_topic, gnss_topic};
 
-    // std::ifstream file(bag_file);
-    // if (!file)
-    // {
-    //     std::cerr << "Error: Bag file does not exist or is not accessible: " << bag_file << std::endl;
-    //     return;
-    // }
-    // rosbag::Bag bag;
-    // bag.open(bag_file, rosbag::bagmode::Read);
-    // rosbag::View view(bag, rosbag::TopicQuery(topics));
-
-    //{
-    std::string bag_pattern = "/media/eugeniu/T71/Lowcost_trajs/Lieksa/Kiimasuo/Kiimasuo_hesai_*.bag";
-    bag_pattern = bag_file;
-
-    std::vector<std::string> bag_files = expandBagPattern(bag_pattern);
+    std::vector<std::string> bag_files = expandBagPattern(bag_file);
     std::cout << "bag_files:" << bag_files.size() << std::endl;
     if (bag_files.size() == 0)
     {
@@ -338,7 +302,6 @@ void DataHandler::Subscribe()
     {
         view.addQuery(*b, rosbag::TopicQuery(topics));
     }
-    //}
 
     signal(SIGINT, SigHandle); // Handle Ctrl+C (SIGINT)
     flg_exit = false;
@@ -347,7 +310,6 @@ void DataHandler::Subscribe()
 
 
     Sophus::SE3 tmp_pose = Sophus::SE3();
-
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -516,7 +478,6 @@ void DataHandler::Subscribe()
                     }
 
                     //TRY AGAIN THIS BUT PUT THE ACTUAL GRAVITY INTO 
-
                     // if(!imu_obj->init_from_GT)
                     // {
                     //     std::cout<<"IMU init from GT traj..."<<std::endl;
@@ -549,6 +510,8 @@ void DataHandler::Subscribe()
                         //Sophus::SE3 T_Lk = T_LG * se3;
 
                         ppk_gnss_oriented = true;
+
+                        continue;
                     }
 
                     
@@ -599,7 +562,7 @@ void DataHandler::Subscribe()
                     // register to MLS map  ----------------------------------------------
                     Nearest_Points.resize(feats_down_size);
 
-                    //use_als = false;
+                    use_als = false;
                     if (use_als)
                     {
                         if (!als_obj->refine_als) // als was not setup
@@ -725,6 +688,8 @@ void DataHandler::Subscribe()
                     {
                         std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                     }
+
+                    estimator_.update_gnss_full(se3, NUM_MAX_ITERATIONS);
 
                     // Crop the local map------
                     state_point = estimator_.get_x();

@@ -130,16 +130,16 @@ Visualization Manager:
         - Alpha: 1
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 23.996706008911133
-            Min Value: -2.5482640266418457
+            Max Value: 32.73020935058594
+            Min Value: -3.1875672340393066
             Value: true
           Axis: Z
-          Channel Name: reflectance
+          Channel Name: intensity
           Class: rviz/PointCloud2
           Color: 255; 255; 255
-          Color Transformer: Intensity
+          Color Transformer: AxisColor
           Decay Time: 500
-          Enabled: true
+          Enabled: false
           Invert Rainbow: true
           Max Color: 255; 255; 255
           Min Color: 0; 0; 0
@@ -147,14 +147,14 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 100000
           Selectable: true
-          Size (Pixels): 5
+          Size (Pixels): 1
           Size (m): 0.009999999776482582
           Style: Points
-          Topic: /vux_data
+          Topic: /cloud_registered
           Unreliable: false
           Use Fixed Frame: true
           Use rainbow: true
-          Value: true
+          Value: false
         - Alpha: 0.30000001192092896
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
@@ -784,7 +784,7 @@ Visualization Manager:
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.2497968673706055
       Target Frame: global
-      Yaw: 0.811284065246582
+      Yaw: 0.8012840747833252
     Saved: ~
 Window Geometry:
   Displays:
