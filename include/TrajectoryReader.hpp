@@ -37,10 +37,20 @@ struct Measurement
     double Northing = 0.0;
     double H_Ell = 0.0;
 
-    //(deg)
+    //(deg) - rotation formulation from (phi omega kappa)
     double Phi = 0.0;
     double Omega = 0.0;
     double Kappa = 0.0;
+
+    //(deg) different rotation formulation (roll pitch -Heading)
+    double Roll = 0.0;
+    double Pitch = 0.0;
+    double Yaw = 0.0; //yaw = -Heading
+
+    //rotation stdev (deg)
+    double RollSD = 0.0;
+    double PitchSD = 0.0;
+    double HdngSD = 0.0;
 
     // gyro angular velocity (deg/s)
     double AngRateX = 0.0;
@@ -156,11 +166,6 @@ public:
     void read(const std::string &filepath, const Sophus::SE3 &extrinsic)
     {
         std::cout << "TrajectoryReader: read:" << filepath << std::endl;
-        // double angle = -M_PI / 2.0; // -90 degrees in radians
-        // Rz << cos(angle), -sin(angle), 0,
-        //     sin(angle), cos(angle), 0,
-        //     0, 0, 1;
-
         extrinsic_ = extrinsic;
 
         std::ifstream infile(filepath);
@@ -190,10 +195,23 @@ public:
                     for (int i = 0; i < splitProjectName.size(); i++)
                     {
                         std::cout << " " << splitProjectName[i] << std::endl;
+                    }  
+                    std::stringstream ss(row[1]);
+                    std::string token;
+                    int year = 0;
+                    int month = 0;
+                    int day = 0;
+                    while (std::getline(ss, token, '_')) {
+                        if (std::all_of(token.begin(), token.end(), ::isdigit) && token.size() == 8) {
+                            year  = std::stoi(token.substr(0,4));
+                            month = std::stoi(token.substr(4,2));
+                            day   = std::stoi(token.substr(6,2));
+                            std::cout << "Date: " << year << "-" << month << "-" << day << "\n";
+                            break;
+                        }
                     }
-                    std::vector<unsigned int> yearMonthDay = {std::stod(splitProjectName[1].substr(0, 4)),
-                                                              std::stod(splitProjectName[1].substr(4, 2)),
-                                                              std::stod(splitProjectName[1].substr(6, 2))};
+                    
+                    std::vector<unsigned int> yearMonthDay = {year,month,day};
 
                     // Convert YYYY-MM-DD midnight -> UNIX time (seconds since 1970)
                     fullWeekSecs = dateTime2UnixTime(yearMonthDay[0], yearMonthDay[1], yearMonthDay[2]);
@@ -211,7 +229,7 @@ public:
                 {
                     std::cout << "Got error in the time parsing" << std::endl;
                     std::cerr << "Error at: " << e.what() << std::endl;
-                    return;
+                    throw std::runtime_error("Error in reading the postprocessed file");
                 }
             }
 
@@ -319,33 +337,49 @@ public:
 
                     m.utc_usec2 = gpsTowToRosTime(gps_week, m.GPSTime);
 
+                    //position & stdev
                     m.Easting = get("Easting");
                     m.Northing = get("Northing");
                     m.H_Ell = get("H-Ell");
 
+                    m.SDEast = get("SDEast");
+                    m.SDNorth = get("SDNorth");
+                    m.SDHeight = get("SDHeight");
+
+                    //rotation using (phi omega kappa)
                     m.Phi = get("Phi");
                     m.Omega = get("Omega");
                     m.Kappa = get("Kappa");
 
-                    m.AccBdyX = get("AccBdyX");
-                    m.AccBdyY = get("AccBdyY");
-                    m.AccBdyZ = get("AccBdyZ");
+                    //different rotation formulation (roll pitch Heading)  Heading = yaw
+                    m.Roll = get("Roll");
+                    m.Pitch = get("Pitch");
+                    m.Yaw = -get("Heading"); //yaw = –heading according to Inertial explorer manual 
 
-                    m.AngRateX = get("AngRateX");
-                    m.AngRateY = get("AngRateY");
-                    m.AngRateZ = get("AngRateZ");
+                    m.RollSD = get("RollSD");
+                    m.PitchSD = get("PitchSD");
+                    m.HdngSD = get("HdngSD");
 
-                    m.AccBiasX = get("AccBiasX");
-                    m.AccBiasY = get("AccBiasY");
-                    m.AccBiasZ = get("AccBiasZ");
-
+                    //linear velocity
                     m.VelBdyX = get("VelBdyX");
                     m.VelBdyY = get("VelBdyY");
                     m.VelBdyZ = get("VelBdyZ");
 
-                    m.SDEast = get("SDEast");
-                    m.SDNorth = get("SDNorth");
-                    m.SDHeight = get("SDHeight");
+                    //angular velocity
+                    m.AngRateX = get("AngRateX");
+                    m.AngRateY = get("AngRateY");
+                    m.AngRateZ = get("AngRateZ");
+
+                    //linear acceleration & biases
+                    m.AccBdyX = get("AccBdyX");
+                    m.AccBdyY = get("AccBdyY");
+                    m.AccBdyZ = get("AccBdyZ");
+
+                    //search for AccelEast AccelNorth AccelUp Accelerations in m/s2
+
+                    m.AccBiasX = get("AccBiasX");
+                    m.AccBiasY = get("AccBiasY");
+                    m.AccBiasZ = get("AccBiasZ");
 
                     m.E_Sep = get("E-Sep");
                     m.N_Sep = get("N-Sep");
@@ -474,14 +508,30 @@ public:
     M3D RotationMatrix(const Measurement &m) const
     {
         // Convert degrees to radians
-        double omega = m.Omega * M_PI / 180.0; // or m.Omega if that’s your naming
+        double omega = m.Omega * M_PI / 180.0; // m.Omega 
         double phi = m.Phi * M_PI / 180.0;     // m.Phi
         double kappa = m.Kappa * M_PI / 180.0; // m.Kappa
 
+        
         M3D R_;
         R_ << cos(phi) * cos(kappa), -cos(phi) * sin(kappa), sin(phi),
             cos(omega) * sin(kappa) + cos(kappa) * sin(omega) * sin(phi), cos(omega) * cos(kappa) - sin(omega) * sin(phi) * sin(kappa), -cos(phi) * sin(omega),
             sin(omega) * sin(kappa) - cos(omega) * cos(kappa) * sin(phi), cos(kappa) * sin(omega) + cos(omega) * sin(phi) * sin(kappa), cos(omega) * cos(phi);
+
+        // //Order of angles (Yaw, pitch, roll) <-> (Omega, phi, kappa)
+        // // Convert degrees to radians
+        // double r = m.Roll * M_PI / 180.0; 
+        // double p = m.Pitch * M_PI / 180.0;     
+        // double y = -m.Yaw * M_PI / 180.0; 
+
+        // M3D R_rpy; //Inertial Explorer 8.20 User Guide Rev 6 73
+        // R_rpy << cos(y) * cos(r) - sin(y)*sin(p)*sin(r),  -sin(y)*cos(p), cos(y)*sin(r) + sin(y)*sin(p)*cos(r),
+        //          sin(y)*cos(r) + cos(y)*sin(p)*sin(r),    cos(y)*cos(p),  sin(y)*sin(r) - cos(y)*sin(p)*cos(r),
+        //          -cos(p) * sin(r),                        sin(p),         cos(p)*cos(r);
+
+    
+        // std::cout<<"opk R_:\n"<<R_<<std::endl;
+        // std::cout<<"rpy R_:\n"<<R_rpy<<std::endl;
 
         return R_;
     }
@@ -670,7 +720,8 @@ public:
         {
             std::cout << "Given tod is in out of the GNSS time range" << std::endl;
             std::cout << "Start:" << measurements_[0].tod << "(s), end:" << measurements_[measurements_.size() - 1].tod << "(s)" << std::endl;
-            return Sophus::SE3();
+            throw std::runtime_error("Out of bounds time error in closestPose()");
+            //return Sophus::SE3();
         }
 
         MeasurementQueryResult result = queryMeasurement(tod);
@@ -686,7 +737,8 @@ public:
         {
             std::cout << "Given tod is in out of the GNSS time range" << std::endl;
             std::cout << "Start:" << measurements_[0].utc_usec2 << "(s), end:" << measurements_[measurements_.size() - 1].utc_usec2 << "(s)" << std::endl;
-            return Sophus::SE3();
+            throw std::runtime_error("Out of bounds time error in closestPoseUnix()");
+            //return Sophus::SE3();
         }
 
         MeasurementQueryResult result = queryMeasurementUnix(ros_time);
@@ -730,9 +782,7 @@ public:
                 toSE3(measurements_[index_end], finish_pose); //note that this one has Rz included 
                 M3D R_end_T = finish_pose.so3().matrix().transpose();
                 V3D T_end = finish_pose.translation(); // reference scan position
-                M3D extrinsic_R = extrinsic_.so3().matrix();
-                V3D extrinsic_T = extrinsic_.translation();
-                // iterate backwards over IMU measurements
+
                 for (auto it_kp = measurements_.begin() + index_end; it_kp != measurements_.begin() + index_start; it_kp--)
                 {
                     const auto &head = it_kp - 1;
@@ -775,7 +825,7 @@ public:
         }catch(std::exception &e)
         {
             std::cout << "Error in undistort_imu:" << e.what() << std::endl;
-            return false;
+            throw std::runtime_error("exception error in undistort_imu()");
         }
 
         return rv;
@@ -825,7 +875,7 @@ public:
         catch (const std::exception &e)
         {
             std::cout << "Error in undistort_const_vel:" << e.what() << std::endl;
-            return false;
+            throw std::runtime_error("exception error in undistort_const_vel()");
         }
 
         return rv;
@@ -836,7 +886,7 @@ public:
     const Eigen::Vector3d &bodyToIMU() const { return bodyToIMU_; }
     bool initted = false;
     int curr_index = 0;
-    //M3D Rz;
+
     Sophus::SE3 extrinsic_ = Sophus::SE3();
 
     std::uint64_t fullWeekSecs = 0;

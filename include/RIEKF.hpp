@@ -274,6 +274,8 @@ public:
     // gnss update
     void update(const V3D &pos, const V3D &cov_pos_, int maximum_iter, bool global_error, M3D R = Eye3d);
 
+    void update_gnss_full(const Sophus::SE3 &p, int maximum_iter, bool global_error = false);
+
     M3D computeCovariance(const PointCloudXYZI::Ptr &cloud,
                       const pcl::KdTreeFLANN<PointType>::Ptr &kdtree,
                       const PointType &point,

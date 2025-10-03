@@ -33,10 +33,10 @@ Eigen::Matrix<double, noise_size, noise_size> process_noise_cov()
 Eigen::Matrix<double, state_size, 1> f(state s, input in)
 {
     Eigen::Matrix<double, state_size, 1> result = Eigen::Matrix<double, state_size, 1>::Zero();
-    Eigen::Vector3d omega = in.gyro - s.bg; // bias free angular velocity
+    V3D omega = in.gyro - s.bg; // bias free angular velocity
 
     // bias free acceleration transform to the world frame
-    Eigen::Vector3d a_inertial = s.rot.matrix() * (in.acc - s.ba);
+    V3D a_inertial = s.rot.matrix() * (in.acc - s.ba);
     // gravity is the average, negative acceleration,  when added it cancel the earth gravity
     for (int i = 0; i < 3; i++)
     {
@@ -54,7 +54,7 @@ Eigen::Matrix<double, state_size, state_size> df_dx(state s, input in)
 
     // d_position/d_vel
     cov.block<3, 3>(P_ID, V_ID) = Eye3d;
-    cov.template block<3, 3>(R_ID, BG_ID) = -Eye3d; // simplified to -I
+    cov.template block<3, 3>(R_ID, BG_ID) = -Eye3d; // simplified to -I try -s.rot.matrix()
     Eigen::Vector3d acc_ = in.acc - s.ba;           //  acceleration = a_m - bias
     cov.block<3, 3>(V_ID, R_ID) = -s.rot.matrix() * Sophus::SO3::hat(acc_);
     cov.block<3, 3>(V_ID, BA_ID) = -s.rot.matrix();
@@ -146,6 +146,36 @@ void Estimator::predict(double &dt, Eigen::Matrix<double, noise_size, noise_size
         // Fx.block<3, 3>(R_ID, R_ID) = Sophus::SO3::exp((i_in.gyro - x_.bg) * dt).matrix();
     }
     P_ = (Fx)*P_ * (Fx).transpose() + (dt * Fw) * Q * (dt * Fw).transpose();
+
+
+    //to be tested
+    // Rotation derivatives: ∂Log(R)/∂ω
+    // Using the right Jacobian of SO(3) for the exponential map
+    //Eigen::Matrix3d J_r = computeRightJacobian(ang_vel_ * dt);
+    //F.block<3, 3>(rot_idx_, ang_vel_idx_) = J_r * dt;
+
+    /*
+    Eigen::Matrix3d computeRightJacobian(const Eigen::Vector3d& phi) {
+        // Right Jacobian of SO(3) for the exponential map
+        double phi_norm = phi.norm();
+        
+        if (phi_norm < 1e-8) {
+            return Eigen::Matrix3d::Identity();
+        }
+        
+        Eigen::Vector3d axis = phi / phi_norm;
+        double sin_phi = std::sin(phi_norm);
+        double cos_phi = std::cos(phi_norm);
+        
+        Eigen::Matrix3d axis_hat = Sophus::SO3d::hat(axis);
+        Eigen::Matrix3d J_r = Eigen::Matrix3d::Identity() 
+                            - ((1 - cos_phi) / (phi_norm)) * axis_hat
+                            + ((phi_norm - sin_phi) / (phi_norm)) * axis_hat * axis_hat;
+        
+        return J_r;
+    }
+    */
+
 }
 
 
