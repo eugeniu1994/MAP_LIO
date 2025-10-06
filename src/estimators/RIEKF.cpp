@@ -904,9 +904,7 @@ bool RIEKF::update_tighly_fused(double R, PointCloudXYZI::Ptr &feats_down_body,
 
 void RIEKF::update(const V3D &gnss_position, const V3D &cov_pos_, int maximum_iter, bool global_error, M3D R)
 {
-    std::cout << "UPdate EKF with gps..." << std::endl;
-
-    const int gps_dim = 3;
+    std::cout << "Update EKF with gps..." << std::endl;
 
     residual_struct status;
     status.valid = true;
@@ -974,10 +972,6 @@ void RIEKF::update(const V3D &gnss_position, const V3D &cov_pos_, int maximum_it
     }
 }
 
-// Eigen provides fixed-size types
-using Vector6d = Eigen::Matrix<double, 6, 1>;
-using Matrix6d = Eigen::Matrix<double, 6, 6>;
-
 // Compute numerical measurement Jacobian J (6x6) for:
 //   residual r = log( measured.inverse() * X )
 // using central differences: H[:,i] = (r(X*exp(+eps*e_i)) - r(X*exp(-eps*e_i))) / (2*eps)
@@ -1007,47 +1001,42 @@ Eigen::Matrix<double,6,6> numericalMeasurementJacobian(const Sophus::SE3 &X, con
     return J;
 }
 
-void RIEKF::update_gnss_full(const Sophus::SE3 &measured, int maximum_iter, bool global_error)
+void RIEKF::update_se3(const Sophus::SE3 &measured_, int maximum_iter, const V3D &std_pos_m, const V3D &std_rot_deg)
 {
-    // h(x)=   [x.t]      //position part
-    //       [Log(x.R)​]    //rotation part
-    std::cout << "update_gnss_full EKF with gps..." << std::endl;
-
-    const int gps_dim = 6;
-
+    std::cout << "update_se3..." << std::endl;
     residual_struct status;
     status.valid = true;
     status.converge = true;
     state x_propagated = x_;                            // the initial guess
     vectorized_state dx_new = vectorized_state::Zero(); // 24X1
 
-    double std_pos = .5; //half m
-    double std_rot = 5.0 * M_PI / 180.;// 5degree in radians 
+    // Convert rotation stddevs to radians
+    V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
 
-    Eigen::Matrix<double, gps_dim, state_size> H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero();
-    Eigen::Matrix<double, gps_dim, gps_dim> R = Eigen::Matrix<double, gps_dim, gps_dim>::Identity();
-    R.block<3, 3>(0, 0) *= std_pos * std_pos; // position
-    R.block<3, 3>(0, 0) *= std_rot * std_rot; // orientation
+    Eigen::Matrix<double, se3_dim, se3_dim> R = Eigen::Matrix<double, se3_dim, se3_dim>::Identity();
+    R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal(); // Position covariance (diagonal with variances)
+    R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
 
+    //H_se3.block<6, 6>(0, 0) = Matrix6d::Identity();
     for (int i = -1; i < maximum_iter; i++)
     {
-        Sophus::SE3 X(x_.rot, x_.pos);
-        Eigen::Matrix<double, 6, 1> residual = (measured.inverse() * X).log(); // Innovation: z - h(x) 
+        //Eigen::Matrix<double, 6, 1> residual = (measured_.inverse() * Sophus::SE3(x_.rot, x_.pos)).log(); // Innovation: z - h(x) 
+        //H_se3.block<6, 6>(0, 0) = -numericalMeasurementJacobian(X, measured_, 1e-5);
 
-        H_gnss.block<6, 6>(0, 0) = -numericalMeasurementJacobian(X, measured, 1e-5);
-
+        Eigen::Matrix<double, 6, 1> residual = (Sophus::SE3(x_.rot, x_.pos).inverse() * measured_).log(); 
+        
         // Compute Kalman Gain
         // K_k =  P_k   *   H_k.T * inv( H_k  *  P_k  * H_k.T + R_k )
         //       24X24  *   24x6  * inv(6x24  * 24x24 * 24x6  + 6x6
 
-        Eigen::Matrix<double, state_size, gps_dim> K; // this should be 24 x 6
-        K = P_ * H_gnss.transpose() * ((H_gnss * P_ * H_gnss.transpose() + R).inverse());
+        Eigen::Matrix<double, state_size, se3_dim> K; // this should be 24 x 6
+        K = P_ * H_se3.transpose() * ((H_se3 * P_ * H_se3.transpose() + R).inverse());
 
         // for iekf
         dx_new = boxminus(x_, x_propagated); // x^k - x^     // 24X1
         // vectorized_state dx_ = K * residual; //used before for gps_ins
         cov KH = cov::Zero(); //  matrix K * H
-        KH = K * H_gnss;      // 24 x 6  * 6 x 24
+        KH = K * H_se3;      // 24 x 6  * 6 x 24
         vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new;
         x_ = boxplus(x_, dx_);
         status.converge = true;
@@ -1062,7 +1051,7 @@ void RIEKF::update_gnss_full(const Sophus::SE3 &measured, int maximum_iter, bool
 
         if (status.converge || i == maximum_iter - 1)
         {
-            P_ = (cov::Identity() - K * H_gnss) * P_;
+            P_ = (cov::Identity() - K * H_se3) * P_;
             break;
         }
     }

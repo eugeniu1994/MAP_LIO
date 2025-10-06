@@ -101,7 +101,13 @@ struct residual_struct
 };
 
 const int gps_dim = 3;
+const int se3_dim = 6;
+
 const int kernel_row = 1, kernel_col = 1;// 10; // pretty fast and accurate
+
+// Eigen provides fixed-size types
+using Vector6d = Eigen::Matrix<double, 6, 1>;
+using Matrix6d = Eigen::Matrix<double, 6, 6>;
 
 class RIEKF : public Estimator
 {
@@ -113,6 +119,7 @@ public:
     pcl::KdTreeFLANN<PointType>::Ptr cloud_tree;
 
     Eigen::Matrix<double, gps_dim, state_size> H_gnss;
+    Eigen::Matrix<double, se3_dim, state_size> H_se3;
     // Position part
 #ifdef ADAPTIVE_KERNEL
     RIEKF()
@@ -150,8 +157,11 @@ public:
         cloud_tree.reset(new pcl::KdTreeFLANN<PointType>());
 
         H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero(); // 3 * n
-        H_gnss.block<3, 3>(0, 0) = Eye3d;
+        H_gnss.block<3, 3>(P_ID, P_ID) = Eye3d;
 
+        H_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
+        H_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+        H_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
 #endif
     }
 #else
@@ -191,7 +201,11 @@ public:
         cloud_tree.reset(new pcl::KdTreeFLANN<PointType>());
 
         H_gnss = Eigen::Matrix<double, gps_dim, state_size>::Zero(); // 3 * n
-        H_gnss.block<3, 3>(0, 0) = Eye3d;
+        H_gnss.block<3, 3>(P_ID, P_ID) = Eye3d;
+
+        H_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
+        H_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+        H_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
     };
 #endif
 
@@ -274,7 +288,7 @@ public:
     // gnss update
     void update(const V3D &pos, const V3D &cov_pos_, int maximum_iter, bool global_error, M3D R = Eye3d);
 
-    void update_gnss_full(const Sophus::SE3 &p, int maximum_iter, bool global_error = false);
+    void update_se3(const Sophus::SE3 &measured_, int maximum_iter, const V3D &std_pos_m, const V3D &std_rot_deg);
 
     M3D computeCovariance(const PointCloudXYZI::Ptr &cloud,
                       const pcl::KdTreeFLANN<PointType>::Ptr &kdtree,

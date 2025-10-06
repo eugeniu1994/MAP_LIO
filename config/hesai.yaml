@@ -44,6 +44,8 @@ als:
     use_gnss: false 
     #if this is not empty we'll use the postprocessed GNSS solution 
     postprocessed_gnss_path: "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"  
+    # postprocessed_gnss_path: "/media/eugeniu/T7/Lowcost_trajs/Lieksa/Kiimasuo/Lieksa_20250519_1.txt"
+    
     saveALS_NN_2_MLS: false             #MLS map update with ALS points 
 
 
