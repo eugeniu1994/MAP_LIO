@@ -370,7 +370,7 @@ void DataHandler::Subscribe()
                     if (!reader.init(time_of_day_sec))
                     {
                         std::cerr << "Cannot initialize the GNSS-IMU reader..." << std::endl;
-                        return;
+                        throw std::runtime_error("Cannot initialize the GNSS-IMU reader...: time_of_day_sec "+std::to_string(time_of_day_sec));
                     }
                     else
                     {
@@ -462,11 +462,11 @@ void DataHandler::Subscribe()
                 else
                 {
                     std::cout << "GNSS reader not initted..." << std::endl;
-                    return;
+                    throw std::runtime_error("GNSS reader not initted...");
                 }
 
                 //------------------------------------------------------------
-                //perform_mls_registration = false;
+                perform_mls_registration = false;
                 if (perform_mls_registration)
                 {
                     if (flg_first_scan)
@@ -688,8 +688,11 @@ void DataHandler::Subscribe()
                     {
                         std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                     }
-
-                    estimator_.update_gnss_full(se3, NUM_MAX_ITERATIONS);
+                    
+                    //take this from std or separation data 
+                    auto std_pos_m = V3D(.1,.1,.1); //take this from the measurement itself - 10cm
+                    auto std_rot_deg = V3D(5,5,5);                                        //- 5 degrees 
+                    estimator_.update_se3(se3, NUM_MAX_ITERATIONS, std_pos_m, std_rot_deg);
 
                     // Crop the local map------
                     state_point = estimator_.get_x();

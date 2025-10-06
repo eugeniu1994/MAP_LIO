@@ -175,7 +175,7 @@ void DataHandler::Subscribe()
     prev_cloud_.reset(new PointCloudXYZI());
 
     Sophus::SE3 global_pose_ = Sophus::SE3();          // Global pose
-    Sophus::SE3 last_motion_estimate_ = Sophus::SE3(); // Constant velocity model
+    Sophus::SE3 last_relative_motion_estimate_ = Sophus::SE3(); // Constant velocity model
 
     float imuAccNoise = 0.1; // 0.01;
     float imuGyrNoise = 0.1; // 0.001;
@@ -270,7 +270,7 @@ void DataHandler::Subscribe()
                 icp.setInputTarget(prev_cloud_);
 
                 // --- Constant velocity model as initial guess ---
-                Eigen::Matrix4f init_guess = last_motion_estimate_.matrix().cast<float>();
+                Eigen::Matrix4f init_guess = last_relative_motion_estimate_.matrix().cast<float>();
 
                 PointCloudXYZI::Ptr aligned(new PointCloudXYZI());
                 icp.align(*aligned, init_guess);
@@ -292,7 +292,7 @@ void DataHandler::Subscribe()
                 global_pose_ = global_pose_ * relative_motion;
 
                 // --- Update constant velocity model ---
-                last_motion_estimate_ = relative_motion;
+                last_relative_motion_estimate_ = relative_motion;
 
                 publish_frame_debug(pubLaserCloudDebug, feats_undistort);
 
@@ -350,7 +350,7 @@ void DataHandler::Subscribe()
                 imuIntegratorOpt->resetIntegration();
 
                 // delta lidar
-                M3D deltaR_L = last_motion_estimate_.so3().matrix();
+                M3D deltaR_L = last_relative_motion_estimate_.so3().matrix();
 
                 //todo -> take into account the time in between for each delta R 
                 

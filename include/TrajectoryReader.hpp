@@ -413,9 +413,11 @@ public:
 
     bool init(const double tod)
     {
+        std::cout<<"Attept for init("<<tod<<")..."<<std::endl;
         if (measurements_.empty())
         {
             curr_index = 0;
+            std::cout<<"Measurements empty, return false"<<std::endl;
             return false;
         }
 

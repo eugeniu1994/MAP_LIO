@@ -801,12 +801,6 @@ void DataHandler::Subscribe()
                     // auto ppk_gnss_imu = als2mls * gnss_vux_data[tmp_index].se3; // in mls frame
 
                     auto ppk_gnss_imu = als2mls * interpolated_pose;
-
-                    // put it in the IMU position
-                    V3D ext(0.042, 0.193, 0.326); // X, Y, Z in meters
-
-                    // auto t_ = ppk_gnss_imu.translation() - ext;
-                    // ppk_gnss_imu = Sophus::SE3(ppk_gnss_imu.so3().matrix(), t_);
                     {
                         if (!ppk_gnss_init)
                         {
