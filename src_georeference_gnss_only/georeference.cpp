@@ -131,6 +131,7 @@ void publishAccelerationArrow(ros::Publisher &marker_pub, const Eigen::Vector3d 
 // #include "../src3/clean_registration3.hpp"
 
 #include "TrajectoryReader.hpp"
+#include "Batch.hpp"
 
 void DataHandler::Subscribe()
 {
@@ -152,6 +153,12 @@ void DataHandler::Subscribe()
     imu_obj->set_param(Lidar_T_wrt_IMU, Lidar_R_wrt_IMU, V3D(gyr_cov, gyr_cov, gyr_cov), V3D(acc_cov, acc_cov, 10. * acc_cov),
                        V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, 10. * b_acc_cov));
     gnss_obj->set_param(GNSS_T_wrt_IMU, GNSS_IMU_calibration_distance, postprocessed_gnss_path);
+
+
+    //todo - continue work from her 
+
+    std::shared_ptr<Batch> batch_obj(new Batch());
+
 
 #define USE_ALS
 
