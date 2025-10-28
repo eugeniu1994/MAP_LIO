@@ -226,7 +226,7 @@ namespace p2p
 
     void VoxelHashMap::RemovePointsFarFromLocation(const V3D_4 &origin)
     {
-        std::cout << "RemovePointsFarFromLocation:" << std::endl;
+        //std::cout << "RemovePointsFarFromLocation:" << std::endl;
         const auto max_distance2 = max_distance_ * max_distance_;
         for (const auto &[voxel, voxel_block] : map_)
         {

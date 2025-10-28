@@ -7,7 +7,6 @@ Panels:
         - /Global Options1
         - /TF1/Frames1
         - /mapping1
-        - /mapping1/LiDAR1
         - /mapping1/Georeferenced1/Autocompute Value Bounds1
         - /mapping1/Georeferenced-Hesai1/Autocompute Value Bounds1
         - /Odometry1
@@ -36,7 +35,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: MLS
+    SyncSource: LiDAR
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -122,8 +121,8 @@ Visualization Manager:
         - Alpha: 0.5
           Autocompute Intensity Bounds: true
           Autocompute Value Bounds:
-            Max Value: 40.63531494140625
-            Min Value: -18.8588924407959
+            Max Value: 84.3318862915039
+            Min Value: 31.113290786743164
             Value: true
           Axis: Z
           Channel Name: intensity
@@ -758,7 +757,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 75.06782531738281
+      Distance: 159.74562072753906
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -766,17 +765,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 26.792240142822266
-        Y: 29.951143264770508
+        X: 25.94375991821289
+        Y: 53.96269607543945
         Z: 5.380353832151741e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.8797969222068787
+      Pitch: 1.5697963237762451
       Target Frame: global
-      Yaw: 1.11128568649292
+      Yaw: 1.1962851285934448
     Saved: ~
 Window Geometry:
   Displays:

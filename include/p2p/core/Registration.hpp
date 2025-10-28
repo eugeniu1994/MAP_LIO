@@ -25,12 +25,6 @@ namespace p2p
                               double kernel);
 
     Sophus::SE3 RegisterPlane(const std::vector<V3D_4> &frame,
-                               const VoxelHashMap &voxel_map,
-                               const Sophus::SE3 &initial_guess,
-                               double max_correspondence_distance,
-                               double kernel, bool save_nn = false);
-
-    Sophus::SE3 RegisterPlane(const std::vector<V3D_4> &frame,
                               const PointCloudXYZI::Ptr &map, 
                               const pcl::KdTreeFLANN<PointType>::Ptr &tree,
                               const Sophus::SE3 &initial_guess,
