@@ -39,6 +39,8 @@ mapping:
     extrinsic_T: [-0.13, -0.061, 0] 
 
 
+    
+
     # extrinsic_T: [ 0.009,  0.13,  0.09 ] #given by Teemu 
     # extrinsic_R: [ 0, 1, 0,
     #               -1, 0, 0,
@@ -74,14 +76,16 @@ als:
 
     use_gnss: false 
     #if this is not empty we'll use the postprocessed GNSS solution 
-    # postprocessed_gnss_path: "/media/eugeniu/T7/Lowcost_trajs/East_CALIBRRATE/Ita-Suomi_ETRSTM35FIN.txt" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"  
+    # postprocessed_gnss_path: "/media/eugeniu/T7/Lowcost_trajs/East_CALIBRRATE/Ita-Suomi_ETRSTM35FIN.txt" # "/media/eugeniu/T7/evo-bags/GT-MLS-25-07.txt"
+    # postprocessed_gnss_path: "/media/eugeniu/T7/Lowcost_trajs/Lieksa/Kiimasuo/Lieksa_20250519_1.txt"  
     postprocessed_gnss_path: "/media/eugeniu/T7/Lowcost_trajs/Lieksa/Ranta-ahontielta/Lieksa_Kontiovaarant_20250521.txt"
-    
+    # postprocessed_gnss_path: "/media/eugeniu/T7/roamer/evo_20240725_reCalculated2_poqmodouEugent.txt" 
+
     saveALS_NN_2_MLS: false             #MLS map update with ALS points 
 
 publish:
     scan_publish_en:  true       # false: close all the point cloud output
-    dense_publish_en: true #false       # false: low down the points number in a global-frame point clouds scan.
+    dense_publish_en: false       # false: low down the points number in a global-frame point clouds scan.
     
     #for the next make sure that the code is compiled with save option true
     # save_clouds: false           #if this is true it will save the point clouds and their pose
@@ -92,8 +96,8 @@ publish:
     #poseSavePath: "/home/eugeniu/z_tighly_coupled/test/"     #where to save the trajectory
 
     save_clouds:  true
-    save_clouds_path: "/media/eugeniu/T7/Lowcost_trajs/clouds/test/"
-    poseSavePath: "/media/eugeniu/T7/Lowcost_trajs/clouds/test/"     #where to save the trajectory
+    save_clouds_path: "/media/eugeniu/T7/Lowcost_trajs/cloud/test/"
+    poseSavePath: "/media/eugeniu/T7/Lowcost_trajs/cloud/test/"     #where to save the trajectory
     save_poses: true 
 
 eval:

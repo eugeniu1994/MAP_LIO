@@ -647,7 +647,7 @@ double estimateTimeOffset(
         return false;
     }
 
-    // 1. Check motion magnitude ---
+    // 1. Check motion magnitude
     double dist1 = (sensor1_poses.front().translation() - sensor1_poses.back().translation()).norm();
     double dist2 = (sensor2_poses.front().translation() - sensor2_poses.back().translation()).norm();
     if (dist1 < min_motion || dist2 < min_motion)
@@ -677,7 +677,7 @@ double estimateTimeOffset(
     plt::grid(true);
     plt::draw();
 
-    //  2. Compute cumulative translation distances ---
+    //  2. Compute cumulative translation distances
     auto computeCumulativeDistance = [](const std::vector<Sophus::SE3> &poses)
     {
         std::vector<double> dist(poses.size(), 0.0);
@@ -689,7 +689,7 @@ double estimateTimeOffset(
     std::vector<double> dist1_traj = computeCumulativeDistance(sensor1_poses);
     std::vector<double> dist2_traj = computeCumulativeDistance(sensor2_poses);
 
-    // --- 3. Linear interpolation helper ---
+    // 3. Linear interpolation helper
     auto interpolate = [](const std::vector<double> &time, const std::vector<double> &dist, double t)
     {
         if (t <= time.front())
@@ -805,12 +805,13 @@ double estimateTimeOffset(
 
     std::vector<double> sensor1_vel_ = computeLinearVelocities(sensor1_poses);
     std::vector<double> sensor2_vel_ = computeLinearVelocities(sensor2_poses);
-    auto sensor1_vel = gaussianSmooth(sensor1_vel_, sigma, 3);
-    auto sensor2_vel = gaussianSmooth(sensor2_vel_, sigma, 3);
+
+    auto sensor1_vel = sensor1_vel_; // gaussianSmooth(sensor1_vel_, sigma, 3);
+    auto sensor2_vel = sensor2_vel_; // gaussianSmooth(sensor2_vel_, sigma, 3);
 
     // Smooth angular velocities
-    auto smoothed1 = gaussianSmooth(sensor1_angvel, sigma, 3);
-    auto smoothed2 = gaussianSmooth(sensor2_angvel, sigma, 3);
+    auto smoothed1 = sensor1_angvel; // gaussianSmooth(sensor1_angvel, sigma, 3);
+    auto smoothed2 = sensor2_angvel; // gaussianSmooth(sensor2_angvel, sigma, 3);
 
     // Find peaks
     int idx1 = findMaxIndex(smoothed1);
@@ -866,13 +867,15 @@ double estimateTimeOffset(
     plt::grid(true);
     plt::draw();
 
-    // std::vector<double> combined_velocities_1; combined_velocities_1.reserve(sensor1_angvel.size());
-    // std::vector<double> combined_velocities_2; combined_velocities_2.reserve(sensor1_angvel.size());
-    // for(int i=0;i<sensor1_angvel.size();i++)
-    // {
-    //     combined_velocities_1.push_back(smoothed1[i] + 10*sensor1_vel[i]);
-    //     combined_velocities_2.push_back(smoothed2[i] + 10*sensor2_vel[i]);
-    // }
+    std::vector<double> combined_velocities_1;
+    combined_velocities_1.reserve(sensor1_angvel.size());
+    std::vector<double> combined_velocities_2;
+    combined_velocities_2.reserve(sensor1_angvel.size());
+    for (int i = 0; i < sensor1_angvel.size(); i++)
+    {
+        combined_velocities_1.push_back(smoothed1[i] + 5. * sensor1_vel[i]);
+        combined_velocities_2.push_back(smoothed2[i] + 5. * sensor2_vel[i]);
+    }
 
     {
         std::vector<double> signal1 = sensor1_angvel;
@@ -948,6 +951,8 @@ double estimateTimeOffset(
     return true;
 }
 
+const bool time_list(PointType &x, PointType &y) { return (x.time < y.time); };
+
 void DataHandler::BagHandler()
 {
     std::cout << "\n===============================BagHandler===============================" << std::endl;
@@ -988,7 +993,7 @@ void DataHandler::BagHandler()
     ros::Publisher pubLaserCloudDebug = nh.advertise<sensor_msgs::PointCloud2>("/cloud_debug", 10);
 
     std::vector<std::string> topics{lid_topic}; //, imu_topic, gnss_topic
-    
+
     std::vector<std::string> bag_files = expandBagPattern(bag_file);
     std::cout << "bag_files:" << bag_files.size() << std::endl;
     if (bag_files.size() == 0)
@@ -1111,6 +1116,8 @@ void DataHandler::BagHandler()
 
     Sophus::SE3 als2mls = Sophus::SE3();
 
+    estimator_icp.config_.voxel_size = filter_size_map_min;
+
     for (const rosbag::MessageInstance &m : view)
     {
         std::string topic = m.getTopic();
@@ -1128,20 +1135,24 @@ void DataHandler::BagHandler()
 
         if (sync_packages_no_IMU(Measures))
         {
-            if(!found_first_gps_time)
+            if (!found_first_gps_time)
             {
-                //todo here
-                //take the gps time from inspa messages
-                //take the first time from ppk gnss-imu file
-                //find the time offset guess 
+                // todo here
+                // take the gps time from inspa messages
+                // take the first time from ppk gnss-imu file
+                // find the time offset guess
                 found_first_gps_time = true;
             }
 
             TransformPoints(Lidar_wrt_IMU, Measures.lidar); // transform the point cloud into imu frame
+            // Sort the point cloud by the timestamp if not sorted already
+            // std::sort(Measures.lidar->points.begin(), Measures.lidar->points.end(), time_list); // sort by timestamp
 
             scan_id++;
-            // if (scan_id < 45100) // this is only for the 0 bag
-            // continue;
+            if (scan_id > 2000) // this is only for the 0 bag
+            {
+                break;
+            }
 
             std::cout << "scan_id:" << scan_id << std::endl;
             std::cout << "scan_id:" << scan_id << ", travelled_distance:" << travelled_distance << std::endl;
@@ -1168,19 +1179,20 @@ void DataHandler::BagHandler()
             flg_EKF_inited = true; // (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
 
             bool deskew = true;
-            const auto &[source_, frame_downsample_] = estimator_icp.Voxelize(feats_undistort, deskew);
+
+            // Undistort & Voxelize using the prev velocity, do not sort them first time
+            const auto &[source_, frame_downsample_] = estimator_icp.Voxelize(feats_undistort, deskew, false);
 
             std::cout << "source_:" << source_.size() << ", frame_downsample_:" << frame_downsample_.size() << std::endl;
-            // MLS registration
-            bool use_p2p = true; // false;
-            if (!estimator_icp.update(source_, estimator_icp.local_map_, use_p2p, false))
+            // estimate current velocity with few points - for speed
+            if (!estimator_icp.update(source_, estimator_icp.local_map_, true, false))
             {
                 std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
             }
 
             if (false) //  if ((estimator_icp.GetPredictionModel().so3().log() * 180. / M_PI).norm() > .1)
             {
-                for (int k = 0; k < 5; k++) // 15 for prev data
+                for (int k = 0; k < 2; k++) // 15 for prev data
                 {
                     std::cout << "\n\nStep:" << k << std::endl;
                     std::cout << "poses_:" << estimator_icp.poses_.size() << std::endl;
@@ -1195,12 +1207,12 @@ void DataHandler::BagHandler()
                 }
             }
 
-            // redoo the undistortion and voxelization after the MLS update
+            // redoo the undistortion and voxelization with current velocity
             *feats_undistort = *Measures.lidar;
-            const auto &[source, frame_downsample] = estimator_icp.Voxelize(feats_undistort, deskew);
+            const auto &[source, frame_downsample] = estimator_icp.Voxelize(feats_undistort, deskew, true); // sort now
             std::cout << "source:" << source.size() << ", frame_downsample:" << frame_downsample.size() << std::endl;
 
-            //use_als = false;// true;
+            // use_als = false;// true;
             if (use_als && shift_time_sinc)
             {
                 state_point = estimator_icp.get_x(); // state after registration
@@ -1241,7 +1253,7 @@ void DataHandler::BagHandler()
 
                     als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
 
-                    //Reset the loca MLS map -> it has global drift
+                    // Reset the loca MLS map -> it has global drift
                     estimator_icp.local_map_.Clear();
                 }
                 else
@@ -1252,21 +1264,21 @@ void DataHandler::BagHandler()
                         const auto &refference_kdtree = als_obj->localKdTree_map_als;
                         // std::cout << "kdtree set input ALS points: " << als_obj->als_cloud->size() << std::endl;
                         int als_cloud_points = reference_localMap_cloud->size();
-                        if(als_cloud_points > 100)
+                        if (als_cloud_points > 100)
                         {
-                            //put this back later 
-                            //estimator_icp.update(frame_downsample, reference_localMap_cloud, refference_kdtree);
+                            // put this back later
+                            // estimator_icp.update(frame_downsample, reference_localMap_cloud, refference_kdtree);
                             //
 
-                            //tightly coupled approach 
-                            estimator_icp.update_tightlyCoupled(frame_downsample, estimator_icp.local_map_,
-                               reference_localMap_cloud, refference_kdtree);
+                            // tightly coupled approach
+                            /////// estimator_icp.update_tightlyCoupled(frame_downsample, estimator_icp.local_map_,als_obj->als_cloud, als_obj->localKdTree_map_als);
+                            // estimator_icp.update_tightlyCoupled(source, estimator_icp.local_map_,als_obj->als_cloud, als_obj->localKdTree_map_als);
 
                             state_point = estimator_icp.get_x(); // state after registration
                         }
                         else
                         {
-                            std::cout<<"\n\nSKip ALS there is no als points, \n\nals_cloud_points:"<<als_cloud_points<<std::endl;
+                            std::cout << "\n\nSKip ALS there is no als points, \n\nals_cloud_points:" << als_cloud_points << std::endl;
                         }
                     }
                 }
@@ -1374,11 +1386,13 @@ void DataHandler::BagHandler()
                 // reader.toSE3(measurements[tmp_index+27], interpolated_pose);
 
                 tmp_index = reader.curr_index;
-                const auto &msg_time = measurements[tmp_index].tod;
+                auto msg_time = measurements[tmp_index].tod;
 
                 se3 = als2mls * interpolated_pose; // in first frame
 
-                publish_ppk_gnss(se3, msg_time);
+                // publish_ppk_gnss(se3, msg_time);
+                publish_ppk_gnss(se3, lidar_end_time);
+
                 if (false)
                 {
                     // reader.addEarthGravity(measurements[reader.curr_index], raw_gyro, raw_acc, G_m_s2); //this will add the world gravity
@@ -1406,7 +1420,7 @@ void DataHandler::BagHandler()
                     lidar.push_back(lidar_pose);
                     gnss_imu.push_back(se3);
                     lidar_time.push_back(time_of_day_sec);
-                    gnss_imu_time.push_back(msg_time);
+                    gnss_imu_time.push_back(msg_time); // msg_time
 
                     double time_diff = 0;
 
@@ -1465,8 +1479,7 @@ void DataHandler::BagHandler()
 
             prev_lidar_timestamp = Measures.lidar_beg_time;
 
-
-    #ifdef SAVE_DATA
+#ifdef SAVE_DATA
             bool save = false;// true;
             std::cout << "save_poses:" << save_poses << ", save_clouds_path:" << save_clouds_path << std::endl;
 
@@ -1487,11 +1500,13 @@ void DataHandler::BagHandler()
 
                         //  If not enough poses for the estimation, do not de-skew
                         const size_t N = estimator_icp.poses_.size();
-                        if (N <= 2) return;
-                        double delta_time = last_point_time - first_point_time;  // first point time is zero
-                        if (delta_time <= 1e-9) {
+                        if (N <= 2)
+                            return;
+                        double delta_time = last_point_time - first_point_time; // first point time is zero
+                        if (delta_time <= 1e-9)
+                        {
                             std::cout << "error in undistort_const_vel_lidar : delta_time is " << delta_time
-                                    << std::endl;
+                                      << std::endl;
                             return;
                         }
 
@@ -1501,7 +1516,8 @@ void DataHandler::BagHandler()
                         const auto delta_pose = (start_pose.inverse() * finish_pose).log() / delta_time;
 
                         double t = 0;
-                        for (int i = 0; i < n; i++) {
+                        for (int i = 0; i < n; i++)
+                        {
                             const auto &p = pl_orig.points[i];
                             Eigen::Vector3d P_i = Eigen::Vector3d(p.x, p.y, p.z);
                             t = p.timestamp - first_point_time;
@@ -1515,13 +1531,12 @@ void DataHandler::BagHandler()
                             pl_orig.points[i].z = point.z();
                         }
 
-
-                        //const pcl::PointCloud<hesai_ros::Point> &pl_orig = imu_obj->DeSkewOriginalCloud<hesai_ros::Point>(Measures.lidar_msg, state_point, save_clouds_local);
+                        // const pcl::PointCloud<hesai_ros::Point> &pl_orig = imu_obj->DeSkewOriginalCloud<hesai_ros::Point>(Measures.lidar_msg, state_point, save_clouds_local);
                         std::cout << "save " << pl_orig.size() << " points" << std::endl;
 
                         std::string filename = save_clouds_path + "Hesai/" + std::to_string(scan_id) + "_cloud_" + std::to_string(lidar_end_time) + ".pcd";
-                        pcl::io::savePCDFile(filename, pl_orig, true); // Binary format
 
+                        pcl::io::savePCDFile(filename, pl_orig, true); // Binary format
 
                         const Eigen::Vector3d &t_model = finish_pose.translation();
                         Eigen::Quaterniond q_model(finish_pose.so3().matrix());
@@ -1533,7 +1548,7 @@ void DataHandler::BagHandler()
                         foutMLS.precision(20);
                         // # ' id time tx ty tz qx qy qz qw' - tum format(scan id, scan timestamp seconds,
                         // translation and rotation quaternion)
-                        foutMLS << scan_id<< " "<< lidar_end_time << " " << t_model(0) << " " << t_model(1) << " " << t_model(2) << " "
+                        foutMLS << scan_id << " " << lidar_end_time << " " << t_model(0) << " " << t_model(1) << " " << t_model(2) << " "
                                 << q_model.x() << " " << q_model.y() << " " << q_model.z() << " " << q_model.w()
                                 << std::endl;
                         foutMLS.close();
@@ -1549,7 +1564,7 @@ void DataHandler::BagHandler()
         }
     }
 
-    std::cout<<"Finished..."<<std::endl;
+    std::cout << "Finished..." << std::endl;
 
     for (auto &b : bags)
         b->close();
