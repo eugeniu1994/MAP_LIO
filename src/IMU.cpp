@@ -536,7 +536,7 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
         imu_state = kf_state.get_x();
 
         //this is new stuff---------------------------------------------------
-        bool perform_imu_update = false;// true; 
+        bool perform_imu_update = true; 
         if(perform_imu_update)
         { //TODO: put this before 
             //------------------------------------------------------------------
@@ -630,8 +630,12 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
             std::cout<<"Curr imu_state.grav:"<<imu_state.grav.transpose()<<std::endl;
 
             //  Covariance update (Joseph form)
-            // Eigen::Matrix<double, state_size, state_size> I = Eigen::Matrix<double, state_size, state_size>::Identity();
-            // P = (cov::Identity() - K * H) * P * (cov::Identity() - K * H).transpose() + K * Rm * K.transpose();
+            Eigen::Matrix<double, state_size, state_size> I = Eigen::Matrix<double, state_size, state_size>::Identity();
+            ////P = (cov::Identity() - K * H) * P * (cov::Identity() - K * H).transpose() + K * Rm * K.transpose();
+            P.noalias() -= K * H * P;
+
+            kf_state.set_x(imu_state);
+            //kf_state.set_P(P);
         }
 
 

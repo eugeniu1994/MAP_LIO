@@ -40,6 +40,8 @@ namespace
 
     inline double square(double x) { return x * x; }
 
+    //Mapping time(ms):  65.72762200085
+    
     struct ResultTuple
     {
         ResultTuple()
