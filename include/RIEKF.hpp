@@ -219,6 +219,12 @@ private:
 #endif
 
 public:
+
+
+int update_(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZI::Ptr &map, int maximum_iter, bool extrinsic_est);
+
+
+
 #if USE_STATIC_KDTREE == 0
     void observtion_model_parallel(residual_struct &ekfom_data, PointCloudXYZI::Ptr &feats_down_body,
                                    KD_TREE<PointType> &ikdtree, std::vector<PointVector> &Nearest_Points, bool extrinsic_est);

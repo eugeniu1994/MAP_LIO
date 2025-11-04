@@ -68,9 +68,11 @@ Visualization Manager:
       Frame Timeout: 500
       Frames:
         All Enabled: false
+        GPSFix:
+          Value: true
         MLS:
           Value: true
-        PPK_GNSS:
+        VUX:
           Value: true
         world:
           Value: true
@@ -82,9 +84,11 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
+          GPSFix:
+            {}
           MLS:
             {}
-          PPK_GNSS:
+          VUX:
             {}
       Update Interval: 0
       Value: true
@@ -765,8 +769,8 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 25.94375991821289
-        Y: 53.96269607543945
+        X: 10.812093734741211
+        Y: 60.53995132446289
         Z: 5.380353832151741e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
@@ -775,7 +779,7 @@ Visualization Manager:
       Near Clip Distance: 0.009999999776482582
       Pitch: 1.5697963237762451
       Target Frame: global
-      Yaw: 1.1962851285934448
+      Yaw: 1.6562846899032593
     Saved: ~
 Window Geometry:
   Displays:

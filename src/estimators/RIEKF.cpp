@@ -608,6 +608,7 @@ bool RIEKF::update(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZ
         // x = x + (K*(z−h(x)) + (K*H − I)*(x-x_k))   ikf        status.innovation = z−h(x)
         // but here K is  K = (H^T*R^−1*H  +  P^−1)*H^T*R^-1
 
+        // K​=P*​H^T​(H*​P*​H^T​+Rk​)−1  the standard ekf K gain    K_k = P_k * H_k.T * inv( H_k * P_k * H_k.T + R_k )
         vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
         x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
 
