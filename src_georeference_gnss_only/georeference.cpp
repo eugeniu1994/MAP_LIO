@@ -155,10 +155,8 @@ void DataHandler::Subscribe()
                        V3D(b_gyr_cov, b_gyr_cov, b_gyr_cov), V3D(b_acc_cov, b_acc_cov, 10. * b_acc_cov));
     gnss_obj->set_param(GNSS_T_wrt_IMU, GNSS_IMU_calibration_distance, postprocessed_gnss_path);
 
-    // todo - continue work from her
-
     std::shared_ptr<Batch> batch_obj(new Batch());
-    bool test_batch = true;
+    bool test_batch = false;//true;
     RIEKF estimator_2;
     if (test_batch)
     {
@@ -446,11 +444,9 @@ void DataHandler::Subscribe()
                     const auto &msg_time = measurements[tmp_index].tod;
 
                     se3 = T_LG * first_ppk_gnss_pose_inverse * interpolated_pose; // in first frame
-
+                    publish_ppk_gnss(se3, msg_time);
                     if (false)
                     {
-                        publish_ppk_gnss(se3, msg_time);
-
                         // reader.addEarthGravity(measurements[reader.curr_index], raw_gyro, raw_acc, G_m_s2); //this will add the world gravity
                         reader.addGravity(measurements[reader.curr_index], se3, raw_gyro, raw_acc, G_m_s2); // gravity in curr body frame
 
@@ -540,10 +536,8 @@ void DataHandler::Subscribe()
 
                     // auto p1 = feats_undistort->points[0];
                     // auto p2 = feats_down_body->points[0];
-
                     // auto r1 = p1.x * p1.x + p1.y * p1.y + p1.z * p1.z;
                     // auto r2 = p2.x * p2.x + p2.y * p2.y + p2.z * p2.z;
-
                     // std::cout<<"\nfeats_undistort [x,y,z,i,sqrt(sqrt(r))]:"<<p1.x<<", "<<p1.y<<", "<<p1.z<<", "<<p1.intensity<<", "<<sqrt(sqrt(r1))<<std::endl;
                     // std::cout<<"feats_down_body [x,y,z,i,sqrt(sqrt(r))]:"<<p2.x<<", "<<p2.y<<", "<<p2.z<<", "<<p2.intensity<<", "<<sqrt(sqrt(r2))<<std::endl;
 
@@ -588,34 +582,6 @@ void DataHandler::Subscribe()
                         if (!als_obj->refine_als) // als was not setup
                         {
                             estimator_.update(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en);
-
-                            // Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
-                            // const V3D &gnss_in_mls = gnss_pose.translation();
-                            // //just test for now
-                            // if (!estimator_.update_tighly_fused_test(LASER_POINT_COV, feats_down_body,
-                            //     laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points,
-                            //     gnss_in_mls, 0.0001, //GNSS_VAR * GNSS_VAR,
-                            //     NUM_MAX_ITERATIONS, extrinsic_est_en))
-                            // {
-                            //     std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
-                            // }
-
-                            // Eigen::Matrix<int, Eigen::Dynamic, Eigen::Dynamic> Neighbours;
-                            // Neighbours.resize(N_SCAN, Horizon_SCAN);
-                            // projectToRangeImage(feats_undistort, Neighbours);
-                            //  if (!estimator_.update_tighly_fused_test2(LASER_POINT_COV, feats_down_body, feats_undistort, Neighbours,
-                            //      laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points,
-                            //      gnss_in_mls, 0.0001, //GNSS_VAR * GNSS_VAR,
-                            //      NUM_MAX_ITERATIONS, extrinsic_est_en))
-                            //  {
-                            //      std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
-                            //  }
-
-                            // publishCovarianceEllipsoids(corr_laserCloudTgt, corr_tgt_covs,
-                            //          marker_pub, "world", 2, 5, 1., .2);
-
-                            // publishCovarianceEllipsoids(laserCloudSrc, src_covs,
-                            //          marker_pub2, "world", 2, 5, .2, 1.);
 
                             if (gnss_obj->GNSS_extrinsic_init)
                             {
@@ -704,16 +670,25 @@ void DataHandler::Subscribe()
                             publish_map(pubLaserALSMap);
                         }
                     }
-                    else if (!estimator_.update(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
-                    {
-                        std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
+                    // else if (!estimator_.update(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
+                    // {
+                    //     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
+                    // }
+
+
+                    estimator_.update_MLS(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, NUM_MAX_ITERATIONS, extrinsic_est_en);
+
+
+                    imu_obj->backwardPass(estimator_);
+
+
+
+                    if(false){
+                        // take this from std or separation data
+                        auto std_pos_m = V3D(.1, .1, .1); // take this from the measurement itself - 10cm
+                        auto std_rot_deg = V3D(5, 5, 5);  //- 5 degrees
+                        estimator_.update_se3(se3, NUM_MAX_ITERATIONS, std_pos_m, std_rot_deg);
                     }
-
-                    // take this from std or separation data
-                    auto std_pos_m = V3D(.1, .1, .1); // take this from the measurement itself - 10cm
-                    auto std_rot_deg = V3D(5, 5, 5);  //- 5 degrees
-                    estimator_.update_se3(se3, NUM_MAX_ITERATIONS, std_pos_m, std_rot_deg);
-
                     // Crop the local map------
                     state_point = estimator_.get_x();
                     // Update the local map--------------------------------------------------

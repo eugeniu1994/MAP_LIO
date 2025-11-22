@@ -33,32 +33,31 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}   ${OpenMP_C_FLAGS}")
 add_definitions(-DMP_EN)
 message("Current CPU archtecture: ${CMAKE_SYSTEM_PROCESSOR}")
-# if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
-#   include(ProcessorCount)
-#   ProcessorCount(N)
-#   message("Processer number:  ${N}")
-#   if(N GREATER 4)
-#     add_definitions(-DMP_EN)
-#     add_definitions(-DMP_PROC_NUM=3)
-#     message("core for MP: 3")
-#   elseif(N GREATER 3)
-#     add_definitions(-DMP_EN)
-#     add_definitions(-DMP_PROC_NUM=2)
-#     message("core for MP: 2")
-#   else()
-#     add_definitions(-DMP_PROC_NUM=1)
-#   endif()
-# else()
-#   add_definitions(-DMP_PROC_NUM=1)
-# endif()
-#USE ALL THE VAILABLE CORES
-
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
+  include(ProcessorCount)
+  ProcessorCount(N)
+  message("Processer number:  ${N}")
+  if(N GREATER 4)
+    add_definitions(-DMP_EN)
+    add_definitions(-DMP_PROC_NUM=3)
+    message("core for MP: 3")
+  elseif(N GREATER 3)
+    add_definitions(-DMP_EN)
+    add_definitions(-DMP_PROC_NUM=2)
+    message("core for MP: 2")
+  else()
+    add_definitions(-DMP_PROC_NUM=1)
+  endif()
+else()
+  add_definitions(-DMP_PROC_NUM=1)
+endif()
+# USE ALL THE VAILABLE CORES
 #THIS CAN BE UNSTABLE IF PARALLEL - LEAVE IT WITH 3-4 ONLY 
-include(ProcessorCount)
-ProcessorCount(N)
-message("Processer number:  ${N}")
-add_definitions(-DMP_EN)
-add_definitions(-DMP_PROC_NUM=${N})
+# include(ProcessorCount)
+# ProcessorCount(N)
+# message("Processer number:  ${N}")
+# add_definitions(-DMP_EN)
+# add_definitions(-DMP_PROC_NUM=${N})
 
 
 
@@ -243,7 +242,7 @@ target_link_libraries(test_fusion ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${O
 
 
 #test georeference only
-set(SOURCE_FILES_TEST ${MAIN_SOURCE_FILES3} src_georeference_gnss_only/georeference.cpp src2/clean_DataHandler_vux.cpp)
+set(SOURCE_FILES_TEST ${MAIN_SOURCE_FILES3} src_georeference_gnss_only/georeference.cpp src/estimators/RIEKF_better.cpp src2/clean_DataHandler_vux.cpp)
 add_executable(georeference src2/main.cpp ${SOURCE_FILES_TEST} src/Batch.cpp)
 target_link_libraries(georeference ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${OpenCV_LIBRARIES}
 
@@ -258,7 +257,7 @@ target_link_libraries(georeference ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${
 # target_link_libraries(lidar_gnss_extrinsic ${TARGET_LINK_LIBS3} ${CERES_LIBRARIES} ) #${OpenCV_LIBRARIES}
 
 
-set(BUILD_ICP FALSE) #TRUE
+set(BUILD_ICP FALSE) #TRUE FALSE
 
 if(BUILD_ICP)
     #it might require 'catkin_make clean'

@@ -1209,10 +1209,10 @@ void DataHandler::BagHandler()
 
             // redoo the undistortion and voxelization with current velocity
             *feats_undistort = *Measures.lidar;
-            //const auto &[source, frame_downsample] = estimator_icp.Voxelize(feats_undistort, deskew, true); // sort now
+            const auto &[source, frame_downsample] = estimator_icp.Voxelize(feats_undistort, deskew, true); // sort now
 
-            const auto &source = source_;
-            const auto &frame_downsample = frame_downsample_;//test no double-undistortion 
+            // const auto &source = source_;
+            // const auto &frame_downsample = frame_downsample_;//test no double-undistortion 
             std::cout << "source:" << source.size() << ", frame_downsample:" << frame_downsample.size() << std::endl;
 
             // use_als = false;// true;
@@ -1488,6 +1488,36 @@ void DataHandler::BagHandler()
 
             if (save && shift_time_sinc)
             {
+                if (!als2mls_saved && als_obj->refine_als)
+                {   
+                    std::cout<<"scan_id:"<<scan_id<<std::endl;
+                    std::cout<<"Save ALS2MLS:\n"<<als_obj->als_to_mls.matrix()<<std::endl;
+                    std::cout << "\n press enter..." << std::endl;
+                    std::cin.get();
+
+                    // save als_obj->als_to_mls refine transformation als_obj->als_to_mls
+                    std::ofstream foutG(save_clouds_path + "als_to_mls.txt", std::ios::app);
+                    // foutG.setf(std::ios::scientific, std::ios::floatfield);
+                    foutG.setf(std::ios::fixed, std::ios::floatfield);
+                    foutG.precision(20);
+
+                    Eigen::Matrix4d T = als_obj->als_to_mls.matrix();
+                    for (int i = 0; i < 4; ++i)
+                    {
+                        for (int j = 0; j < 4; ++j)
+                        {
+                            foutG << T(i, j);
+                            if (j < 3) foutG << " ";  
+                        }
+                        foutG << "\n"; 
+                    }
+
+                    // foutG << als_obj->als_to_mls.translation().transpose() << "\n"; //"Position: " <<
+                    // foutG << als_obj->als_to_mls.so3().matrix() << "\n";            //"Rotation (SO3):\n"
+                    foutG.close();
+                    als2mls_saved = true;
+                }
+
                 switch (lidar_type)
                 {
                 case Hesai:

@@ -68,7 +68,7 @@ mapping:
 als: 
     closest_N_files: 4
     downsample: false 
-    #als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped2/"   # this is reference from Jesse
+    # als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped2/"   # this is reference from Jesse
     # als_path: "/media/eugeniu/T7/Lowcost_trajs/MML_5pt/CALIBRATE_2023/data_las_cropped/"   # this is the ALS from NlS
     als_path: "/media/eugeniu/T7/Lowcost_trajs/MML_5pt/Lieksa_2021/data_las_cropped/"   # this is the ALS from NlS
 
@@ -96,8 +96,8 @@ publish:
     #poseSavePath: "/home/eugeniu/z_tighly_coupled/test/"     #where to save the trajectory
 
     save_clouds:  true
-    save_clouds_path: "/media/eugeniu/T7/Lowcost_trajs/cloud/test/"
-    poseSavePath: "/media/eugeniu/T7/Lowcost_trajs/cloud/test/"     #where to save the trajectory
+    save_clouds_path: "/media/eugeniu/T7/Lowcost_trajs/test/"
+    poseSavePath: "/media/eugeniu/T7/Lowcost_trajs/test/"     #where to save the trajectory
     save_poses: true 
 
 eval:

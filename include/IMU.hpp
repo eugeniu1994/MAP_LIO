@@ -13,14 +13,16 @@
 
 #define MIN_INIT_COUNT (10)
 
-struct AccelNoiseEstimator {
+struct AccelNoiseEstimator
+{
     const double min_std_ = 0.001;
 
     int n = 0;
     V3D mean = V3D::Zero();
     V3D M2 = V3D::Zero(); // sum of squared diffs
 
-    void update(const V3D& sample) {
+    void update(const V3D &sample)
+    {
         ++n;
         V3D delta = sample - mean;
         mean += delta / n;
@@ -28,7 +30,8 @@ struct AccelNoiseEstimator {
         M2 += delta.cwiseProduct(delta2);
     }
 
-    V3D variance() const {
+    V3D variance() const
+    {
         return (n > 1) ? (M2 / (n - 1)).eval() : V3D::Constant(min_std_ * min_std_);
     }
 
@@ -44,6 +47,18 @@ struct AccelNoiseEstimator {
     }
 };
 
+struct ForwardResult
+{
+    state x_pred;   // x_{k|k-1}
+    state x_update; // x_{k|k}
+    cov P_pred;     // P_{k|k-1}
+    cov P_update;   // P_{k|k}
+    cov F;          // State transition Jacobian
+};
+
+
+#include "matplotlibcpp.h"
+namespace plt = matplotlibcpp;
 
 class IMU_Class
 {
@@ -59,17 +74,20 @@ public:
     virtual void Process(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI::Ptr &pcl_un_);
 
     bool imu_need_init_ = true, init_from_GT = false;
-    #ifdef SAVE_DATA        
-        template <typename PointT>
-        pcl::PointCloud<PointT> DeSkewOriginalCloud(const sensor_msgs::PointCloud2::ConstPtr &cloud_msg, const state &imu_state, bool save_clouds_local);
-    #endif
+#ifdef SAVE_DATA
+    template <typename PointT>
+    pcl::PointCloud<PointT> DeSkewOriginalCloud(const sensor_msgs::PointCloud2::ConstPtr &cloud_msg, const state &imu_state, bool save_clouds_local);
+#endif
 
     void IMU_init_from_GT(const MeasureGroup &meas, Estimator &kf_state, const Sophus::SE3 &gt);
     void Propagate2D(std::vector<pcl::PointCloud<VUX_PointType>::Ptr> &vux_scans,
-        const std::vector<double> &vux_scans_time, const double &pcl_beg_time, const double &pcl_end_time, const double &tod,
-        const Sophus::SE3 &prev_mls, const double &prev_mls_time);
+                     const std::vector<double> &vux_scans_time, const double &pcl_beg_time, const double &pcl_end_time, const double &tod,
+                     const Sophus::SE3 &prev_mls, const double &prev_mls_time);
+
+    void ConstVelUndistort(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI::Ptr &pcl_out, const Sophus::SE3 &prev_, const Sophus::SE3 &curr_);
     
-    
+    void backwardPass(Estimator &kf_state);
+
 protected:
     state imu_state;
     Eigen::Matrix<double, noise_size, noise_size> Q;
@@ -81,6 +99,9 @@ protected:
     bool b_first_frame_ = true;
     sensor_msgs::ImuConstPtr last_imu_;
     std::vector<Pose6D> IMU_Buffer;
+
+    std::vector<ForwardResult> forward_results_;
+
     // extrinsics with LiDAR
     M3D Lidar_R_wrt_IMU;
     V3D Lidar_T_wrt_IMU;
@@ -94,9 +115,6 @@ protected:
     void reset();
     virtual void IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N);
     virtual void Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI &pcl_out);
-    
-    
 };
-
 
 #endif

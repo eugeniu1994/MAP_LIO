@@ -18,9 +18,9 @@ mapping:
     b_gyr_cov: 0.0001
     fov_degree:    180
     det_range:   150.0
-    extrinsic_est_en: true #  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+    extrinsic_est_en: false      # true: enable the online estimation of IMU-LiDAR extrinsic
     
-    GNSS_IMU_calibration_distance: 99999 # 25 # 15 # 35 # 99999 # 35
+    GNSS_IMU_calibration_distance: 99999  #40   # 35
     #transform the point cloud to imu frame,  P_lidar seen from IMU will be P_imu = R*P_lidar+T
     extrinsic_T: [ 0.009,  0.13,  0.09 ] #given by Teemu 
     extrinsic_R: [ 0, 1, 0,
@@ -38,7 +38,7 @@ als:
     closest_N_files: 4
     downsample: true 
     #als_path: "/media/eugeniu/T7/Evo_drone24_from_Jesse_cropped2/"   # this is reference from Jesse
-    #als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
+    # als_path: "/media/eugeniu/T7/NLS_las/"   # this is the ALS from NlS
     als_path: "/media/eugeniu/T7/EVO_las/"   # dense ALS
 
     use_gnss: false 
@@ -52,7 +52,7 @@ als:
 
 publish:
     scan_publish_en:  true       # false: close all the point cloud output
-    dense_publish_en:  false       # false: low down the points number in a global-frame point clouds scan.
+    dense_publish_en: true # false       # false: low down the points number in a global-frame point clouds scan.
     
     #for the next make sure that the code is compiled with save option true
     save_clouds: false           #if this is true it will save the point clouds and their pose
@@ -62,8 +62,8 @@ publish:
     #save_clouds_path: "/home/eugeniu/z_tighly_coupled/test/"        #put here the path to save the clouds
     #poseSavePath: "/home/eugeniu/z_tighly_coupled/test/"     #where to save the trajectory
 
-    save_clouds_path: "/media/eugeniu/T7/evo-bags/georeferenced/1/"
-    poseSavePath: "/media/eugeniu/T7/evo-bags/georeferenced/1/"     #where to save the trajectory
+    save_clouds_path: "/home/eugeniu/z_tighly_coupled/last2/"
+    poseSavePath: "/home/eugeniu/z_tighly_coupled/last2/"     #where to save the trajectory
 
     save_poses: false 
 

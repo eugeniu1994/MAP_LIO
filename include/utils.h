@@ -34,6 +34,19 @@
 #include <sophus/se3.h>
 #include <sophus/so3.h>
 
+
+#include <tbb/global_control.h>
+#include <tbb/tbb.h>
+#include <tbb/parallel_for.h>
+#include <thread>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
+
+
+
+
 constexpr int MAX_NUM_ITERATIONS_ = 500; // icp
 constexpr double ESTIMATION_THRESHOLD_ = 0.001; //1mm
 
@@ -42,6 +55,10 @@ const double G_m_s2 = 9.81; // positive as before z axis up
 
 // the new system has the z-axis down therefore negative
 //const double G_m_s2 = -9.81; //for new lieksa data - take this as param 
+
+constexpr int NUM_THREADS = 20;// 1;
+constexpr bool coupled_rotation_translation = false;// true;
+
 
 #define NUM_MATCH_POINTS (5)
 

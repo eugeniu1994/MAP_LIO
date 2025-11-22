@@ -86,11 +86,12 @@ namespace
     {
         auto compute_jacobian_and_residual = [&](auto i)
         {
-            const V3D residual = source[i] - target[i];
-            Eigen::Matrix3_6d J_r;
-            J_r.block<3, 3>(0, 0) = Eye3d;                              // df/dt
-            J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(source[i]); // df/dR
-            return std::make_tuple(J_r, residual);
+            const V3D residual = source[i] - target[i]; // r = h(x) - q = (R*x+t - q)
+            //solutino is applied x = exp(dx) * x ; left multiplication
+            Eigen::Matrix3_6d J_left;
+            J_left.block<3, 3>(0, 0) = Eye3d;                              // df/dt
+            J_left.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(source[i]); // df/dR
+            return std::make_tuple(J_left, residual);
         };
 
         auto Weight = [&](double residual2)
@@ -110,7 +111,7 @@ namespace
                 auto &[JTJ_private, JTr_private, cost_private] = J;
                 for (auto i = r.begin(); i < r.end(); ++i)
                 {
-                    const auto &[J_r, residual] = compute_jacobian_and_residual(i);
+                    const auto &[J_left, residual] = compute_jacobian_and_residual(i);
 
                     double w_robust = Weight(residual.squaredNorm());
 
@@ -124,8 +125,8 @@ namespace
 #else
                     double total_weight = w_robust;
 #endif
-                    JTJ_private.noalias() += J_r.transpose() * total_weight * J_r;
-                    JTr_private.noalias() += J_r.transpose() * total_weight * residual;
+                    JTJ_private.noalias() += J_left.transpose() * total_weight * J_left;
+                    JTr_private.noalias() += J_left.transpose() * total_weight * residual;
                     cost_private += residual.norm();
                 }
                 return J;
@@ -156,12 +157,13 @@ namespace
 
         auto compute_jacobian_and_residual_points = [&](auto i)
         {
-            const V3D_4 residual = source[i] - target[i];
+            const V3D_4 residual = source[i] - target[i]; // r = h(x) - q = (R*x+t - q)
+            //solutino is applied x = exp(dx) * x ; left multiplication
 
-            Eigen::Matrix3_6d J_r;
-            J_r.block<3, 3>(0, 0) = Eye3d;                              // df/dt
-            J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(source[i]); // df/dR
-            return std::make_tuple(J_r, residual);
+            Eigen::Matrix3_6d J_left;
+            J_left.block<3, 3>(0, 0) = Eye3d;                              // df/dt
+            J_left.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(source[i]); // df/dR
+            return std::make_tuple(J_left, residual);
         };
 
         auto compute_jacobian_and_residual_planes = [&](auto i)
@@ -174,9 +176,9 @@ namespace
             // auto residual = unit_norm.dot(source[i]) + d_;
             auto residual = (unit_norm).dot(p2p_residual);
 
-            Eigen::Matrix<double, 1, 6> J_r;
-            J_r = (unit_norm.transpose() * H_point_wrt_pose);
-            return std::make_tuple(J_r, residual);
+            Eigen::Matrix<double, 1, 6> J_left;
+            J_left = (unit_norm.transpose() * H_point_wrt_pose);
+            return std::make_tuple(J_left, residual);
         };
 
         auto Weight = [&](double residual2)
@@ -198,7 +200,7 @@ namespace
                 auto &[JTJ_private, JTr_private, cost_private] = J;
                 for (auto i = r.begin(); i < r.end(); ++i)
                 {
-                    const auto &[J_r, residual] = compute_jacobian_and_residual_planes(i);
+                    const auto &[J_left, residual] = compute_jacobian_and_residual_planes(i);
                     double w_robust = Weight(residual * residual);
 
 #ifdef use_motion_correction_uncertainty
@@ -212,8 +214,8 @@ namespace
                     double total_weight = w_robust;
 #endif
 
-                    JTJ_private.noalias() += J_r.transpose() * total_weight * J_r;
-                    JTr_private.noalias() += J_r.transpose() * total_weight * residual;
+                    JTJ_private.noalias() += J_left.transpose() * total_weight * J_left;
+                    JTr_private.noalias() += J_left.transpose() * total_weight * residual;
 
                     cost_private += (residual * residual);
                 }
@@ -237,24 +239,24 @@ namespace
             const landmark &land = global_landmarks[i];
 
             const auto &src = source[land.cloud_point_index];
-            const V3D_4 residual = src - land.tgt;
-
-            Eigen::Matrix3_6d J_r;
-            J_r.block<3, 3>(0, 0) = Eye3d;                        // df/dt
-            J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(src); // df/dR
-            return std::make_tuple(J_r, residual);
+            const V3D_4 residual = src - land.tgt; // r = h(x) - q = (R*x+t - q)
+            //solutino is applied x = exp(dx) * x ; left multiplication
+            Eigen::Matrix3_6d J_left;
+            J_left.block<3, 3>(0, 0) = Eye3d;                        // df/dt
+            J_left.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(src); // df/dR
+            return std::make_tuple(J_left, residual);
         };
 
         auto compute_jacobian_and_residual_planes = [&](auto i)
         {
             const landmark &landmark = global_landmarks[i];
             auto [H_point_wrt_pose, p2p_residual] = compute_jacobian_and_residual_points(i); // J:3x6   r:3x1
-
+            //solutino is applied x = exp(dx) * x ; left multiplication
             auto residual = (p2p_residual).dot(landmark.norm);
 
-            Eigen::Matrix<double, 1, 6> J_r;
-            J_r = (landmark.norm.transpose() * H_point_wrt_pose);
-            return std::make_tuple(J_r, residual);
+            Eigen::Matrix<double, 1, 6> J_left;
+            J_left = (landmark.norm.transpose() * H_point_wrt_pose);
+            return std::make_tuple(J_left, residual);
         };
 
         auto Weight = [&](double residual2)
@@ -277,7 +279,7 @@ namespace
                 {
                     if (global_valid[i])
                     {
-                        const auto &[J_r, residual] = compute_jacobian_and_residual_planes(i);
+                        const auto &[J_left, residual] = compute_jacobian_and_residual_planes(i);
                         double w_robust = Weight(residual * residual);
 
 #ifdef use_motion_correction_uncertainty
@@ -291,8 +293,8 @@ namespace
 #endif
                         // find this parameter based on the number of p2p and p2pln correspondences - normalize it
 
-                        JTJ_private.noalias() += J_r.transpose() * total_weight * J_r;
-                        JTr_private.noalias() += J_r.transpose() * total_weight * residual;
+                        JTJ_private.noalias() += J_left.transpose() * total_weight * J_left;
+                        JTr_private.noalias() += J_left.transpose() * total_weight * residual;
 
                         cost_private += (residual * residual);
                     }
@@ -314,11 +316,12 @@ namespace
     {
         auto compute_jacobian_and_residual = [&](auto i)
         {
-            const V3D residual = local_src[i] - local_tgt[i];
-            Eigen::Matrix3_6d J_r;
-            J_r.block<3, 3>(0, 0) = Eye3d;                                 // df/dt
-            J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(local_src[i]); // df/dR
-            return std::make_tuple(J_r, residual);
+            const V3D residual = local_src[i] - local_tgt[i]; // r = h(x) - q = (R*x+t - q)
+            //solutino is applied x = exp(dx) * x ; left multiplication
+            Eigen::Matrix3_6d J_left;
+            J_left.block<3, 3>(0, 0) = Eye3d;                                 // df/dt
+            J_left.block<3, 3>(0, 3) = -1.0 * Sophus::SO3::hat(local_src[i]); // df/dR
+            return std::make_tuple(J_left, residual);
         };
 
         auto Weight = [&](double residual2)
@@ -340,7 +343,7 @@ namespace
                 {
                     if (local_valid[i])
                     {
-                        const auto &[J_r, residual] = compute_jacobian_and_residual(i);
+                        const auto &[J_left, residual] = compute_jacobian_and_residual(i);
                         double w_robust = Weight(residual.squaredNorm());
 
 #ifdef use_motion_correction_uncertainty
@@ -358,7 +361,7 @@ namespace
 
                         // double variance = motion_stddev * motion_stddev; // Weight is inverse of variance (information)
                         // Eigen::Matrix<double, 6, 6> C_xi = variance * Eigen::Matrix<double, 6, 6>::Identity();
-                        // M3D C_p = J_r * C_xi.transpose() * J_r.transpose();
+                        // M3D C_p = J_left * C_xi.transpose() * J_left.transpose();
 
                         // // Suppose you have covariance in sensor frame
                         // Eigen::Matrix3d C_local = motion_covariance_for_point(i);  // 3x3 in LiDAR frame
@@ -370,8 +373,8 @@ namespace
 #else
                         double total_weight = w_robust;
 #endif
-                        JTJ_private.noalias() += J_r.transpose() * total_weight * J_r;
-                        JTr_private.noalias() += J_r.transpose() * total_weight * residual;
+                        JTJ_private.noalias() += J_left.transpose() * total_weight * J_left;
+                        JTr_private.noalias() += J_left.transpose() * total_weight * residual;
                         cost_private += residual.norm();
                     }
                 }

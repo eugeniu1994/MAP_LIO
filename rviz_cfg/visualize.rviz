@@ -35,7 +35,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: LiDAR
+    SyncSource: ALS
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -62,20 +62,12 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: false
     - Class: rviz/TF
-      Enabled: true
+      Enabled: false
       Filter (blacklist): ""
       Filter (whitelist): ""
       Frame Timeout: 500
       Frames:
         All Enabled: false
-        GPSFix:
-          Value: true
-        MLS:
-          Value: true
-        VUX:
-          Value: true
-        world:
-          Value: true
       Marker Alpha: 1
       Marker Scale: 10
       Name: TF
@@ -83,15 +75,9 @@ Visualization Manager:
       Show Axes: true
       Show Names: true
       Tree:
-        world:
-          GPSFix:
-            {}
-          MLS:
-            {}
-          VUX:
-            {}
+        {}
       Update Interval: 0
-      Value: true
+      Value: false
     - Class: rviz/Group
       Displays:
         - Alpha: 1
@@ -101,7 +87,7 @@ Visualization Manager:
             Min Value: -2.875417470932007
             Value: true
           Axis: Z
-          Channel Name: intensity
+          Channel Name: z
           Class: rviz/PointCloud2
           Color: 255; 255; 255
           Color Transformer: Intensity
@@ -206,7 +192,7 @@ Visualization Manager:
           Use Fixed Frame: true
           Use rainbow: true
           Value: true
-        - Alpha: 0.5
+        - Alpha: 0.8999999761581421
           Autocompute Intensity Bounds: false
           Autocompute Value Bounds:
             Max Value: 77.4544448852539
@@ -228,7 +214,7 @@ Visualization Manager:
           Position Transformer: XYZ
           Queue Size: 10
           Selectable: true
-          Size (Pixels): 3
+          Size (Pixels): 2
           Size (m): 0.10000000149011612
           Style: Points
           Topic: /ALS_map
@@ -492,24 +478,29 @@ Visualization Manager:
     - Alpha: 1
       Class: rviz/RobotModel
       Collision Enabled: false
-      Enabled: false
+      Enabled: true
       Links:
         All Links Enabled: true
         Expand Joint Details: false
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        MLS:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Name: RobotModel
       Robot Description: robot_description
       TF Prefix: ""
       Update Interval: 0
-      Value: false
+      Value: true
       Visual Enabled: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 15.879777908325195
-        Min Value: -5.573248386383057
+        Max Value: 27.22014045715332
+        Min Value: -2.7572970390319824
         Value: true
       Axis: Z
       Channel Name: reflectance
@@ -525,7 +516,7 @@ Visualization Manager:
       Position Transformer: XYZ
       Queue Size: 100
       Selectable: true
-      Size (Pixels): 5
+      Size (Pixels): 6
       Size (m): 0.10000000149011612
       Style: Points
       Topic: /vux_data
@@ -761,7 +752,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/XYOrbit
-      Distance: 159.74562072753906
+      Distance: 121.20797729492188
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -769,17 +760,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 10.812093734741211
-        Y: 60.53995132446289
-        Z: 5.380353832151741e-05
+        X: 6.990740776062012
+        Y: 51.409603118896484
+        Z: 5.081924609839916e-05
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 1.0997964143753052
       Target Frame: global
-      Yaw: 1.6562846899032593
+      Yaw: 1.5012849569320679
     Saved: ~
 Window Geometry:
   Displays:

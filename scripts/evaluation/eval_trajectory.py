@@ -438,7 +438,7 @@ def show_this():
     plt.grid(False)
     #plt.gca().set_aspect('equal')
     plt.legend()
-
+    
     plt.draw()
 
     # plot_dual_axis_combined(c_noise_levels_t, c_noise_levels_r, c_trans_ape_model, c_rot_ape_model,

@@ -7,9 +7,7 @@
 #include <ikd-Tree/ikd_Tree.h>
 #endif
 
-#ifdef _OPENMP
-#include <omp.h>
-#endif
+
 #include <chrono>
 
 using namespace ekf;
@@ -221,7 +219,7 @@ private:
 public:
 
 
-int update_(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZI::Ptr &map, int maximum_iter, bool extrinsic_est);
+int update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, PointCloudXYZI::Ptr &map, int maximum_iter, bool extrinsic_est);
 
 
 
