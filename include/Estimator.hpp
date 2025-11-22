@@ -12,7 +12,7 @@
 #include <Eigen/Sparse>
 
 #include <utils.h>
-#include <tbb/tbb.h>
+// #include <tbb/tbb.h>
 
 // pos, rot, extrinsic_R, extrinsic_t, vel, bg, ba, grav
 enum StateID
@@ -79,6 +79,7 @@ public:
 
     state get_x();
     cov get_P();
+    cov get_Fx();
 
     void set_x(state &input_state);
     void set_P(cov &input_cov);
@@ -88,12 +89,12 @@ public:
     state propagete_NO_gravity(const double &dt, const input &i_in);
     
     state boxplus(state x, vectorized_state f_);
+    vectorized_state boxminus(state x1, state x2);
+
 protected:
     state x_;
     cov P_ = cov::Identity(); // 24X24
-
-    
-    vectorized_state boxminus(state x1, state x2);
+    cov Fx = cov::Identity(); // 24X24
 };
 
 #endif

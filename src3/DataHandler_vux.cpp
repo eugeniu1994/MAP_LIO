@@ -909,11 +909,11 @@ void DataHandler::Subscribe()
         {
             scan_id++;
             std::cout << "scan_id:" << scan_id << std::endl;
-            // if (scan_id > 8000) // 500 1050 used for data before
-            // {
-            //     std::cout << "Stop here... enough data 8000 scans" << std::endl;
-            //     break;
-            // }
+            if (scan_id > 8000) // 500 1050 used for data before
+            {
+                std::cout << "Stop here... enough data 8000 scans" << std::endl;
+                break;
+            }
 
             // if (scan_id > 1000) 
             // {
@@ -1099,12 +1099,12 @@ void DataHandler::Subscribe()
                         // }
 
                         // update tighly fusion from MLS and ALS
-                        if (!estimator_.update_tighly_fused(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
-                        {
-                            std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
-                        }    
+                        // if (!estimator_.update_tighly_fused(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, als_obj->als_cloud, als_obj->localKdTree_map_als, Nearest_Points, NUM_MAX_ITERATIONS, extrinsic_est_en))
+                        // {
+                        //     std::cout << "\n------------------FUSION ALS-MLS update failed--------------------------------" << std::endl;
+                        // }    
 
-                        if(false){ //this was used so far
+                        if(true){ //this was used so far
                             //update tighly fusion from MLS and ALS
                             double R_gps_cov = .0001; // GNSS_VAR * GNSS_VAR;
                             Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
@@ -1137,7 +1137,7 @@ void DataHandler::Subscribe()
                 //     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                 // }
 
-                estimator_.update_(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, NUM_MAX_ITERATIONS, extrinsic_est_en);
+                estimator_.update_MLS(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, NUM_MAX_ITERATIONS, extrinsic_est_en);
                 
 
                 //use_als = false;
@@ -1360,6 +1360,8 @@ void DataHandler::Subscribe()
                             {
                                 all_lines_added_for_mapping->points.emplace_back(PointType{pt.x, pt.y, pt.z});
                             }
+
+                            //break;// remove this later, added just for
                         }
 
                         *laserCloudSurfMap += *all_lines_added_for_mapping;
@@ -2254,16 +2256,41 @@ void DataHandler::Subscribe()
                 }
 
 #endif
-
                 // Update the local map--------------------------------------------------
+                if(false)
+                {
+                    //double undistortion
+                    imu_obj->ConstVelUndistort(Measures, estimator_, feats_undistort, prev_mls, curr_mls);
+                    downSizeFilterSurf.setInputCloud(feats_undistort);
+                    downSizeFilterSurf.filter(*feats_down_body);
+                    feats_down_size = feats_down_body->points.size();
+                }
                 feats_down_world->resize(feats_down_size);
                 local_map_update(); // this will update local map with curr measurements and crop the map
 
+                //#define SAVE_DATA
 #ifdef SAVE_DATA
 std::cout<<"save_poses:"<<save_poses<<", save_clouds_path:"<<save_clouds_path<<std::endl;
 
                 if (als_integrated)
                 {
+                    if (save_poses) // this will save the MLS estimated SE3 poses
+                    {
+                        const V3D &t_model = state_point.pos;
+                        Eigen::Quaterniond q_model(state_point.rot.matrix());
+                        
+                        q_model.normalize();
+                        std::ofstream foutMLS(poseSavePath + "MLS.txt", std::ios::app);
+                        //std::ofstream foutMLS(save_clouds_path + "MLS.txt", std::ios::app);
+                        // foutMLS.setf(std::ios::scientific, std::ios::floatfield);
+                        foutMLS.setf(std::ios::fixed, std::ios::floatfield);
+                        foutMLS.precision(20);
+                        // # ' id time tx ty tz qx qy qz qw' - tum format(scan id, scan timestamp seconds, translation and rotation quaternion)
+                        foutMLS << pcd_index << " " << std::to_string(lidar_end_time) << " " << t_model(0) << " " << t_model(1) << " " << t_model(2) << " "
+                                << q_model.x() << " " << q_model.y() << " " << q_model.z() << " " << q_model.w() << std::endl;
+                        foutMLS.close();
+                    }
+
                     if (save_clouds)
                     {
                         switch (lidar_type)
@@ -2308,23 +2335,6 @@ std::cout<<"save_poses:"<<save_poses<<", save_clouds_path:"<<save_clouds_path<<s
 #endif
                     }
                     
-                    if (save_poses) // this will save the MLS estimated SE3 poses
-                    {
-                        const V3D &t_model = state_point.pos;
-                        Eigen::Quaterniond q_model(state_point.rot.matrix());
-                        
-                        q_model.normalize();
-                        std::ofstream foutMLS(poseSavePath + "MLS.txt", std::ios::app);
-                        //std::ofstream foutMLS(save_clouds_path + "MLS.txt", std::ios::app);
-                        // foutMLS.setf(std::ios::scientific, std::ios::floatfield);
-                        foutMLS.setf(std::ios::fixed, std::ios::floatfield);
-                        foutMLS.precision(20);
-                        // # ' id time tx ty tz qx qy qz qw' - tum format(scan id, scan timestamp seconds, translation and rotation quaternion)
-                        foutMLS << pcd_index << " " << std::to_string(lidar_end_time) << " " << t_model(0) << " " << t_model(1) << " " << t_model(2) << " "
-                                << q_model.x() << " " << q_model.y() << " " << q_model.z() << " " << q_model.w() << std::endl;
-                        foutMLS.close();
-                    }
-
                     pcd_index++;
                 }
 #endif
@@ -2358,8 +2368,8 @@ std::cout<<"save_poses:"<<save_poses<<", save_clouds_path:"<<save_clouds_path<<s
                 std::cout << "Mapping time(ms):  " << (t11 - t00) * 1000 << ", feats_down_size: " << feats_down_size << ", lidar_end_time:" << lidar_end_time << "\n"
                           << std::endl;
 
-                std::cout<<"extrinsic R:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
-                std::cout<<"extrinsic t:"<<state_point.offset_T_L_I.transpose()<<std::endl;
+                //std::cout<<"extrinsic R:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
+                //std::cout<<"extrinsic t:"<<state_point.offset_T_L_I.transpose()<<std::endl;
 
                 als2mls = als_obj->als_to_mls;
                 // std::cout<<"Debug als2mls:\n"<<als2mls.matrix()<<std::endl;

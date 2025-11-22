@@ -2,22 +2,25 @@
 
 using namespace ekf;
 
-PointCloudXYZI::Ptr normvec(new PointCloudXYZI(50000, 1));
-PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(50000, 1));
-PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(50000, 1));
-std::vector<bool> point_selected_surf(50000, 1);
-std::vector<double> normvec_var(50000, 0);
-std::vector<double> corr_normvec_var(50000, 0);
+constexpr int max_points = 150000;// 50000; //this can be adjusted
+
+
+PointCloudXYZI::Ptr normvec(new PointCloudXYZI(max_points, 1));
+PointCloudXYZI::Ptr laserCloudOri(new PointCloudXYZI(max_points, 1));
+PointCloudXYZI::Ptr corr_normvect(new PointCloudXYZI(max_points, 1));
+std::vector<bool> point_selected_surf(max_points, 1);
+std::vector<double> normvec_var(max_points, 0);
+std::vector<double> corr_normvec_var(max_points, 0);
 std::vector<std::vector<double>> Nearest_Points_Weights;
 
-std::vector<M3D> tgt_covs(50000, M3D::Zero());
-std::vector<V3D> laserCloudTgt(50000, V3D::Zero());
+std::vector<M3D> tgt_covs(max_points, M3D::Zero());
+std::vector<V3D> laserCloudTgt(max_points, V3D::Zero());
 
-std::vector<M3D> corr_tgt_covs(50000, M3D::Zero());
-std::vector<V3D> corr_laserCloudTgt(50000, V3D::Zero());
+std::vector<M3D> corr_tgt_covs(max_points, M3D::Zero());
+std::vector<V3D> corr_laserCloudTgt(max_points, V3D::Zero());
 
-std::vector<M3D> src_covs(50000, M3D::Zero());
-std::vector<V3D> laserCloudSrc(50000, V3D::Zero());
+std::vector<M3D> src_covs(max_points, M3D::Zero());
+std::vector<V3D> laserCloudSrc(max_points, V3D::Zero());
 
 #define USE_STATIC_KDTREE 1
 
@@ -903,11 +906,8 @@ bool RIEKF::update_tighly_fused(double R, PointCloudXYZI::Ptr &feats_down_body,
         cov KH = cov::Zero(); //  matrix K * H
         KH.block<state_size, used_state_size>(0, 0) = K * H;
 
-        // vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
-        vectorized_state dx_;
-        dx_.noalias() = K * status.innovation;
-        dx_.noalias() += (KH - cov::Identity()) * dx_new;
-
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
+        
         x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
 
         status.converge = true;
@@ -1454,7 +1454,7 @@ bool RIEKF::update_tighly_fused_test(double R, PointCloudXYZI::Ptr &feats_down_b
 
         const auto &H = status.h_x; // (m x n) Jacobian    m x 24
 
-        // Optimized code with noalias
+        // Optimized code with 
         Eigen::Matrix<double, state_size, Eigen::Dynamic> K; // n x m = 24 x m
 
         //       Eigen::MatrixXd Ht_Rinv = H.transpose();                       //   ( n x m)
@@ -1474,10 +1474,7 @@ bool RIEKF::update_tighly_fused_test(double R, PointCloudXYZI::Ptr &feats_down_b
         cov KH = cov::Zero();                                                     // (n x m) * (m x n) -> (n x n)
         KH.block<state_size, used_state_size>(0, 0).noalias() = K * H;
 
-        // vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
-        vectorized_state dx_;
-        dx_.noalias() = K * status.innovation;
-        dx_.noalias() += (KH - cov::Identity()) * dx_new;
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
 
         {
 #ifdef debug_speed
@@ -1582,7 +1579,7 @@ void RIEKF::h(residual_struct &ekfom_data,
 
     double R_inv_lidar = 1. / R_lidar_cov; // 1./0.05;  //R = 0.05 original version
 
-    double travelled_distance = x_.pos.norm();
+    double travelled_distance = 0;// x_.pos.norm(); 
 
     // 1)
     // find the new NN planes in MLS or ALS-MLS if converged
@@ -1850,9 +1847,7 @@ bool RIEKF::update_final(
         cov KH = cov::Zero();                                                     // (n x m) * (m x n) -> (n x n)
         KH.block<state_size, used_state_size>(0, 0).noalias() = K * H;
 
-        vectorized_state dx_; // vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
-        dx_.noalias() = K * status.innovation;
-        dx_.noalias() += (KH - cov::Identity()) * dx_new;
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
 
         x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
 
@@ -2431,7 +2426,7 @@ bool RIEKF::update_tighly_fused_test2(double R, PointCloudXYZI::Ptr &feats_down_
 
         const auto &H = status.h_x; // (m x n) Jacobian    m x 24
 
-        // Optimized code with noalias
+        // Optimized code with 
         Eigen::Matrix<double, state_size, Eigen::Dynamic> K; // n x m = 24 x m
 
         // ekfom_data.H_T_R_inv = Eigen::MatrixXd::Zero(used_state_size, total_dim); // n x 3m
@@ -2451,11 +2446,8 @@ bool RIEKF::update_tighly_fused_test2(double R, PointCloudXYZI::Ptr &feats_down_
         cov KH = cov::Zero();                                                     // (n x m) * (m x n) -> (n x n)
         KH.block<state_size, used_state_size>(0, 0).noalias() = K * H;
 
-        // vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
-        vectorized_state dx_;
-        dx_.noalias() = K * status.innovation;
-        dx_.noalias() += (KH - cov::Identity()) * dx_new;
-
+        vectorized_state dx_ = K * status.innovation + (KH - cov::Identity()) * dx_new;
+        
         x_ = boxplus(x_, dx_); // dx_ is the delta corection that should be applied
 
         status.converge = true;
