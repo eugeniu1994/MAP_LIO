@@ -11,7 +11,6 @@ int main(int argc, char **argv)
     #endif
     // TBB 
     // Applies globally for all TBB algorithms
-    
     tbb::global_control tbb_limit(tbb::global_control::max_allowed_parallelism, NUM_THREADS);
     //tbb::global_control tbb_limit(tbb::global_control::max_allowed_parallelism, 1);
 

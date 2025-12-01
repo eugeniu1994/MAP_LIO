@@ -74,9 +74,16 @@ struct AvgValue
 
 constexpr int max_points = 100000; // 50000; //this can be adjusted
 
-static std::vector<landmark> global_landmarks(max_points);
-static std::vector<bool> global_valid(max_points, false);
-static std::vector<PointVector> global_Neighbours(max_points);
+//MLS globals
+static std::vector<landmark> MLS_landmarks(max_points);
+static std::vector<bool> MLS_valid(max_points, false);
+static std::vector<PointVector> MLS_Neighbours(max_points);
+
+//ALS globals
+static std::vector<landmark> ALS_landmarks(max_points);
+static std::vector<bool> ALS_valid(max_points, false);
+static std::vector<PointVector> ALS_Neighbours(max_points);
+
 
 using Jacobian_plane = Eigen::Matrix<double, 1, state_size>;
 
@@ -92,65 +99,174 @@ double huber(double residual, double threshold = 1.0)
     return abs_r <= threshold ? 1.0 : threshold / abs_r;
 }
 
-std::vector<pcl::KdTreeFLANN<PointType>::Ptr> trees(NUM_THREADS);
+// std::vector<pcl::KdTreeFLANN<PointType>::Ptr> trees(NUM_THREADS);
 
-double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame)
-{
-    const int feats_down_size = src_frame->size();
+// double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame)
+// {
+//     const int feats_down_size = src_frame->size();
 
-    const AvgValue &result = tbb::parallel_reduce(
-        tbb::blocked_range<int>(0, feats_down_size),
-        AvgValue(),
-        [&](const tbb::blocked_range<int> &r, AvgValue local_cost) -> AvgValue
-        {
-            auto &[squared_residual_private, points_private] = local_cost;
-            for (int i = r.begin(); i < r.end(); ++i)
-            {
-                if (!global_valid[i])
-                    continue;
+//     const AvgValue &result = tbb::parallel_reduce(
+//         tbb::blocked_range<int>(0, feats_down_size),
+//         AvgValue(),
+//         [&](const tbb::blocked_range<int> &r, AvgValue local_cost) -> AvgValue
+//         {
+//             auto &[squared_residual_private, points_private] = local_cost;
+//             for (int i = r.begin(); i < r.end(); ++i)
+//             {
+//                 if (!global_valid[i])
+//                     continue;
 
-                const PointType &point_body = src_frame->points[i];
-                const landmark &l = global_landmarks[i];
+//                 const PointType &point_body = src_frame->points[i];
+//                 const landmark &l = global_landmarks[i];
 
-                // Transform point to world
-                V3D p_body(point_body.x, point_body.y, point_body.z);
-                V3D p_global = x_.rot * (x_.offset_R_L_I * p_body + x_.offset_T_L_I) + x_.pos;
+//                 // Transform point to world
+//                 V3D p_body(point_body.x, point_body.y, point_body.z);
+//                 V3D p_global = x_.rot * (x_.offset_R_L_I * p_body + x_.offset_T_L_I) + x_.pos;
 
-                double residual = l.norm.dot(p_global) + l.d;
+//                 double residual = l.norm.dot(p_global) + l.d;
 
-                squared_residual_private += l.w * residual * residual;
-                points_private += 1;
-            }
-            return local_cost;
-        },
-        // 2nd Lambda: Parallel reduction of the private sums
-        [&](AvgValue a, const AvgValue &b) -> AvgValue
-        { return a + b; });
+//                 squared_residual_private += l.w * residual * residual;
+//                 points_private += 1;
+//             }
+//             return local_cost;
+//         },
+//         // 2nd Lambda: Parallel reduction of the private sums
+//         [&](AvgValue a, const AvgValue &b) -> AvgValue
+//         { return a + b; });
 
-    const auto &[squared_residual, n_points] = result;
-    int total_points = 1; // std::max(n_points, 1);
-    return 0.5 * squared_residual / total_points;
-}
+//     const auto &[squared_residual, n_points] = result;
+//     int total_points = 1; // std::max(n_points, 1);
+//     return 0.5 * squared_residual / total_points;
+// }
+
+// std::tuple<cov, vectorized_state, double> BuildLinearSystem_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, const bool extrinsic_est)
+// {
+//     const int feats_down_size = src_frame->size();
+
+//     auto R = x_.rot.matrix();
+
+//     // const auto &[JTJ, JTr]
+//     const ResultTuple &result = tbb::parallel_reduce(
+//         // Range
+//         tbb::blocked_range<size_t>{0, feats_down_size},
+//         // Identity
+//         ResultTuple(),
+//         // 1st Lambda: Parallel computation
+//         [&](const tbb::blocked_range<size_t> &r, ResultTuple J) -> ResultTuple
+//         {
+//             auto &[JTJ_private, JTr_private, squared_residual_private, points_private] = J;
+//             for (auto i = r.begin(); i < r.end(); ++i)
+//             {
+//                 if (global_valid[i])
+//                 {
+//                     V3D point_(src_frame->points[i].x,
+//                                src_frame->points[i].y,
+//                                src_frame->points[i].z);
+
+//                     M3D point_crossmat;
+//                     point_crossmat << SKEW_SYM_MATRX(point_);
+
+//                     // Transform point to IMU frame
+//                     V3D point_I_ = x_.offset_R_L_I * point_ + x_.offset_T_L_I;
+//                     M3D point_I_crossmat;
+//                     point_I_crossmat << SKEW_SYM_MATRX(point_I_);
+
+//                     const landmark &lm = global_landmarks[i];
+
+//                     // apply right update   x = x * exp(dx)
+
+//                     // Norm of plane expressed in world -> rotate into IMU frame
+//                     V3D C = x_.rot.matrix().transpose() * lm.norm; // Rᵀ·n
+//                     V3D A = point_I_crossmat * C;                  // [point_I]× · Rᵀ·n
+
+//                     // right update [R  −R[p]×]
+//                     // left update  [I  −[R*p]×]
+
+//                     Jacobian_plane J_r = Jacobian_plane::Zero(); // 1x6 or more
+//                     if (coupled_rotation_translation)
+//                     {
+//                         J_r.block<1, 3>(0, P_ID) = (lm.norm.transpose() * x_.rot.matrix()); // nᵀ·R
+//                     }
+//                     else
+//                     {
+//                         J_r.block<1, 3>(0, P_ID) = lm.norm.transpose(); // from Left Update
+//                     }
+
+//                     // J_r.block<1, 3>(0, R_ID) = A.transpose();          // this is from right update wtf? // ([point_I]× · Rᵀ·n)ᵀ = -nᵀ·R·[point_I]×
+//                     J_r.block<1, 3>(0, R_ID) = A.transpose(); // same as   -lm.norm.transpose() * R * Sophus::SO3::hat(point_I_);
+
+//                     // //[R −R[p]×]
+//                     // Eigen::Matrix<double,3,6> J_p2p_right;J_p2p_right.setZero(); //Jacobian point to point
+//                     // J_p2p_right.block<3,3>(0,P_ID) = R;                     // translation
+//                     // J_p2p_right.block<3,3>(0,R_ID) = -R * point_I_crossmat; //rotation
+//                     // // // Right perturbation: T_new = T_old * exp(ξ)
+//                     // // J_r.block<1, 3>(0, P_ID) = (lm.norm.transpose() * R);  // nᵀ·R
+//                     // // J_r.block<1, 3>(0, R_ID) = -lm.norm.transpose() * R * Sophus::SO3::hat(point_I);
+//                     // J_r.block<1,6>(0,0) = lm.norm.transpose() * J_p2p_right;
+
+//                     //[I −[R p]×]
+//                     // Eigen::Matrix<double,3,6> J_p2p_left;J_p2p_left.setZero();
+//                     // J_p2p_left.block<3,3>(0,P_ID) = Eye3d;                                  // translation
+//                     // J_p2p_left.block<3,3>(0,R_ID) = -1.0 * Sophus::SO3::hat(R * point_I_); // rotation
+//                     // Left perturbation: T_new = exp(ξ) * T_old
+//                     // J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();  // nᵀ
+//                     // J_r.block<1, 3>(0, R_ID) = -lm.norm.transpose() * Sophus::SO3::hat(R * point_I);
+//                     // J_r.block<1,6>(0,0) = lm.norm.transpose() * J_p2p_left;
+
+//                     if (extrinsic_est)
+//                     {
+//                         V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
+//                         J_r.block<1, 3>(0, Re_ID) = B.transpose();
+//                         J_r.block<1, 3>(0, Te_ID) = C.transpose();
+//                     }
+
+//                     // r(k) = z − h(x(k)), z is zero for p2plane
+//                     // double residual = -lm.cost; // (distance to plane) negative here due to derivative chain rule
+//                     double residual = lm.cost;
+
+//                     JTJ_private.noalias() += J_r.transpose() * lm.w * J_r;
+//                     JTr_private.noalias() += J_r.transpose() * lm.w * residual;
+//                     squared_residual_private += lm.w * residual * residual;
+//                     points_private += 1;
+//                 }
+//             }
+//             return J;
+//         },
+//         // 2nd Lambda: Parallel reduction of the private Jacboians
+//         [&](ResultTuple a, const ResultTuple &b) -> ResultTuple
+//         { return a + b; });
+
+//     const auto &[JTJ, JTr, squared_residual, n_points] = result;
+
+//     std::cout << "Registration with:" << n_points << "/" << feats_down_size << std::endl;
+//     int total_points =  std::max(n_points, 1);
+
+//     return std::make_tuple(JTJ/total_points, JTr/total_points, 0.5 * squared_residual / total_points);
+
+//              total_points = 1; // std::max(n_points, 1);
+
+//     return std::make_tuple(JTJ, JTr, 0.5 * squared_residual / total_points);
+// }
+
 
 void establishCorrespondences(const double R, const state &x_, const bool &update_neighbours, const PointCloudXYZI::Ptr &src_frame,
-                              const PointCloudXYZI::Ptr &map, const pcl::KdTreeFLANN<PointType>::Ptr &tree)
+                              const PointCloudXYZI::Ptr &map, const pcl::KdTreeFLANN<PointType>::Ptr &tree,
+                            std::vector<bool> &global_valid, std::vector<landmark> &global_landmarks, std::vector<PointVector> &global_Neighbours)
 {
     // std::cout << "establishCorrespondences update_neighbours:" << update_neighbours << std::endl;
     int feats_down_size = src_frame->size();
 
     auto travelled_distance = x_.pos.norm();
 
+// #ifdef MP_EN
+//     omp_set_num_threads(NUM_THREADS);
+// #pragma omp parallel for
+// #endif
 #ifdef MP_EN
-    omp_set_num_threads(NUM_THREADS);
-#pragma omp parallel for
+#pragma omp parallel for schedule(static) num_threads(NUM_THREADS)
 #endif
     for (int i = 0; i < feats_down_size; i++)
     {
-        //     #pragma omp critical
-        // {
-        //     std::cout << "Thread " << omp_get_thread_num() << " processing i=" << i << std::endl;
-        // }
-
         PointType &point_body = src_frame->points[i];
         PointType point_world;
 
@@ -169,13 +285,11 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
         std::vector<double> point_weights;
         if (update_neighbours) // update the nearest neighbours
         {
-            // #pragma omp critical //std::lock_guard<std::mutex> lock(kd_mutex);
-            // {
-            int tid = omp_get_thread_num();
-            auto &tree_i = trees[tid];
+            // int tid = omp_get_thread_num();
+            // auto &tree_i = trees[tid];
 
-            if (tree_i->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
-            // if (tree->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+            // if (tree_i->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
+            if (tree->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
             {
                 global_valid[i] = pointSearchSqDis[NUM_MATCH_POINTS - 1] > 1 ? false : true; // true if distance smaller than 1
                 points_near.clear();
@@ -189,7 +303,6 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
             {
                 global_valid[i] = false;
             }
-            // }
         }
 
         if (!global_valid[i])
@@ -230,124 +343,25 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
     }
 }
 
-std::tuple<cov, vectorized_state, double> BuildLinearSystem_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, const bool extrinsic_est)
-{
-    const int feats_down_size = src_frame->size();
-
-    auto R = x_.rot.matrix();
-
-    // const auto &[JTJ, JTr]
-    const ResultTuple &result = tbb::parallel_reduce(
-        // Range
-        tbb::blocked_range<size_t>{0, feats_down_size},
-        // Identity
-        ResultTuple(),
-        // 1st Lambda: Parallel computation
-        [&](const tbb::blocked_range<size_t> &r, ResultTuple J) -> ResultTuple
-        {
-            auto &[JTJ_private, JTr_private, squared_residual_private, points_private] = J;
-            for (auto i = r.begin(); i < r.end(); ++i)
-            {
-                if (global_valid[i])
-                {
-                    V3D point_(src_frame->points[i].x,
-                               src_frame->points[i].y,
-                               src_frame->points[i].z);
-
-                    M3D point_crossmat;
-                    point_crossmat << SKEW_SYM_MATRX(point_);
-
-                    // Transform point to IMU frame
-                    V3D point_I_ = x_.offset_R_L_I * point_ + x_.offset_T_L_I;
-                    M3D point_I_crossmat;
-                    point_I_crossmat << SKEW_SYM_MATRX(point_I_);
-
-                    const landmark &lm = global_landmarks[i];
-
-                    // apply right update   x = x * exp(dx)
-
-                    // Norm of plane expressed in world -> rotate into IMU frame
-                    V3D C = x_.rot.matrix().transpose() * lm.norm; // Rᵀ·n
-                    V3D A = point_I_crossmat * C;                  // [point_I]× · Rᵀ·n
-
-                    // right update [R  −R[p]×]
-                    // left update  [I  −[R*p]×]
-
-                    Jacobian_plane J_r = Jacobian_plane::Zero(); // 1x6 or more
-                    if (coupled_rotation_translation)
-                    {
-                        J_r.block<1, 3>(0, P_ID) = (lm.norm.transpose() * x_.rot.matrix()); // nᵀ·R
-                    }
-                    else
-                    {
-                        J_r.block<1, 3>(0, P_ID) = lm.norm.transpose(); // from Left Update
-                    }
-
-                    // J_r.block<1, 3>(0, R_ID) = A.transpose();          // this is from right update wtf? // ([point_I]× · Rᵀ·n)ᵀ = -nᵀ·R·[point_I]×
-                    J_r.block<1, 3>(0, R_ID) = A.transpose(); // same as   -lm.norm.transpose() * R * Sophus::SO3::hat(point_I_);
-
-                    // //[R −R[p]×]
-                    // Eigen::Matrix<double,3,6> J_p2p_right;J_p2p_right.setZero(); //Jacobian point to point
-                    // J_p2p_right.block<3,3>(0,P_ID) = R;                     // translation
-                    // J_p2p_right.block<3,3>(0,R_ID) = -R * point_I_crossmat; //rotation
-                    // // // Right perturbation: T_new = T_old * exp(ξ)
-                    // // J_r.block<1, 3>(0, P_ID) = (lm.norm.transpose() * R);  // nᵀ·R
-                    // // J_r.block<1, 3>(0, R_ID) = -lm.norm.transpose() * R * Sophus::SO3::hat(point_I);
-                    // J_r.block<1,6>(0,0) = lm.norm.transpose() * J_p2p_right;
-
-                    //[I −[R p]×]
-                    // Eigen::Matrix<double,3,6> J_p2p_left;J_p2p_left.setZero();
-                    // J_p2p_left.block<3,3>(0,P_ID) = Eye3d;                                  // translation
-                    // J_p2p_left.block<3,3>(0,R_ID) = -1.0 * Sophus::SO3::hat(R * point_I_); // rotation
-                    // Left perturbation: T_new = exp(ξ) * T_old
-                    // J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();  // nᵀ
-                    // J_r.block<1, 3>(0, R_ID) = -lm.norm.transpose() * Sophus::SO3::hat(R * point_I);
-                    // J_r.block<1,6>(0,0) = lm.norm.transpose() * J_p2p_left;
-
-                    if (extrinsic_est)
-                    {
-                        V3D B(point_crossmat * x_.offset_R_L_I.matrix().transpose() * C);
-                        J_r.block<1, 3>(0, Re_ID) = B.transpose();
-                        J_r.block<1, 3>(0, Te_ID) = C.transpose();
-                    }
-
-                    // r(k) = z − h(x(k)), z is zero for p2plane
-                    // double residual = -lm.cost; // (distance to plane) negative here due to derivative chain rule
-                    double residual = lm.cost;
-
-                    JTJ_private.noalias() += J_r.transpose() * lm.w * J_r;
-                    JTr_private.noalias() += J_r.transpose() * lm.w * residual;
-                    squared_residual_private += lm.w * residual * residual;
-                    points_private += 1;
-                }
-            }
-            return J;
-        },
-        // 2nd Lambda: Parallel reduction of the private Jacboians
-        [&](ResultTuple a, const ResultTuple &b) -> ResultTuple
-        { return a + b; });
-
-    const auto &[JTJ, JTr, squared_residual, n_points] = result;
-    int total_points = 1; // std::max(n_points, 1);
-
-    std::cout << "Registration with:" << n_points << "/" << feats_down_size << std::endl;
-
-    return std::make_tuple(JTJ, JTr, 0.5 * squared_residual / total_points);
-}
 
 std::tuple<cov, vectorized_state, double> BuildLinearSystem_openMP(
-    const state &x_, const PointCloudXYZI::Ptr &src_frame, const bool extrinsic_est)
+    const state &x_, const PointCloudXYZI::Ptr &src_frame, const bool extrinsic_est,
+    std::vector<bool> &global_valid, std::vector<landmark> &global_landmarks)
 
 {
     std::vector<cov> Hs(NUM_THREADS, cov::Zero());
     std::vector<vectorized_state> bs(NUM_THREADS, vectorized_state::Zero());
     std::vector<double> es(NUM_THREADS, 0.0);
+    std::vector<int> points_used(NUM_THREADS, 0);
+
     const int feats_down_size = src_frame->size();
 
     auto R = x_.rot.matrix();
     auto Rt = R.transpose();
 
+#ifdef MP_EN
 #pragma omp parallel for schedule(static) num_threads(NUM_THREADS)
+#endif
     for (std::int64_t i = 0; i < feats_down_size; i++)
     {
         if (!global_valid[i])
@@ -400,6 +414,7 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_openMP(
         Hs[thread_id] += H;
         bs[thread_id] += b;
         es[thread_id] += e;
+        points_used[thread_id]++;
     }
 
     for (int i = 1; i < NUM_THREADS; i++)
@@ -407,7 +422,10 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_openMP(
         Hs[0] += Hs[i];
         bs[0] += bs[i];
         es[0] += es[i];
+        points_used[0] += points_used[i];
     }
+
+    std::cout<<"Registered with "<<points_used[0]<<" points"<<std::endl;
 
     return {Hs[0], bs[0], es[0]};
 }
@@ -438,49 +456,6 @@ Eigen::Matrix<double, 6, 6> SE3numericalJacobian(const Sophus::SE3 &X, const Sop
         // central difference
         J.col(i) = (r_plus - r_minus) / (2.0 * eps);
     }
-
-    return J;
-}
-
-// Sophus::SE3 class (template <class Scalar = double>)
-Eigen::Matrix<double, 6, 6> Dx_this_mul_exp_x_at_0(const Sophus::SE3 &T) {
-    Eigen::Matrix<double,6,6> J;
-    Eigen::Quaternion<double> const q = T.so3().unit_quaternion();
-    double const c0 = 0.5 * q.w();
-    double const c1 = 0.5 * q.z();
-    double const c2 = -c1;
-    double const c3 = 0.5 * q.y();
-    double const c4 = 0.5 * q.x();
-    double const c5 = -c4;
-    double const c6 = -c3;
-    double const c7 = q.w() * q.w();
-    double const c8 = q.x() * q.x();
-    double const c9 = q.y() * q.y();
-    double const c10 = -c9;
-    double const c11 = q.z() * q.z();
-    double const c12 = -c11;
-    double const c13 = 2 * q.w();
-    double const c14 = c13 * q.z();
-    double const c15 = 2 * q.x();
-    double const c16 = c15 * q.y();
-    double const c17 = c13 * q.y();
-    double const c18 = c15 * q.z();
-    double const c19 = c7 - c8;
-    double const c20 = c13 * q.x();
-    double const c21 = 2 * q.y() * q.z();
-
-    J.setZero();
-
-    // top 3 rows
-    J(0,3) = c0; J(0,4) = c2; J(0,5) = c3;
-    J(1,3) = c1; J(1,4) = c0; J(1,5) = c5;
-    J(2,3) = c6; J(2,4) = c4; J(2,5) = c0;
-
-    // bottom 3 rows
-    J(3,3) = c5; J(3,4) = c6; J(3,5) = c2;
-    J(4,0) = c10 + c12 + c7 + c8; J(4,1) = -c14 + c16; J(4,2) = c17 + c18;
-    J(5,0) = c14 + c16; J(5,1) = c12 + c19 + c9; J(5,2) = -c20 + c21;
-    J(6,0) = -c17 + c18; J(6,1) = c20 + c21; J(6,2) = c10 + c11 + c19;
 
     return J;
 }
@@ -565,73 +540,75 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
     localKdTree_map->setInputCloud(map);
 
-    for (int t = 0; t < NUM_THREADS; t++)
-    {
-        trees[t].reset(new pcl::KdTreeFLANN<PointType>(*localKdTree_map));
-    }
+    //if the open MP is static - this is not needed
+    // for (int t = 0; t < NUM_THREADS; t++)
+    // {
+    //     trees[t].reset(new pcl::KdTreeFLANN<PointType>(*localKdTree_map));
+    // }
+
     int iteration_finished = 0;
     const cov P_inv = P_.inverse(); // 24x24
 
-    if (false)
+     if (false)
     {
-        // different way for stop criteria
-        int max_iter_ = 50; // MAX_NUM_ITERATIONS_
+    //     // different way for stop criteria
+    //     int max_iter_ = 50; // MAX_NUM_ITERATIONS_
 
-        vectorized_state last_dx = vectorized_state::Zero();
+    //     vectorized_state last_dx = vectorized_state::Zero();
 
-        for (int i = 0; i <= max_iter_; ++i)
-        {
-            status.valid = true;
-            establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map);
-            // JTJ = J^T W J; JTr = J^T W r
-            const auto &[JTJ, JTr, current_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est); // non deterministic
+    //     for (int i = 0; i <= max_iter_; ++i)
+    //     {
+    //         status.valid = true;
+    //         establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map);
+    //         // JTJ = J^T W J; JTr = J^T W r
+    //         const auto &[JTJ, JTr, current_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est); // non deterministic
 
-            vectorized_state dx;
-            cov H = (JTJ + P_inv);
+    //         vectorized_state dx;
+    //         cov H = (JTJ + P_inv);
 
-            vectorized_state dx_; // nx1 vectorized_state dx_ = K * status.innovation + (KJ - cov::Identity()) * boxminus(x_, x_propagated);
-            cov KJ = cov::Zero(); //  matrix K * J
+    //         vectorized_state dx_; // nx1 vectorized_state dx_ = K * status.innovation + (KJ - cov::Identity()) * boxminus(x_, x_propagated);
+    //         cov KJ = cov::Zero(); //  matrix K * J
 
-            auto H_inv = H.inverse(); // 24x24
-            KJ = H_inv * JTJ;
-            // dx_.noalias() = H_inv * (-JTr);       //slower
-            dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
-            dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
+    //         auto H_inv = H.inverse(); // 24x24
+    //         KJ = H_inv * JTJ;
+    //         // dx_.noalias() = H_inv * (-JTr);       //slower
+    //         dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
+    //         dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
 
-            // this applied right update   x = x * exp(dx)
-            x_ = boxplus(x_, dx_); // GN
+    //         // this applied right update   x = x * exp(dx)
+    //         x_ = boxplus(x_, dx_); // GN
 
-            if ((dx_ - last_dx).norm() < 0.001 || i == (max_iter_ - 1))
-            {
-                P_ -= KJ * P_; // P_ = (cov::Identity() - KJ) * P_;// same as P_ = P_ - KJ*P_ = P_-= KJ*P_
+    //         if ((dx_ - last_dx).norm() < 0.001 || i == (max_iter_ - 1))
+    //         {
+    //             P_ -= KJ * P_; // P_ = (cov::Identity() - KJ) * P_;// same as P_ = P_ - KJ*P_ = P_-= KJ*P_
 
-                std::cout << "Converged with " << i << " iterations" << std::endl;
-                break;
-            }
-            last_dx = dx_;
+    //             std::cout << "Converged with " << i << " iterations" << std::endl;
+    //             break;
+    //         }
+    //         last_dx = dx_;
 
-            status.converge = true;
-            for (int j = 0; j < state_size; j++)
-            {
-                if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_) // If dx_>ESTIMATION_THRESHOLD_ = 0.001 no convergence is considered
-                {
-                    status.converge = false;
-                    break;
-                }
-            }
-            if (status.converge)
-            {
-                // std::cout<<"Converged at i:"<<i<<std::endl;
-                converged_times++;
-            }
+    //         status.converge = true;
+    //         for (int j = 0; j < state_size; j++)
+    //         {
+    //             if (std::fabs(dx_[j]) > ESTIMATION_THRESHOLD_) // If dx_>ESTIMATION_THRESHOLD_ = 0.001 no convergence is considered
+    //             {
+    //                 status.converge = false;
+    //                 break;
+    //             }
+    //         }
+    //         if (status.converge)
+    //         {
+    //             // std::cout<<"Converged at i:"<<i<<std::endl;
+    //             converged_times++;
+    //         }
 
-            if (!converged_times && i == max_iter_ - 2) // if did not converge and last iteration - force converge
-            {
-                status.converge = true;
-            }
-        }
+    //         if (!converged_times && i == max_iter_ - 2) // if did not converge and last iteration - force converge
+    //         {
+    //             status.converge = true;
+    //         }
+    //     }
 
-        return 1;
+    //     return 1;
     }
 
     const bool Armijo = false; // true;
@@ -642,6 +619,27 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
     bool use_mls = false;// true;
 
+    if(use_mls)
+    {
+        std::cout<<"use_mls"<<std::endl;
+    }
+    if(use_als)
+    {
+        std::cout<<"use_als als_map:"<<als_map->size()<<std::endl;
+        // int n_points = als_tree->getInputCloud()->points.size();
+        // std::cout << "ALS tree contains " << n_points << " points." << std::endl;
+    }
+    if(use_se3)
+    {
+        std::cout<<"use_se3"<<std::endl;
+    }
+    
+    //just a test here 
+    if(!use_als)
+    {
+        use_mls = true; //force MLS to be true
+    }
+
     for (int i = -1; i < maximum_iter; i++)
     {
         iteration_finished = i + 1;
@@ -651,34 +649,30 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         vectorized_state JTr = vectorized_state::Zero();
         double system_cost = 0;
 
-        /*
-        
-        the NN should be done once for MLS and ALS 
-
-
-        TO BE DONE HERE
-
-        MLS - H has m 
-        GNSS - H has only 1
-        ALS - H has n
-
-        propose a way to align this measurements
-        
-        find a weighting factor for each 
-
-        */
+        //to be done
+        //if MLS and ALS toghether - do the search once for the same cloud and populate both MLS & ALS globals 
 
         if (use_mls)
         {
-            establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map);
-            // const auto &[JTJ, JTr, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
-            const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est);
+            establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
+
+            // const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
+            const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
+
             JTJ += JTJ_mls;
             JTr += JTr_mls;
             system_cost += mls_cost;
         }
 
+        if(use_als)
+        {
+            establishCorrespondences(R, x_, status.converge, feats_down_body, als_map, als_tree, ALS_valid, ALS_landmarks, ALS_Neighbours);
+            const auto &[JTJ_als, JTr_als, als_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, ALS_valid, ALS_landmarks);
 
+            JTJ += JTJ_als;
+            JTr += JTr_als;
+            system_cost += als_cost;
+        }
 
         if (use_se3)
         {
@@ -687,6 +681,32 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             JTJ += JTJ_se3;
             JTr += JTr_se3;
             system_cost += se3_cost;
+
+            // double eps = 1e-9;
+            // double traceH_g = JTJ_se3.trace();
+            // double traceH_l = JTJ_mls.trace();
+
+            // double gradient_g = JTr_se3.norm();
+            // double gradient_l = JTr_mls.norm();
+
+            // std::cout<<"\n\ntraceH_g:"<<traceH_g<<", traceH_l:"<<traceH_l <<", scale:"<< traceH_l/traceH_g <<std::endl;
+            // std::cout<<"gradient_g:"<<gradient_g<<", gradient_l:"<<gradient_l<<", scale:"<< gradient_l/gradient_g <<std::endl;
+
+            // // data-driven alpha (guard against tiny denominators)
+            // double alpha =  feats_down_body->size(); //or check how many points have been used for registration in mls 
+
+            // double traceH_g_alfa = (alpha*JTJ_se3).trace();
+            // double gradient_g_alfa = (alpha*JTr_se3).norm();
+            // std::cout<<"traceH_g_alfa:"<<traceH_g_alfa<<", gradient_g_alfa:"<<gradient_g_alfa <<std::endl;
+
+            // std::cout<<"alpha:"<<alpha<<std::endl;
+
+            //this seems to be the right way if upscalling the hessian and gradients 
+
+
+            // JTJ += alpha*JTJ_se3;
+            // JTr += alpha*JTr_se3;
+            // system_cost += alpha*se3_cost;
         }
 
         vectorized_state dx;
