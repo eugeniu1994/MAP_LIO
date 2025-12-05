@@ -51,6 +51,9 @@ void publish_ppk_gnss(const Sophus::SE3 &_pose, const double &msg_time)
     // br2.sendTransform(tf::StampedTransform(transform_inv, ros::Time().fromSec(msg_time), "PPK_GNSS", "world"));
 }
 
+
+
+
 bool readSE3FromFile(const std::string &filename, Sophus::SE3 &transform_out)
 {
     std::ifstream file(filename);
@@ -132,6 +135,7 @@ void publishAccelerationArrow(ros::Publisher &marker_pub, const Eigen::Vector3d 
 
 #include "TrajectoryReader.hpp"
 #include "Batch.hpp"
+//#include "simple_loop_closure_node.hpp"
 
 void DataHandler::Subscribe()
 {
@@ -171,6 +175,11 @@ void DataHandler::Subscribe()
     ros::Publisher pubLaserALSMap = nh.advertise<sensor_msgs::PointCloud2>("/ALS_map", 1000);
 #endif
 
+    ros::Publisher pub_loops  = nh.advertise<visualization_msgs::Marker>("loop_closure_edges", 1);
+    ros::Publisher pub_points  = nh.advertise<visualization_msgs::Marker>("trajectory_points", 1);
+    ros::Publisher lc_map_pub = nh.advertise<sensor_msgs::PointCloud2>("loop_closure_map", 1);
+
+
     ros::Publisher pubLaserCloudFull = nh.advertise<sensor_msgs::PointCloud2>("/cloud_registered", 100000);
     ros::Publisher pubLaserCloudLocal = nh.advertise<sensor_msgs::PointCloud2>("/cloud_local", 100000);
 
@@ -180,8 +189,6 @@ void DataHandler::Subscribe()
     ros::Publisher pubLaserCloudDebug = nh.advertise<sensor_msgs::PointCloud2>("/cloud_debug", 10);
     ros::Publisher point_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("/vux_data", 10000);
     ros::Publisher pubOptimizedVUX = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized", 10);
-
-    ros::Publisher pubOptimizedVUX2 = nh.advertise<sensor_msgs::PointCloud2>("/vux_optimized2", 10);
     ros::Publisher marker_pub = nh.advertise<visualization_msgs::Marker>("acceleration_marker", 10);
 
     ros::Publisher normals_pub = nh.advertise<visualization_msgs::Marker>("normals", 1);
@@ -212,8 +219,10 @@ void DataHandler::Subscribe()
     //       0, -1,  0;
     // gnss2lidar = Sophus::SE3(T, V3D::Zero()); //this was required for the drone
 
+    bool use_lc = true;
     // an extrinsic transformation is passed here to transform the ppk gnss-imu orientaiton into mls frame
-    reader.read(postprocessed_gnss_path, gnss2lidar);
+    reader.read(postprocessed_gnss_path, gnss2lidar, use_lc, filter_size_surf_min);
+    reader.Lidar_wrt_IMU = Lidar_wrt_IMU;
 
     // --- Access measurements ---
     const auto &measurements = reader.measurements();
@@ -319,6 +328,10 @@ void DataHandler::Subscribe()
 
     Sophus::SE3 tmp_pose = Sophus::SE3();
 
+    //SimpleLoopClosureNode loop_closure_node = SimpleLoopClosureNode(this->nh);
+
+    Sophus::SE3 last_trigger = Sophus::SE3();
+
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -363,11 +376,11 @@ void DataHandler::Subscribe()
                 break;
             }
 
-            if (scan_id > 1500) // for determinims
-            {
-                std::cout << "Stop here... enough data 8000 scans" << std::endl;
-                break;
-            }
+            // if (scan_id > 1500) // for determinims
+            // {
+            //     std::cout << "Stop here... enough data 8000 scans" << std::endl;
+            //     break;
+            // }
 
             {
                 double t00 = omp_get_wtime();
@@ -541,6 +554,9 @@ void DataHandler::Subscribe()
 
                         ppk_gnss_oriented = true;
 
+                        Sophus::SE3 put_trajectory_in_this_Frame = T_LG * first_ppk_gnss_pose_inverse;
+                        reader.visualize_trajectory(put_trajectory_in_this_Frame, 8000, pub_points, pub_loops);
+
                         continue;
                     }
 
@@ -599,14 +615,13 @@ void DataHandler::Subscribe()
                     // register to MLS map  ----------------------------------------------
                     Nearest_Points.resize(feats_down_size);
 
-                    bool use_se3_update = false;     // true;
-                    V3D std_pos_m = V3D(.1, .1, .1); // take this from the measurement itself - 10cm
-                    // V3D std_rot_deg = V3D(5, 5, 5);  // 5 degrees
-                    // V3D std_pos_m = V3D(.01, .01, .01);
-                    V3D std_rot_deg = V3D(10, 10, 10);
-                    bool use_als_update = true;
+                    bool use_se3_update = true;// false;     // true;
+                    V3D std_pos_m = V3D(.1, .1, .1);
+                    V3D std_rot_deg = V3D(10, 10, 10);  // 10 degrees
 
-                    use_als = true; // false;
+                    bool use_als_update = false;// true;
+
+                    use_als = false;// true; // false;
                     if (use_als)
                     {
                         if (!als_obj->refine_als) // als was not setup
@@ -640,7 +655,7 @@ void DataHandler::Subscribe()
                                     std::cout << "Init ALS from known T" << std::endl;
                                     als_obj->init(known_als2mls);
                                 }
-
+                                //TO BE DONE: take the initialization from GNSS-INS as int guess 
                                 // als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
 
                                 gnss_obj->updateExtrinsic(als_obj->R_to_mls); // use the scan-based refined rotation for GNSS
@@ -658,8 +673,15 @@ void DataHandler::Subscribe()
                                 //add the orientation correction for GNSS extrinsic here
                                 T_LG = Sophus::SE3(als_obj->als_to_mls.so3(), T_LG.translation());
 
+
+                                Sophus::SE3 put_trajectory_in_this_Frame = T_LG * first_ppk_gnss_pose_inverse;
+                                reader.visualize_trajectory(put_trajectory_in_this_Frame, 8000, pub_points, pub_loops);
+
+
                                 std::cout << "\nsynchronised\n, press enter..." << std::endl;
                                 std::cin.get();
+
+                                
 
                                 // reset local map - this should be reset, since it contains accumulated drift
                                 // laserCloudSurfMap.reset(new PointCloudXYZI());
@@ -724,17 +746,62 @@ void DataHandler::Subscribe()
                     //     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                     // }
 
-                    als_integrated = true; // to save the poses
+                    bool have_lc_ref = false;
+                    if(use_lc)
+                    {
+                        //predicted pose
+                        curr_mls = Sophus::SE3(state_point.rot, state_point.pos); 
+                        double dist = (curr_mls.inverse()*last_trigger).log().norm();
+                        double threshold_ = 1;//m
+                        if (dist >= threshold_) 
+                        {
+                            std::cout << "[INFO] System traveled more than "<< threshold_ << " meters: " << dist << " m" << std::endl;
+                            if(reader.try_LC(10)) //this should not be called too often 
+                            {
+                                have_lc_ref = true; 
+                                last_trigger = curr_mls;
+                            }
+                        }
+
+                        std::cout<<"reader.lc_map:"<<reader.lc_map->size()<<std::endl;
+                        if(reader.lc_map->size() > 0)
+                        {
+                            if (lc_map_pub.getNumSubscribers() != 0)
+                            {
+                                sensor_msgs::PointCloud2 cloud_msg;
+                                cloud_msg.header.stamp = ros::Time::now();
+                                cloud_msg.header.frame_id = "MLS";
+                                pcl::toROSMsg(*reader.lc_map, cloud_msg);
+                                lc_map_pub.publish(cloud_msg);
+                            }
+                        }
+                    }
+                    
                     estimator_.update_MLS(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, NUM_MAX_ITERATIONS, extrinsic_est_en,
                                           use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
-                                          use_se3_update, se3, std_pos_m, std_rot_deg);
+                                          use_se3_update, se3, std_pos_m, std_rot_deg,
+                                          have_lc_ref, reader.lc_map, reader.lc_tree);
+                    
+
+                    if(use_lc)
+                    {
+                        state_point = estimator_.get_x();
+                        curr_mls = Sophus::SE3(state_point.rot, state_point.pos); //updated pose
+                        auto cov_ = estimator_.get_P().block<6,6>(0,0);
+                        reader.cloud_and_odom_callback(pubLaserCloudDebug, feats_down_body, curr_mls, cov_, have_lc_ref);  //build the graph and save the scans
+                    }
+
+                    als_integrated = true; // to save the poses
+
+
+
 
                     // if(imu_obj->backwardPass(Measures, estimator_, *feats_undistort))
                     // {
                     //     std::cout<<"enough smoothing has been done, downsample and update..."<<std::endl;
-                    //     downSizeFilterSurf.setInputCloud(feats_undistort);
-                    //     downSizeFilterSurf.filter(*feats_down_body);
-                    //     feats_down_size = feats_down_body->points.size();
+                    //     //downSizeFilterSurf.setInputCloud(feats_undistort);
+                    //     //downSizeFilterSurf.filter(*feats_down_body);
+                    //     //feats_down_size = feats_down_body->points.size();
 
                     //     //update
                     // }
@@ -750,6 +817,8 @@ void DataHandler::Subscribe()
                     //     //update
                     // }
 
+                    
+
                     if (false)
                     {
                         // take this from std or separation data
@@ -759,10 +828,14 @@ void DataHandler::Subscribe()
                     }
                     // Crop the local map------
                     state_point = estimator_.get_x();
+                    curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
+
                     // Update the local map--------------------------------------------------
                     feats_down_world->resize(feats_down_size);
+                    
                     local_map_update(); // this will update local map with curr measurements and crop the map
                     // Publish odometry and point clouds------------------------------------
+                    
                     publish_odometry(pubOdomAftMapped);
                     if (scan_pub_en)
                     {
@@ -810,6 +883,8 @@ void DataHandler::Subscribe()
                                               laserCloudSurfMap, refference_kdtree, true,  // MLS map
                                               laserCloudSurfMap, refference_kdtree, false, // ALS map
                                               out_cov_pose, normals_pub, debug);
+
+                        
                         // std::cout<<"out_cov_pose:\n"<<out_cov_pose<<std::endl;
                         if (batch_obj->doneFirstOpt)
                         {
@@ -881,6 +956,10 @@ void DataHandler::Subscribe()
                             }
                         }
                     }
+
+
+                    
+
 
                     double t11 = omp_get_wtime();
                     double duration_time = (t11 - t00) * 1000;

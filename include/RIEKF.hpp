@@ -224,7 +224,8 @@ public:
 
 int update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map, int maximum_iter, bool extrinsic_est,
               const bool use_als, const PointCloudXYZI::Ptr &als_map, const pcl::KdTreeFLANN<PointType>::Ptr &als_tree,
-              const bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &gnss_std_pos_m, const V3D &gnss_std_rot_deg);
+              const bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &gnss_std_pos_m, const V3D &gnss_std_rot_deg,
+              const bool use_lc, const PointCloudXYZI::Ptr &lc_map, const pcl::KdTreeFLANN<PointType>::Ptr &lc_tree);
 
 
 

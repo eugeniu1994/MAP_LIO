@@ -72,7 +72,7 @@ struct AvgValue
     int points;
 };
 
-constexpr int max_points = 100000; // 50000; //this can be adjusted
+constexpr int max_points = 50000; //this can be adjusted
 
 //MLS globals
 static std::vector<landmark> MLS_landmarks(max_points);
@@ -83,6 +83,12 @@ static std::vector<PointVector> MLS_Neighbours(max_points);
 static std::vector<landmark> ALS_landmarks(max_points);
 static std::vector<bool> ALS_valid(max_points, false);
 static std::vector<PointVector> ALS_Neighbours(max_points);
+
+
+//LC globals
+static std::vector<landmark> LC_landmarks(max_points);
+static std::vector<bool> LC_valid(max_points, false);
+static std::vector<PointVector> LC_Neighbours(max_points);
 
 
 using Jacobian_plane = Eigen::Matrix<double, 1, state_size>;
@@ -98,6 +104,7 @@ double huber(double residual, double threshold = 1.0)
     double abs_r = std::abs(residual);
     return abs_r <= threshold ? 1.0 : threshold / abs_r;
 }
+
 
 // std::vector<pcl::KdTreeFLANN<PointType>::Ptr> trees(NUM_THREADS);
 
@@ -344,7 +351,7 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
 }
 
 
-std::tuple<cov, vectorized_state, double> BuildLinearSystem_openMP(
+std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
     const state &x_, const PointCloudXYZI::Ptr &src_frame, const bool extrinsic_est,
     std::vector<bool> &global_valid, std::vector<landmark> &global_landmarks)
 
@@ -425,9 +432,7 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_openMP(
         points_used[0] += points_used[i];
     }
 
-    std::cout<<"Registered with "<<points_used[0]<<" points"<<std::endl;
-
-    return {Hs[0], bs[0], es[0]};
+    return {Hs[0], bs[0], es[0], points_used[0]};
 }
 
 // Compute numerical measurement Jacobian J (6x6) for:
@@ -468,7 +473,8 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     double e = 0;
 
     Eigen::Matrix<double, 6, 1> r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
-    double kernel_weight = huber(r.norm(), 0.1); // cauchy(pd2, 0.2);
+    //double kernel_weight = huber(r.norm(), 0.1); // cauchy(pd2, 0.2);
+    double kernel_weight = 1;// huber(r.norm(), 0.1); // cauchy(pd2, 0.2);
 
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
@@ -479,9 +485,9 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
 
     Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
     //APPROXIMATE WITH IDENTITY
-    // J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
-    // J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
-    J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-5);
+    //J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+    //J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
+    J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
 
     H.noalias() = J_se3.transpose() * W * J_se3;
     b.noalias() = J_se3.transpose() * W * r;
@@ -491,7 +497,8 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
 
 int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map,int maximum_iter, bool extrinsic_est,
                       const bool use_als, const PointCloudXYZI::Ptr &als_map, const pcl::KdTreeFLANN<PointType>::Ptr &als_tree,
-                      bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &gnss_std_pos_m, const V3D &gnss_std_rot_deg)
+                      bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &gnss_std_pos_m, const V3D &gnss_std_rot_deg,
+                      const bool use_lc, const PointCloudXYZI::Ptr &lc_map, const pcl::KdTreeFLANN<PointType>::Ptr &lc_tree)
 {
     if (false)
     {
@@ -617,7 +624,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     // const bool LM = false;
     // double lm_init_lambda_factor_ = 1e-9, lm_lambda_ = -1.0, nu = 2.0;
 
-    bool use_mls = false;// true;
+    bool use_mls = true;
 
     if(use_mls)
     {
@@ -634,10 +641,17 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         std::cout<<"use_se3"<<std::endl;
     }
     
+    if(use_lc)
+    {
+        std::cout<<"use_lc lc_map:"<<lc_map->size()<<std::endl;
+        //int n_points = lc_tree->getInputCloud()->points.size();
+        //std::cout << "LC tree contains " << n_points << " points." << std::endl;
+    }
+
     //just a test here 
     if(!use_als)
     {
-        use_mls = true; //force MLS to be true
+        //use_mls = true; //force MLS to be true
     }
 
     for (int i = -1; i < maximum_iter; i++)
@@ -652,35 +666,51 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         //to be done
         //if MLS and ALS toghether - do the search once for the same cloud and populate both MLS & ALS globals 
 
-        if (use_mls)
-        {
+        //if (use_mls)
+        //{
             establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
 
             // const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
-            const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
+            const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
 
             JTJ += JTJ_mls;
             JTr += JTr_mls;
             system_cost += mls_cost;
-        }
+        //}
+
+            std::cout<<"MLS register with "<<da_mls<<"/"<<feats_down_body->size()<<" points"<<std::endl;
+
 
         if(use_als)
         {
             establishCorrespondences(R, x_, status.converge, feats_down_body, als_map, als_tree, ALS_valid, ALS_landmarks, ALS_Neighbours);
-            const auto &[JTJ_als, JTr_als, als_cost] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, ALS_valid, ALS_landmarks);
+            const auto &[JTJ_als, JTr_als, als_cost, da_als] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, ALS_valid, ALS_landmarks);
 
             JTJ += JTJ_als;
             JTr += JTr_als;
             system_cost += als_cost;
         }
 
+        if(use_lc)
+        {
+            establishCorrespondences(R, x_, status.converge, feats_down_body, lc_map, lc_tree, LC_valid, LC_landmarks, LC_Neighbours);
+            const auto &[JTJ_lc, JTr_lc, lc_cost, da_lc] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, LC_valid, LC_landmarks);
+
+            JTJ += JTJ_lc;
+            JTr += JTr_lc;
+            system_cost += lc_cost;
+        }
+
         if (use_se3)
         {
             const auto &[JTJ_se3, JTr_se3, se3_cost] = BuildLinearSystem_SE3(x_, gnss_se3, gnss_std_pos_m, gnss_std_rot_deg);
 
-            JTJ += JTJ_se3;
-            JTr += JTr_se3;
-            system_cost += se3_cost;
+            //double alpha = da_mls;// ;
+            double alpha = 1;
+
+            JTJ += alpha*JTJ_se3;
+            JTr += alpha*JTr_se3;
+            system_cost += alpha*se3_cost;
 
             // double eps = 1e-9;
             // double traceH_g = JTJ_se3.trace();
@@ -693,7 +723,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             // std::cout<<"gradient_g:"<<gradient_g<<", gradient_l:"<<gradient_l<<", scale:"<< gradient_l/gradient_g <<std::endl;
 
             // // data-driven alpha (guard against tiny denominators)
-            // double alpha =  feats_down_body->size(); //or check how many points have been used for registration in mls 
+             //or check how many points have been used for registration in mls 
 
             // double traceH_g_alfa = (alpha*JTJ_se3).trace();
             // double gradient_g_alfa = (alpha*JTr_se3).norm();
@@ -704,9 +734,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             //this seems to be the right way if upscalling the hessian and gradients 
 
 
-            // JTJ += alpha*JTJ_se3;
-            // JTr += alpha*JTr_se3;
-            // system_cost += alpha*se3_cost;
+            
         }
 
         vectorized_state dx;

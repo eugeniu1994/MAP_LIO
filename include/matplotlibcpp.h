@@ -2579,6 +2579,110 @@ inline void set_zlabel(const std::string &str, const std::map<std::string, std::
     if (res) Py_DECREF(res);
 }
 
+inline void set_xlabel(const std::string &str, const std::map<std::string, std::string>& keywords = {})
+{
+    detail::_interpreter::get();
+
+    // Same as with plot_surface: We lazily load the modules here the first time
+    // this function is called because I'm not sure that we can assume "matplotlib
+    // installed" implies "mpl_toolkits installed" on all platforms, and we don't
+    // want to require it for people who don't need 3d plots.
+    static PyObject *mpl_toolkitsmod = nullptr, *axis3dmod = nullptr;
+    if (!mpl_toolkitsmod) {
+        PyObject* mpl_toolkits = PyString_FromString("mpl_toolkits");
+        PyObject* axis3d = PyString_FromString("mpl_toolkits.mplot3d");
+        if (!mpl_toolkits || !axis3d) { throw std::runtime_error("couldnt create string"); }
+
+        mpl_toolkitsmod = PyImport_Import(mpl_toolkits);
+        Py_DECREF(mpl_toolkits);
+        if (!mpl_toolkitsmod) { throw std::runtime_error("Error loading module mpl_toolkits!"); }
+
+        axis3dmod = PyImport_Import(axis3d);
+        Py_DECREF(axis3d);
+        if (!axis3dmod) { throw std::runtime_error("Error loading module mpl_toolkits.mplot3d!"); }
+    }
+
+    PyObject* pystr = PyString_FromString(str.c_str());
+    PyObject* args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, pystr);
+
+    PyObject* kwargs = PyDict_New();
+    for (auto it = keywords.begin(); it != keywords.end(); ++it) {
+        PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
+    }
+
+    PyObject *ax =
+    PyObject_CallObject(detail::_interpreter::get().s_python_function_gca,
+      detail::_interpreter::get().s_python_empty_tuple);
+    if (!ax) throw std::runtime_error("Call to gca() failed.");
+    Py_INCREF(ax);
+
+    PyObject *xlabel = PyObject_GetAttrString(ax, "set_xlabel");
+    if (!xlabel) throw std::runtime_error("Attribute set_xlabel not found.");
+    Py_INCREF(xlabel);
+
+    PyObject *res = PyObject_Call(xlabel, args, kwargs);
+    if (!res) throw std::runtime_error("Call to set_xlabel() failed.");
+    Py_DECREF(xlabel);
+
+    Py_DECREF(ax);
+    Py_DECREF(args);
+    Py_DECREF(kwargs);
+    if (res) Py_DECREF(res);
+}
+
+inline void set_ylabel(const std::string &str, const std::map<std::string, std::string>& keywords = {})
+{
+    detail::_interpreter::get();
+
+    // Same as with plot_surface: We lazily load the modules here the first time
+    // this function is called because I'm not sure that we can assume "matplotlib
+    // installed" implies "mpl_toolkits installed" on all platforms, and we don't
+    // want to require it for people who don't need 3d plots.
+    static PyObject *mpl_toolkitsmod = nullptr, *axis3dmod = nullptr;
+    if (!mpl_toolkitsmod) {
+        PyObject* mpl_toolkits = PyString_FromString("mpl_toolkits");
+        PyObject* axis3d = PyString_FromString("mpl_toolkits.mplot3d");
+        if (!mpl_toolkits || !axis3d) { throw std::runtime_error("couldnt create string"); }
+
+        mpl_toolkitsmod = PyImport_Import(mpl_toolkits);
+        Py_DECREF(mpl_toolkits);
+        if (!mpl_toolkitsmod) { throw std::runtime_error("Error loading module mpl_toolkits!"); }
+
+        axis3dmod = PyImport_Import(axis3d);
+        Py_DECREF(axis3d);
+        if (!axis3dmod) { throw std::runtime_error("Error loading module mpl_toolkits.mplot3d!"); }
+    }
+
+    PyObject* pystr = PyString_FromString(str.c_str());
+    PyObject* args = PyTuple_New(1);
+    PyTuple_SetItem(args, 0, pystr);
+
+    PyObject* kwargs = PyDict_New();
+    for (auto it = keywords.begin(); it != keywords.end(); ++it) {
+        PyDict_SetItemString(kwargs, it->first.c_str(), PyUnicode_FromString(it->second.c_str()));
+    }
+
+    PyObject *ax =
+    PyObject_CallObject(detail::_interpreter::get().s_python_function_gca,
+      detail::_interpreter::get().s_python_empty_tuple);
+    if (!ax) throw std::runtime_error("Call to gca() failed.");
+    Py_INCREF(ax);
+
+    PyObject *ylabel = PyObject_GetAttrString(ax, "set_ylabel");
+    if (!ylabel) throw std::runtime_error("Attribute set_ylabel not found.");
+    Py_INCREF(ylabel);
+
+    PyObject *res = PyObject_Call(ylabel, args, kwargs);
+    if (!res) throw std::runtime_error("Call to set_ylabel() failed.");
+    Py_DECREF(ylabel);
+
+    Py_DECREF(ax);
+    Py_DECREF(args);
+    Py_DECREF(kwargs);
+    if (res) Py_DECREF(res);
+}
+
 template<typename Numeric>
 inline void set_zlimit(Numeric left, Numeric right, const std::map<std::string, std::string>& keywords = {})
 {
@@ -3099,6 +3203,13 @@ public:
     PyObject* ax1 = nullptr;
     PyObject* ax2 = nullptr;
 
+    // Store titles and labels
+    std::string ax1_title = "Predicted";
+    std::string ax2_title = "Smoothed";
+    std::string x_label = "X";
+    std::string y_label = "Y";
+    std::string z_label = "Z";
+
     bool initted = false;
     bool use_ion = false;
     MyClass2() {
@@ -3137,22 +3248,8 @@ public:
             Py_DECREF(args);
             Py_DECREF(kwargs);
         }
-        // ========================
-        // ADD TITLE TO THIS SUBPLOT
-        // ========================
-        {
-            PyObject* set_title = PyObject_GetAttrString(ax1, "set_title");
-            if (!set_title) throw std::runtime_error("Failed to get set_title");
-
-            PyObject* title_args = PyTuple_New(1);
-            PyTuple_SetItem(title_args, 0, PyString_FromString("Predicted"));
-
-            PyObject* ret = PyObject_CallObject(set_title, title_args);
-            Py_XDECREF(ret);
-
-            Py_DECREF(set_title);
-            Py_DECREF(title_args);
-        }
+        
+        
         // ax2 = subplot(1, 2, 2)
         {
             PyObject* args = PyTuple_New(3);
@@ -3169,30 +3266,37 @@ public:
             Py_DECREF(args);
             Py_DECREF(kwargs);
         }
-        {
-            PyObject* set_title = PyObject_GetAttrString(ax2, "set_title");
-            if (!set_title) throw std::runtime_error("Failed to get set_title");
-
-            PyObject* title_args = PyTuple_New(1);
-            PyTuple_SetItem(title_args, 0, PyString_FromString("Smoothed"));
-
-            PyObject* ret = PyObject_CallObject(set_title, title_args);
-            Py_XDECREF(ret);
-
-            Py_DECREF(set_title);
-            Py_DECREF(title_args);
-        }
-
+        
         Py_DECREF(add_subplot);
     }
 
-    // ================================================================
-    // Helper to clear an axis safely
-    // ================================================================
-    void clear_axis(PyObject* ax) {
+    void clear_axis(PyObject* ax, const std::string& title = "", 
+                const std::string& xlabel = "X", 
+                const std::string& ylabel = "Y", 
+                const std::string& zlabel = "Z") {
         PyObject* cla = PyObject_GetAttrString(ax, "cla");
         PyObject_CallObject(cla, nullptr);
         Py_DECREF(cla);
+        
+        // Reapply title
+        if (!title.empty()) {
+            PyObject* set_title = PyObject_GetAttrString(ax, "set_title");
+            PyObject_CallFunction(set_title, "s", title.c_str());
+            Py_DECREF(set_title);
+        }
+        
+        // Reapply axis labels
+        PyObject* set_xlabel = PyObject_GetAttrString(ax, "set_xlabel");
+        PyObject_CallFunction(set_xlabel, "s", xlabel.c_str());
+        Py_DECREF(set_xlabel);
+        
+        PyObject* set_ylabel = PyObject_GetAttrString(ax, "set_ylabel");
+        PyObject_CallFunction(set_ylabel, "s", ylabel.c_str());
+        Py_DECREF(set_ylabel);
+        
+        PyObject* set_zlabel = PyObject_GetAttrString(ax, "set_zlabel");
+        PyObject_CallFunction(set_zlabel, "s", zlabel.c_str());
+        Py_DECREF(set_zlabel);
     }
 
     // ================================================================
@@ -3371,9 +3475,8 @@ public:
             init_figure();
         }
         
-
-        clear_axis(ax1);
-        clear_axis(ax2);
+        clear_axis(ax1,"Predicted");
+        clear_axis(ax2,"Smoothed");
 
         // Plot the same thing on both axes
         plot_on_axis(ax1, x,  y,   z,  u,  v,  w, xGT, yGT, zGT, uGT, vGT, wGT, s);
@@ -3383,8 +3486,6 @@ public:
         pause(0.0001);
     }
 };
-
-
 
 
 class MyClass {      

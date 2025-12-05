@@ -1727,6 +1727,7 @@ void DataHandler::Subscribe()
                 }
 #endif
 
+#define integrate_ppk_gnss
 #ifdef integrate_ppk_gnss
                 while (tmp_index < gnss_vux_data.size() - 1 && als_integrated) //
                 {
@@ -1858,8 +1859,8 @@ void DataHandler::Subscribe()
                             T_ab​=T_a^{−1}​⋅T_b
                             Σ_ab​=J_a​Σ_a​J_a^{⊤}​ + J_b​Σ_b​J_b^{⊤}
 
-                            J_a​=−Adj(T_ab​)
-                            J_b=I
+                            J_a​=−Adj(T_ab​)  is d(T_ab​)/T_a
+                            J_b=I           is d(T_ab​)/​T_b
                         */
                         // Jacobians
                         Eigen::Matrix<double, 6, 6> J_a = -Ad_Tab;
