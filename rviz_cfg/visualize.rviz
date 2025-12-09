@@ -63,22 +63,40 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: false
     - Class: rviz/TF
-      Enabled: false
+      Enabled: true
       Filter (blacklist): ""
       Filter (whitelist): ""
       Frame Timeout: 500
       Frames:
         All Enabled: false
+        GPSFix:
+          Value: true
+        MLS:
+          Value: true
+        PPK_GNSS:
+          Value: true
+        VUX:
+          Value: true
+        world:
+          Value: true
       Marker Alpha: 1
-      Marker Scale: 10
+      Marker Scale: 40
       Name: TF
       Show Arrows: false
       Show Axes: true
       Show Names: true
       Tree:
-        {}
+        world:
+          GPSFix:
+            {}
+          MLS:
+            {}
+          PPK_GNSS:
+            {}
+          VUX:
+            {}
       Update Interval: 0
-      Value: false
+      Value: true
     - Class: rviz/Group
       Displays:
         - Alpha: 1
@@ -738,7 +756,7 @@ Visualization Manager:
       Marker Topic: /loop_closure_edges
       Name: LC
       Namespaces:
-        loop_closures: true
+        {}
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -797,7 +815,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 768.61279296875
+      Distance: 860.8463134765625
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -805,17 +823,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 114.30349731445312
-        Y: -216.32339477539062
-        Z: -635.959716796875
+        X: 84.34400177001953
+        Y: -100.5056381225586
+        Z: -662.1245727539062
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1747972965240479
+      Pitch: 1.3347971439361572
       Target Frame: global
-      Yaw: 2.021303653717041
+      Yaw: 1.9513037204742432
     Saved: ~
 Window Geometry:
   Displays:
