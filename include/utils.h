@@ -385,8 +385,8 @@ namespace ekf
         covariance.setZero();
 
         // Regularize
-        //  double lambda_reg = 1e-6;
-        //  covariance = covariance + lambda_reg * Eye3d;
+        double lambda_reg = 1e-9;
+        covariance = covariance + lambda_reg * Eye3d;
 
         if (weighted_mean)
         {
@@ -473,7 +473,7 @@ namespace ekf
             pca_result.template head<3>() = norm.template cast<T>();
             pca_result(3) = static_cast<T>(d);
 
-            plane_var = lambda0;
+            plane_var = 5. * lambda0;
 
             return true;
         }

@@ -630,16 +630,16 @@ public:
             Sophus::SE3 T_rel = origina_poses_[added_odom_id_ - 1].inverse() * origina_poses_[added_odom_id_];
             if(use_actual_uncertainty)
             {
-                // odom_noise_ = computeRelativeCovariance(origina_poses_[added_odom_id_ - 1], origina_poses_[added_odom_id_], 
-                //                                                                 origina_poses_covs_[added_odom_id_ - 1], origina_poses_covs_[added_odom_id_]);
+                //odom_noise_ = computeRelativeCovariance(origina_poses_[added_odom_id_ - 1], origina_poses_[added_odom_id_], 
+                //                                                                origina_poses_covs_[added_odom_id_ - 1], origina_poses_covs_[added_odom_id_]);
                 
-                // Eigen::VectorXd sigmas = odom_noise_->sigmas();   // Standard deviations
-                // std::cout << "computeRelativeCovariance " << " stdev = " << sigmas.transpose() << std::endl;
+                //Eigen::VectorXd sigmas = odom_noise_->sigmas();   // Standard deviations
+                //std::cout << "computeRelativeCovariance " << " stdev = " << sigmas.transpose() << std::endl;
 
-                // odom_noise_ = covarianceToNoiseModel(origina_poses_covs_[added_odom_id_]);
+                odom_noise_ = covarianceToNoiseModel(origina_poses_covs_[added_odom_id_]);
 
-                // sigmas = odom_noise_->sigmas();   // Standard deviations
-                // std::cout << "covarianceToNoiseModel " << " stdev = " << sigmas.transpose() << std::endl;
+                //sigmas = odom_noise_->sigmas();   // Standard deviations
+                //std::cout << "covarianceToNoiseModel    " << " stdev = " << sigmas.transpose() << std::endl;
             }
 
             graph.add(gtsam::BetweenFactor<gtsam::Pose3>(added_odom_id_ - 1, added_odom_id_, gtsam::Pose3(T_rel.matrix()), odom_noise_));
@@ -657,9 +657,8 @@ public:
                     // odom_noise_ = computeRelativeCovariance(origina_poses_[added_odom_id_ - 1], origina_poses_[added_odom_id_], 
                                                                                 // origina_poses_covs_[added_odom_id_ - 1], origina_poses_covs_[added_odom_id_]);
                 
-                    // odom_noise_ = covarianceToNoiseModel(origina_poses_covs_[added_odom_id_]);
-                    
-                    // constraint_noise = gtsam::noiseModel::Robust::Create(gtsam::noiseModel::mEstimator::Cauchy::Create(1), odom_noise_);
+                    //odom_noise_ = covarianceToNoiseModel(origina_poses_covs_[added_odom_id_]);
+                    constraint_noise = gtsam::noiseModel::Robust::Create(gtsam::noiseModel::mEstimator::Cauchy::Create(1), odom_noise_);
                 }
 
                 graph.add(gtsam::BetweenFactor<gtsam::Pose3>(added_odom_id_, target_graph_key, gtsam::Pose3(T_rel.matrix()), constraint_noise));
@@ -1080,7 +1079,9 @@ public:
         auto pose = Sophus::SE3(R, t); // in GNSS
 
         // out = pose * Sophus::SE3(Rz, V3D(0, 0, 0));
-        out = pose * extrinsic_;
+        //out = pose * extrinsic_;
+
+        out = extrinsic_.inverse() * pose * extrinsic_;
     }
 
     MeasurementQueryResult queryMeasurement(const double tod)
@@ -1303,6 +1304,8 @@ public:
 
                         V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
                         Sophus::SE3 motion = Sophus::SE3(R_imu * Sophus::SO3::exp(omega * dt).matrix(), pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt);
+                        
+                        //HERE IS WRONG - TO BE ADJUSTED, THE GNSS is not transformed to lidar properly 
 
                         V3D P_compensate = R_end_T * (motion * extrinsic_ * P_i - T_end);
 
