@@ -468,9 +468,20 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     vectorized_state b = vectorized_state::Zero();
     double e = 0;
 
-    Eigen::Matrix<double, 6, 1> r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
-    double kernel_weight = huber(r.norm(), 0.1); // cauchy(pd2, 0.2);
-    //double kernel_weight = 1;
+    // Eigen::Matrix<double, 6, 1> r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
+    Vector6d r = Vector6d::Zero();
+    if (coupled_rotation_translation)
+    {
+        r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
+    }
+    else
+    {
+        r.block<3, 1>(P_ID, 0) = x_.pos - measured_se3.translation();
+        r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log();
+    }
+
+    // double kernel_weight = huber(r.norm(), 0.2); // cauchy(pd2, 0.2);
+    double kernel_weight = 1;
 
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
@@ -481,9 +492,11 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
 
     Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
     // APPROXIMATE WITH IDENTITY
-    // J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
-    // J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
-    J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+    J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+    J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
+    // J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+
+    // J_se3.block<3, 3>(R_ID, R_ID) = M3D::Zero(); //disable the rotation
 
     H.noalias() = J_se3.transpose() * W * J_se3;
     b.noalias() = J_se3.transpose() * W * r;
@@ -550,7 +563,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     //  }
 
     int iteration_finished = 0;
-    const cov P_inv = P_.inverse(); // 24x24
+    cov P_inv = P_.inverse(); // 24x24
 
     if (false)
     {
@@ -620,7 +633,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     // const bool LM = false;
     // double lm_init_lambda_factor_ = 1e-9, lm_lambda_ = -1.0, nu = 2.0;
 
-    bool use_mls = true;
+    bool use_mls = false; // true;
 
     if (use_mls)
     {
@@ -650,7 +663,12 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         // use_mls = true; //force MLS to be true
     }
 
+    // P_inv = 10. * P_inv;
+
     vectorized_state last_dx = vectorized_state::Zero();
+
+    // vectorized_state dx_new = vectorized_state::Zero(); // 24X1
+
     for (int i = -1; i < maximum_iter; i++)
     {
         iteration_finished = i + 1;
@@ -660,22 +678,26 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         vectorized_state JTr = vectorized_state::Zero();
         double system_cost = 0;
 
+        // dx_new = boxminus(x_, x_propagated);
+
         // to be done
         // if MLS and ALS toghether - do the search once for the same cloud and populate both MLS & ALS globals
 
-        // if (use_mls)
-        //{
-        establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
+        if (use_mls)
+        {
+            establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
 
-        // const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
-        const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
+            // const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
+            const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
 
-        JTJ += JTJ_mls;
-        JTr += JTr_mls;
-        system_cost += mls_cost;
-        //}
+            JTJ += JTJ_mls;
+            JTr += JTr_mls;
+            system_cost += mls_cost;
+            std::cout << "MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+        }
 
-        std::cout << "MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+        // JTJ /= da_mls;
+        // JTr /= da_mls;
 
         if (use_als)
         {
@@ -700,123 +722,16 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         if (use_se3)
         {
             const auto &[JTJ_se3, JTr_se3, se3_cost] = BuildLinearSystem_SE3(x_, gnss_se3, gnss_std_pos_m, gnss_std_rot_deg);
-
-            if (false)
-            {
-                Eigen::SelfAdjointEigenSolver<Matrix6d> mls(JTJ_mls.block<6, 6>(0, 0));
-                if (mls.info() != Eigen::Success)
-                {
-                    throw std::runtime_error("mls Eigen decomposition failed");
-                }
-                Vector6d evals_mls = mls.eigenvalues();
-                Matrix6d evecs_mls = mls.eigenvectors();
-
-                Eigen::SelfAdjointEigenSolver<Matrix6d> se3(JTJ_se3.block<6, 6>(0, 0));
-                if (se3.info() != Eigen::Success)
-                {
-                    throw std::runtime_error("se3 Eigen decomposition failed");
-                }
-                Vector6d evals_se3 = se3.eigenvalues();
-                Matrix6d evecs_se3 = se3.eigenvectors();
-
-                std::cout << "\nevals_mls :" << evals_mls.transpose() << std::endl;
-                std::cout << "evals_se3 :" << evals_se3.transpose() << std::endl;
-                // std::cout<<"evals_comb:"<<evals_comb.transpose()<<std::endl;
-
-                std::cout << "da_mls:" << da_mls << std::endl;
-                std::vector<double> lambda_weights;
-                for (int l = 0; l < evals_mls.size(); l++)
-                {
-                    auto w = evals_mls[l] / std::max(evals_se3[l], 1e-9);
-                    lambda_weights.push_back(w);
-                    std::cout << "w:" << w << std::endl;
-                }
-
-                // (2) Project JTJ_mls into this eigenbasis
-                //     Λ_mls_in_se3 = diag( V_se3^T * JTJ_mls * V_se3 )
-                // ======================================================
-                Matrix6d M_proj = evecs_se3.transpose() * JTJ_mls.block<6, 6>(0, 0) * evecs_se3;
-
-                Eigen::SelfAdjointEigenSolver<Matrix6d> M_proj_eigen(M_proj.block<6, 6>(0, 0));
-                if (M_proj_eigen.info() != Eigen::Success)
-                {
-                    throw std::runtime_error("M_proj_eigen Eigen decomposition failed");
-                }
-
-                // Vector6d lambda_mls_in_se3 = M_proj.diagonal(); //energy of mls along se3 eigenvectors, how strong MLS is along SE3's i-th principal direction
-                Vector6d lambda_mls_in_se3 = M_proj_eigen.eigenvalues(); // energy of mls along se3 eigenvectors, how strong MLS is along SE3's i-th principal direction
-
-                std::cout << "MLS-info projected into SE3 basis:\n"
-                          << lambda_mls_in_se3.transpose() << "\n\n";
-
-                // ======================================================
-                // (3) Per-direction ratio between MLS and SE3 information
-                //     r_i = λ_mls_i / λ_se3_i
-                // ======================================================
-                std::vector<double> ratios;
-                for (int i = 0; i < evals_mls.size(); ++i)
-                {
-                    double denom = std::max(evals_mls(i), 1e-12);   // avoid divide-by-zero
-                    ratios.push_back(lambda_mls_in_se3(i) / denom); // how much to scale SE3 eigenvalue i to match MLS in that direction.
-                }
-
-                std::cout << "Per-direction ratios (MLS / SE3):\n";
-                for (auto r : ratios)
-                    std::cout << r << " ";
-                std::cout << "\n\n";
-                /*
-
-                data-driven alpha (single scalar) from eigenvalues
-
-                eigen-decompositions:    JTJ_m = V_m Λ_m V_m^T,      JTJ_g = V_g Λ_g V_g^T.
-                Project JTJ_m into V_g basis: Λ_m_in_g = diag( V_g^T JTJ_m V_g ).
-                Per-direction ratios r_i = Λ_m_in_g[i] / max(Λ_g[i], eps).
-
-                Choose scalar α = median(r_i) (robust) or α = mean(r_i).
-
-                This gives JTJ_total = JTJ_m + α * JTJ_g where α is derived from actual spectra.
-
-                */
-
-                // auto JTJ_se3_ = JTJ_se3;
-                // auto JTr_se3_ = JTr_se3;
-
-                // for (int k = 0; k < 6; k++) {
-                //     for (int l = 0; l < 6; l++) {
-                //         double wij = std::sqrt(ratios[k] * ratios[l]);  // ensures symmetry
-                //         JTJ_se3_(k, l) = wij * JTJ_se3(k, l);
-
-                //     }
-
-                //     double wi = ratios[k];
-                //     JTr_se3_(k) = wi * JTr_se3(k);
-                // }
-
-                // Eigen::SelfAdjointEigenSolver<Matrix6d> se3_(JTJ_se3_.block<6,6>(0,0));
-                // if (se3_.info() != Eigen::Success) {
-                //     throw std::runtime_error("se3_ Eigen decomposition failed");
-                // }
-                // evals_se3 = se3_.eigenvalues();
-                // evecs_se3 = se3_.eigenvectors();
-
-                // std::cout<<"evals_se3 :"<<evals_se3.transpose()<<std::endl;
-                // JTJ += JTJ_se3_;
-                // JTr += JTr_se3_;
-            }
-
-            double alpha = std::max(da_mls,1);// ;
-            //double alpha = 1;
+            // double alpha = std::max(da_mls,1);// ;
+            double alpha = 1;
 
             JTJ += alpha * JTJ_se3;
             JTr += alpha * JTr_se3;
             system_cost += alpha * se3_cost;
 
-            
-
-            // vectorized_state dx_mls = JTJ_mls.ldlt().solve(-JTr_mls);
-            // vectorized_state dx_gnss = JTJ_se3.ldlt().solve(-JTr_se3);
-            // alpha = dx_gnss.norm() / dx_mls.norm();
-            // std::cout<<"dx_mls:"<<dx_mls.norm()<<", dx_gnss:"<<dx_gnss.norm()<<", alpha:"<<alpha<<std::endl;
+            // double a = .5;
+            // JTJ = a*JTJ_mls + (1-a)*JTJ_se3;
+            // JTr = a*JTr_mls + (1-a)*JTr_se3;
         }
 
         vectorized_state dx;
@@ -830,6 +745,8 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         // dx_.noalias() = H_inv * (-JTr);       //slower
         dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
         dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
+
+        // vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new; //position only ekf
 
         // Eigen::LDLT<cov> ldltSolver(H);
         // dx_.noalias() = ldltSolver.solve(-JTr); // Solve for dx_
@@ -905,6 +822,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         if (converged_times > 1 || i == maximum_iter - 1) // if converged or last iteration
         {
             P_ -= KJ * P_; // P_ = (cov::Identity() - KJ) * P_;// same as P_ = P_ - KJ*P_ = P_-= KJ*P_
+
             break;
         }
     }

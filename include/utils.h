@@ -473,7 +473,8 @@ namespace ekf
             pca_result.template head<3>() = norm.template cast<T>();
             pca_result(3) = static_cast<T>(d);
 
-            plane_var = 5. * lambda0;
+            plane_var = 9. * lambda0;
+            // plane_var = lambda0;
 
             return true;
         }

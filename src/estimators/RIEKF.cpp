@@ -1053,17 +1053,28 @@ void RIEKF::update_se3(const Sophus::SE3 &measured_, int maximum_iter, const V3D
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
 
-    Eigen::Matrix<double, se3_dim, se3_dim> R = Eigen::Matrix<double, se3_dim, se3_dim>::Identity();
+    Eigen::Matrix<double, se3_dim, se3_dim> R = Eigen::Matrix<double, se3_dim, se3_dim>::Zero();
     R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
     R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
 
+    std::cout<<"coupled_rotation_translation:"<<coupled_rotation_translation<<std::endl;
     // H_se3.block<6, 6>(0, 0) = Matrix6d::Identity();
     for (int i = -1; i < maximum_iter; i++)
     {
         // Eigen::Matrix<double, 6, 1> residual = (measured_.inverse() * Sophus::SE3(x_.rot, x_.pos)).log(); // Innovation: z - h(x)
         // H_se3.block<6, 6>(0, 0) = -numericalMeasurementJacobian(X, measured_, 1e-5);
 
-        Eigen::Matrix<double, 6, 1> residual = (Sophus::SE3(x_.rot, x_.pos).inverse() * measured_).log();
+        Eigen::Matrix<double, 6, 1> residual = Vector6d::Zero();
+            
+        if (coupled_rotation_translation)
+        {
+            residual = (Sophus::SE3(x_.rot, x_.pos).inverse() * measured_).log();
+        }
+        else
+        {
+            residual.block<3,1>(P_ID,0) = measured_.translation() - x_.pos;
+            residual.block<3,1>(R_ID,0) = Sophus::SO3(x_.rot.matrix().transpose() * measured_.so3().matrix()).log();
+        }
 
         // Compute Kalman Gain
         // K_k =  P_k   *   H_k.T * inv( H_k  *  P_k  * H_k.T + R_k )

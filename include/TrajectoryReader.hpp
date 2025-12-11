@@ -92,6 +92,8 @@ struct Measurement
     double N_Sep = 0.0;
     double H_Sep = 0.0;
 
+    double PDOP = 0.0; //m
+
     //---------------------------------------------
     bool is_lc = false;
     int idx_from_the_past = 0; // use for loop closure
@@ -409,6 +411,8 @@ public:
                     m.E_Sep = get("E-Sep");
                     m.N_Sep = get("N-Sep");
                     m.H_Sep = get("H-Sep");
+
+                    m.PDOP = get("PDOP");
 
                     measurements_.push_back(m);
                 }
@@ -850,7 +854,7 @@ public:
         loop_edges.scale.x = 0.05;
         loop_edges.lifetime = ros::Duration(0); // stay forever
 
-        int max_index = curr_index + max_index_;
+        int max_index = curr_index + (max_index_ * std::max(1., hz/10.));
         std::cout<<"curr_index:"<<curr_index<<", max_index:"<<max_index<<std::endl;
         for (int i = curr_index; i < max_index; ++i)
         {
@@ -1082,10 +1086,17 @@ public:
         V3D t(m.Easting, m.Northing, m.H_Ell);
 
         auto pose = Sophus::SE3(R, t); // in GNSS
-        out = pose * Sophus::SE3(Rz, V3D(0, 0, 0)); //rotate to MLS standard
+        //pose = pose * Sophus::SE3(Rz, V3D(0, 0, 0)); //rotate to MLS standard   X right, y forward, z-up
 
 
-        out = extrinsic_.inverse() * out * extrinsic_; //put in MLS frame 
+        // IMU to GNSS Antenna Lever Arms:
+            //  x=0.009, y=-0.208, z=0.101 m (x-right, y-fwd, z-up)
+        // pose = Sophus::SE3(R, t + V3D(0.009, -0.208, 0.101)); 
+
+
+        out = pose;
+
+        // out = extrinsic_.inverse() * out * extrinsic_; //put in MLS frame 
         /////// out = extrinsic_ * out * extrinsic_.inverse(); //put in MLS frame 
     }
 
@@ -1225,6 +1236,9 @@ public:
         Sophus::SE3 p1, p2;
         toSE3(*result.prev, p1);
         toSE3(*result.next, p2);
+
+        //return p2; //remove this later 
+
         return interpolateSE3(p1, result.prev->tod, p2, result.next->tod, tod);
     }
 
@@ -1445,7 +1459,7 @@ public:
 
     std::uint64_t fullWeekSecs = 0;
     int gps_week;
-    double tow_sec, hz = 0.;
+    double tow_sec, hz = 10;
 
     pcl::KdTreeFLANN<pcl::PointXYZ> kdtree_trajectory;
     std::vector<std::pair<int, int>> closures;
@@ -1466,7 +1480,6 @@ public:
     Sophus::SE3 Lidar_wrt_IMU = Sophus::SE3();
     double radius = 5.0;
     int target_graph_key = 0;
-    // hz = 10.0;
     double min_time_separation_sec = 10.0; //seconds difference between poses 
     PointCloudXYZI::Ptr history;
 

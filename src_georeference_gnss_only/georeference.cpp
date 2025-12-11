@@ -134,29 +134,28 @@ void publishAccelerationArrow(ros::Publisher &marker_pub, const Eigen::Vector3d 
 #include "Batch.hpp"
 // #include "simple_loop_closure_node.hpp"
 
-
 //-------------------------------------------
-    #include <gtsam/geometry/Pose3.h>
-    #include <gtsam/geometry/Rot3.h>
-    #include <gtsam/nonlinear/NonlinearFactor.h>
-    #include <gtsam/nonlinear/NonlinearFactorGraph.h>
-    #include <gtsam/nonlinear/Values.h>
-    #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
-    #include <gtsam/inference/Symbol.h>
-    #include <gtsam/nonlinear/Marginals.h>
-    #include <gtsam/nonlinear/expressions.h>
-    #include <gtsam/base/numericalDerivative.h>
-    #include <gtsam/slam/PriorFactor.h>
-    #include <gtsam/nonlinear/ExpressionFactor.h>
-    #include <ceres/ceres.h>
-    #include <ceres/rotation.h>
+#include <gtsam/geometry/Pose3.h>
+#include <gtsam/geometry/Rot3.h>
+#include <gtsam/nonlinear/NonlinearFactor.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
+#include <gtsam/nonlinear/Values.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/inference/Symbol.h>
+#include <gtsam/nonlinear/Marginals.h>
+#include <gtsam/nonlinear/expressions.h>
+#include <gtsam/base/numericalDerivative.h>
+#include <gtsam/slam/PriorFactor.h>
+#include <gtsam/nonlinear/ExpressionFactor.h>
+#include <ceres/ceres.h>
+#include <ceres/rotation.h>
 
-    using namespace gtsam;
+using namespace gtsam;
 
-    using gtsam::symbol_shorthand::R; // Rotation key shorthand
-    using gtsam::symbol_shorthand::X; // extrinsic key X(0)
+using gtsam::symbol_shorthand::R; // Rotation key shorthand
+using gtsam::symbol_shorthand::X; // extrinsic key X(0)
 
-    using Matrix6 = Eigen::Matrix<double, 6, 6>;
+using Matrix6 = Eigen::Matrix<double, 6, 6>;
 // Solves AX = XB problem
 namespace motion_based_extrinsic_estimation
 {
@@ -169,7 +168,7 @@ namespace motion_based_extrinsic_estimation
         Pose3 delta_L_;
 
     public:
-        ExtrinsicSE3Factor(Key key, const Pose3 &delta_I, const Pose3 &delta_L,const SharedNoiseModel &model)
+        ExtrinsicSE3Factor(Key key, const Pose3 &delta_I, const Pose3 &delta_L, const SharedNoiseModel &model)
             : NoiseModelFactor1<Pose3>(model, key), delta_I_(delta_I), delta_L_(delta_L) {}
 
         Vector evaluateError(const Pose3 &T_I_L, OptionalMatrixType H) const override
@@ -198,13 +197,13 @@ namespace motion_based_extrinsic_estimation
 
     // define a custom point to point factor
 
-    // save the scans in lidar frame, 
+    // save the scans in lidar frame,
 
     // pass the scans, imu-lidar extrinsic, and the topic publisher
 
     // transform the scans and publish the init velues
 
-    // then do it iterativelly 
+    // then do it iterativelly
 
     Sophus::SE3 GtsamToSophus(const Pose3 &pose)
     {
@@ -212,8 +211,8 @@ namespace motion_based_extrinsic_estimation
         return Sophus::SE3(T.topLeftCorner<3, 3>(), T.topRightCorner<3, 1>());
     }
 
-    Sophus::SE3 find_extrinsic_motion_based(Sophus::SE3 &init_guess_, 
-        const std::vector<Sophus::SE3> &lidar_poses_, const std::vector<Sophus::SE3> &gnss_imu_poses_)
+    Sophus::SE3 find_extrinsic_motion_based(Sophus::SE3 &init_guess_,
+                                            const std::vector<Sophus::SE3> &lidar_poses_, const std::vector<Sophus::SE3> &gnss_imu_poses_)
     {
         std::vector<Sophus::SE3> A_, B_;
 
@@ -236,7 +235,7 @@ namespace motion_based_extrinsic_estimation
             if (trans_motion < 0.01 && rot_motion < (1.0 * M_PI / 180.0)) // 1 cm and 1 degree
             {
                 // skip static or nearly static pairs
-                //continue;
+                // continue;
             }
 
             Pose3 delta_L_true = Pose3(delta_L.matrix());
@@ -251,10 +250,11 @@ namespace motion_based_extrinsic_estimation
             B_.push_back(delta_I);
             added++;
         }
-        if(true){
-            for(int step = 2; step<4;step++)
+        if (true)
+        {
+            for (int step = 2; step < 4; step++)
             {
-                for (size_t i = 0; i < N-1; i += step)
+                for (size_t i = 0; i < N - 1; i += step)
                 {
                     auto delta_L = lidar_poses_[i].inverse() * lidar_poses_[i + 1];
                     auto delta_I = gnss_imu_poses_[i].inverse() * gnss_imu_poses_[i + 1];
@@ -265,7 +265,7 @@ namespace motion_based_extrinsic_estimation
                     if (trans_motion < 0.01 && rot_motion < (1.0 * M_PI / 180.0)) // 1 cm and 1 degree
                     {
                         // skip static or nearly static pairs
-                        //continue;
+                        // continue;
                     }
 
                     Pose3 delta_L_true = Pose3(delta_L.matrix());
@@ -282,7 +282,6 @@ namespace motion_based_extrinsic_estimation
                 }
             }
         }
-        
 
         std::cout << "Added " << added << "/" << N << " good measurements for estimation" << std::endl;
 
@@ -291,7 +290,8 @@ namespace motion_based_extrinsic_estimation
         auto priorNoise = noiseModel::Diagonal::Sigmas((Vector(6) << 999., 999., 999., 999., 999., 999.).finished());
         graph.add(PriorFactor<Pose3>(X(0), init_guess, priorNoise));
         initial.insert(X(0), init_guess);
-        std::cout << "Initial guess for extrinsic:\n"<< init_guess << std::endl;
+        std::cout << "Initial guess for extrinsic:\n"
+                  << init_guess << std::endl;
 
         // Optimize
         // LevenbergMarquardtParams params;
@@ -305,10 +305,9 @@ namespace motion_based_extrinsic_estimation
         return GtsamToSophus(T_I_L_est);
     }
 
-
-    Sophus::SE3 find_extrinsic_(Sophus::SE3 &init_guess_, 
-        const std::vector<Sophus::SE3> &lidar_poses_, const std::vector<Sophus::SE3> &gnss_imu_poses_,
-    const std::vector<PointCloudXYZI::Ptr> &scans_in_base_frame, ros::Publisher &pub_, const Sophus::SE3 &Lidar_wrt_IMU)
+    Sophus::SE3 find_extrinsic_(Sophus::SE3 &init_guess_,
+                                const std::vector<Sophus::SE3> &lidar_poses_, const std::vector<Sophus::SE3> &gnss_imu_poses_,
+                                const std::vector<PointCloudXYZI::Ptr> &scans_in_base_frame, ros::Publisher &pub_, const Sophus::SE3 &Lidar_wrt_IMU)
     {
         NonlinearFactorGraph graph;
         Values initial;
@@ -318,8 +317,6 @@ namespace motion_based_extrinsic_estimation
 
         int N = gnss_imu_poses_.size();
         int added = 0;
-
-        
 
         for (size_t i = 0; i + 1 < N; ++i)
         {
@@ -332,7 +329,7 @@ namespace motion_based_extrinsic_estimation
             if (trans_motion < 0.01 && rot_motion < (1.0 * M_PI / 180.0)) // 1 cm and 1 degree
             {
                 // skip static or nearly static pairs
-                //continue;
+                // continue;
             }
 
             Pose3 delta_L_true = Pose3(delta_L.matrix());
@@ -345,7 +342,7 @@ namespace motion_based_extrinsic_estimation
 
             added++;
         }
-        
+
         std::cout << "Added " << added << "/" << N << " good measurements for estimation" << std::endl;
 
         Pose3 init_guess = Pose3(init_guess_.matrix());
@@ -353,7 +350,8 @@ namespace motion_based_extrinsic_estimation
         auto priorNoise = noiseModel::Diagonal::Sigmas((Vector(6) << 999., 999., 999., 999., 999., 999.).finished());
         graph.add(PriorFactor<Pose3>(X(0), init_guess, priorNoise));
         initial.insert(X(0), init_guess);
-        std::cout << "Initial guess for extrinsic:\n"<< init_guess << std::endl;
+        std::cout << "Initial guess for extrinsic:\n"
+                  << init_guess << std::endl;
 
         // Optimize
         // LevenbergMarquardtParams params;
@@ -370,15 +368,15 @@ namespace motion_based_extrinsic_estimation
         PointCloudXYZI::Ptr lc_map;
         lc_map.reset(new PointCloudXYZI());
 
-        for(int i=0;i<N;i++)
+        for (int i = 0; i < N; i++)
         {
-            PointCloudXYZI::Ptr cloud_in_sensor_frame(new PointCloudXYZI); 
+            PointCloudXYZI::Ptr cloud_in_sensor_frame(new PointCloudXYZI);
             *cloud_in_sensor_frame = *scans_in_base_frame[i];
 
             // TransformPoints(Lidar_wrt_IMU, cloud_in_sensor_frame); // lidar to IMU frame - front IMU
-            
+
             Sophus::SE3 gnss = E.inverse() * gnss_imu_poses_[i] * E;
-            
+
             gnss = lidar_poses_[i];
 
             // TransformPoints(gnss, cloud_in_sensor_frame); // georeference with se3 in IMU frame
@@ -386,10 +384,10 @@ namespace motion_based_extrinsic_estimation
             // *lc_map += *cloud_in_sensor_frame;
 
             int size = cloud_in_sensor_frame->points.size();
-    PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
+            PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
 
-    tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
-                      {
+            tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
+                              {
                     for (int i = r.begin(); i < r.end(); i++)
                     //for (int i = 0; i < size; i++)
                     {
@@ -411,29 +409,24 @@ namespace motion_based_extrinsic_estimation
 
                     } });
 
-                    *lc_map += *laserCloudWorld;
+            *lc_map += *laserCloudWorld;
 
-                    break;
+            break;
         }
 
-        std::cout<<"lc_map:"<<lc_map->size()<<std::endl;
+        std::cout << "lc_map:" << lc_map->size() << std::endl;
 
         sensor_msgs::PointCloud2 cloud_msg;
         cloud_msg.header.stamp = ros::Time::now();
-        
+
         cloud_msg.header.frame_id = "world";
         lc_map->header.frame_id = "world";
         pcl::toROSMsg(*lc_map, cloud_msg);
         pub_.publish(cloud_msg);
 
-
-
-
         return GtsamToSophus(T_I_L_est);
     }
 };
-
-
 
 void DataHandler::Subscribe()
 {
@@ -508,26 +501,23 @@ void DataHandler::Subscribe()
 
     gnss2lidar = Sophus::SE3();
 
-    //if(false)
+    // if(false)
     //{
-        //Pose3 predicted = T_I_L * delta_L_ * T_I_L.inverse();
+    // Pose3 predicted = T_I_L * delta_L_ * T_I_L.inverse();
 
-        M3D R_I_L; //Euler angles (deg):   1.233226743639   0.841228525666 -14.487433958872
+    M3D R_I_L; // Euler angles (deg):   0.378909998817  -1.733002910552 -15.061522731925
 
-        R_I_L << 0.999660613808, -0.024509884416, 0.008827387358,
-                0.021519885521, 0.967899217368, 0.250415653555,
-                -0.014681680040, -0.250140701574, 0.968098175645;
-        
-        
-        V3D t_I_L = V3D(-0.058415769091,  2.462439191798,  1.597141523408);
-        
+    R_I_L << 0.999520748959, 0.001472395834, -0.030920938727,
+        0.006610154017, 0.965678210266, 0.259657274270,
+        0.030241995059, -0.259737225418, 0.965205675215;
 
-        R_I_L = M3D::Identity();
+    // R_I_L = M3D::Identity();
 
-        t_I_L = V3D(0.016383640738, 2.174969738323, 1.486281709111);
+    V3D t_I_L = V3D(-0.078173361476, 2.491416912247, 1.124627820134);
 
-        auto extrinsic_ = Sophus::SE3(R_I_L, t_I_L);
-        //extrinsic_ = gnss2lidar;
+    auto extrinsic_ = Sophus::SE3(R_I_L, t_I_L);
+
+    // extrinsic_ = gnss2lidar;
     //}
 
     //----------------------------------------------------------------------------
@@ -545,7 +535,7 @@ void DataHandler::Subscribe()
 
     bool use_lc = false; // true;
     // an extrinsic transformation is passed here to transform the ppk gnss-imu orientaiton into mls frame
-    reader.read(postprocessed_gnss_path, extrinsic_, use_lc, filter_size_surf_min);
+    reader.read(postprocessed_gnss_path, gnss2lidar, use_lc, filter_size_surf_min);
     reader.Lidar_wrt_IMU = Lidar_wrt_IMU;
 
     // --- Access measurements ---
@@ -659,6 +649,9 @@ void DataHandler::Subscribe()
     std::vector<Sophus::SE3> gnss_imu_poses_;
     std::vector<PointCloudXYZI::Ptr> scans_in_base_frame;
 
+    // std::vector<double> time_gnss, time_lidar, inddex_;
+    // std::vector<double> imu_idx, ba_x,ba_y,ba_z, bw_x,bw_y,bw_z,v_x,v_y,v_z, imu_msgs;
+
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -762,13 +755,12 @@ void DataHandler::Subscribe()
                         first_ppk_gnss_pose_inverse = Sophus::SE3(M3D::Identity(), interpolated_pose.translation()).inverse();
 
                         // doing this we put everything in the frame of the first pose - gravity here is not the earth gravity
-                        //first_ppk_gnss_pose_inverse = interpolated_pose.inverse(); //this will rotate the world - so that gravity
+                        // first_ppk_gnss_pose_inverse = interpolated_pose.inverse(); //this will rotate the world - so that gravity
                         // the earth gravity can be added using the current system rotation in the world frame
 
-                        //first_ppk_gnss_pose_inverse = extrinsic_.inverse()  * first_ppk_gnss_pose_inverse * extrinsic_;
-
                         tmp_pose = first_ppk_gnss_pose_inverse * interpolated_pose;
-                        //tmp_pose = extrinsic_.inverse()  * tmp_pose * extrinsic_;
+                        tmp_pose = Sophus::SE3(tmp_pose.so3().matrix(), V3D::Zero());
+                        // tmp_pose = extrinsic_.inverse()  * tmp_pose * extrinsic_;
 
                         // Convert to Euler (ZYX: yaw-pitch-roll)
                         V3D euler = interpolated_pose.so3().matrix().eulerAngles(2, 1, 0);
@@ -785,7 +777,7 @@ void DataHandler::Subscribe()
                     double time_start = time_of_day_sec - .1;
                     double time_end = time_of_day_sec;
 
-                    auto interpolated_pose = reader.closestPose(time_start);
+                    auto interpolated_pose = reader.closestPose(time_end);
                     // auto interpolated_pose = reader.closestPoseUnix(lidar_end_time);
                     // reader.toSE3(measurements[tmp_index+27], interpolated_pose);
 
@@ -794,10 +786,13 @@ void DataHandler::Subscribe()
 
                     se3 = T_LG * first_ppk_gnss_pose_inverse * interpolated_pose; // in first frame
 
-
-                    //se3 = extrinsic_.inverse()  * se3 * extrinsic_;
-
                     publish_ppk_gnss(se3, msg_time);
+
+                    // time_gnss.push_back(msg_time);
+                    // double lidar_shifted = time_end + 1;
+                    // time_lidar.push_back(lidar_shifted);
+                    // inddex_.push_back(time_gnss.size());
+
                     if (false)
                     {
                         // reader.addEarthGravity(measurements[reader.curr_index], raw_gyro, raw_acc, G_m_s2); //this will add the world gravity
@@ -857,7 +852,8 @@ void DataHandler::Subscribe()
                     {
                         state_point = estimator_.get_x();
                         // lidar predicted pose
-                        Sophus::SE3 T_L0 = Sophus::SE3(state_point.rot, state_point.pos); // first LiDAR–inertial pose
+                        // Sophus::SE3 T_L0 = Sophus::SE3(state_point.rot, state_point.pos); // first LiDAR–inertial pose
+                        Sophus::SE3 T_L0 = Sophus::SE3(state_point.rot, V3D(0, 0, 0)); // first LiDAR–inertial pose
 
                         // Alignment transform: GNSS -> LiDAR
                         // T_LG = T_L0 * se3.inverse();
@@ -874,15 +870,7 @@ void DataHandler::Subscribe()
 
                         //----------------------------------------
 
-                        // T_LG = Sophus::SE3();
-                        //  {
-                        //      //use only the rotation
-                        //      Sophus::SE3 T_L0 = Sophus::SE3(state_point.rot, V3D(0,0,0)); // first LiDAR–inertial pose
-                        //      tmp_pose = Sophus::SE3(tmp_pose.so3().matrix(), V3D(0,0,0));
-
-                        //     T_LG = T_L0 * tmp_pose.inverse();
-                        // }
-
+                        // T_LG = Sophus::SE3(); //this shoud be identity when using for extrinsics
                         ppk_gnss_oriented = true;
 
                         Sophus::SE3 put_trajectory_in_this_Frame = T_LG * first_ppk_gnss_pose_inverse;
@@ -903,13 +891,6 @@ void DataHandler::Subscribe()
 
                     downSizeFilterSurf.setInputCloud(feats_undistort);
                     downSizeFilterSurf.filter(*feats_down_body);
-
-                    // auto p1 = feats_undistort->points[0];
-                    // auto p2 = feats_down_body->points[0];
-                    // auto r1 = p1.x * p1.x + p1.y * p1.y + p1.z * p1.z;
-                    // auto r2 = p2.x * p2.x + p2.y * p2.y + p2.z * p2.z;
-                    // std::cout<<"\nfeats_undistort [x,y,z,i,sqrt(sqrt(r))]:"<<p1.x<<", "<<p1.y<<", "<<p1.z<<", "<<p1.intensity<<", "<<sqrt(sqrt(r1))<<std::endl;
-                    // std::cout<<"feats_down_body [x,y,z,i,sqrt(sqrt(r))]:"<<p2.x<<", "<<p2.y<<", "<<p2.z<<", "<<p2.intensity<<", "<<sqrt(sqrt(r2))<<std::endl;
 
                     feats_down_size = feats_down_body->points.size();
                     if (feats_down_size < 5)
@@ -946,35 +927,36 @@ void DataHandler::Subscribe()
                     // register to MLS map  ----------------------------------------------
                     Nearest_Points.resize(feats_down_size);
 
-                    bool use_se3_update = true;// false;     // true;
-                    // do not touch these
-                    V3D std_pos_m = V3D(1, 1, 1);   // V3D(.005, .005, .005);
-                    V3D std_rot_deg = V3D(5, 5, 5); // 1 degree
+                    bool use_se3_update = true; // false;     // true;
+                    V3D std_pos_m = V3D(.5, .5, .5);
+                    V3D std_rot_deg = V3D(10, 10, 10);
 
-                    std_pos_m = V3D(.01, .01, .01); // V3D(.005, .005, .005);
-                    std_rot_deg = V3D(25, 25, 25);
-                    if (true)
+                    std_pos_m = V3D(.01, .01, .01);
+                    std_rot_deg = V3D(.1, .1, .1);
+
+                    if (false)
+                    {
+                        const auto &mi = measurements[reader.curr_index];
+                        V3D tran_std = V3D(mi.SDEast, mi.SDNorth, mi.SDHeight); // in meters
+                        V3D rot_std = V3D(mi.RollSD, mi.PitchSD, mi.HdngSD);    // in degrees
+                        std::cout << "GNSS tran:" << tran_std.transpose() << " m" << std::endl;
+                        std::cout << "GNSS rot :" << rot_std.transpose() << " deg" << std::endl;
+
                         {
-                            const auto &mi = measurements[reader.curr_index];
-                            V3D tran_std = V3D(mi.SDEast, mi.SDNorth, mi.SDHeight); // in meters
-                            V3D rot_std = V3D(mi.RollSD, mi.PitchSD, mi.HdngSD);    // in degrees
-                            // std::cout<<"GNSS tran:"<<tran_std.transpose()<<" m"<<std::endl;
-                            // std::cout<<"GNSS rot :"<<rot_std.transpose()<<" deg"<<std::endl;
+                            double scale = 100; // 9;
+                            M3D R = (T_LG * first_ppk_gnss_pose_inverse).so3().matrix();
 
-                            {
-                                double scale = 1;//.1; // 10;
-                                M3D R = (T_LG * first_ppk_gnss_pose_inverse).so3().matrix();
-                                std_pos_m = scale * (R * tran_std).cwiseAbs();
-                                // std_rot_deg  = scale*((R * rot_std).cwiseAbs() * 180.0/M_PI);
+                            std_pos_m = scale * (R * tran_std).cwiseAbs();
+                            std_rot_deg = 100 * ((R * rot_std).cwiseAbs()); // * 180.0/M_PI
 
-                                std::cout << "Transformed translation std (m): " << std_pos_m.transpose() << "\n";
-                                std::cout << "Transformed rotation std (deg): " << std_rot_deg.transpose() << "\n";
-                            }
+                            std::cout << "Transformed translation std (m): " << std_pos_m.transpose() << "\n";
+                            std::cout << "Transformed rotation std (deg): " << std_rot_deg.transpose() << "\n";
                         }
+                    }
 
                     bool use_als_update = false; // true;
 
-                    use_als = false;// true; // false;
+                    use_als = false; // true; // false;
                     if (use_als)
                     {
                         if (!als_obj->refine_als) // als was not setup
@@ -1005,11 +987,13 @@ void DataHandler::Subscribe()
                                 }
                                 else
                                 {
-                                    std::cout << "Init ALS from known T" << std::endl;
-                                    als_obj->init(known_als2mls);
+                                    // std::cout << "Init ALS from known T" << std::endl;
+                                    // als_obj->init(known_als2mls);
+
+                                    als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
                                 }
                                 // TO BE DONE: take the initialization from GNSS-INS as int guess
-                                //  als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
+                                // als_obj->init(known_als2mls, laserCloudSurfMap); // with refinement
 
                                 gnss_obj->updateExtrinsic(als_obj->R_to_mls); // use the scan-based refined rotation for GNSS
                                 als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
@@ -1033,7 +1017,7 @@ void DataHandler::Subscribe()
                                 std::cin.get();
 
                                 // reset local map - this should be reset, since it contains accumulated drift
-                                //laserCloudSurfMap.reset(new PointCloudXYZI());
+                                laserCloudSurfMap.reset(new PointCloudXYZI());
                             }
                         }
                         else // als was set up
@@ -1095,7 +1079,7 @@ void DataHandler::Subscribe()
                     //     std::cout << "\n------------------MLS update failed--------------------------------" << std::endl;
                     // }
 
-                    //use_als_update =  false;
+                    use_als_update = false;
                     bool have_lc_ref = false;
                     if (use_lc)
                     {
@@ -1132,6 +1116,25 @@ void DataHandler::Subscribe()
                                           use_se3_update, se3, std_pos_m, std_rot_deg,
                                           have_lc_ref, reader.lc_map, reader.lc_tree);
 
+                    // std_pos_m = V3D(GNSS_VAR, GNSS_VAR, GNSS_VAR);
+                    // std_rot_deg = V3D(100, 100, 100);
+                    // estimator_.update_se3(se3, NUM_MAX_ITERATIONS, std_pos_m, std_rot_deg);
+
+                    // THIS ONE WORKS
+                    //  const bool global_error = false; // set this true for global error of gps
+                    //  // auto gps_cov_ = gnss_obj->gps_cov;
+                    // auto gps_cov_ = V3D(GNSS_VAR * GNSS_VAR, GNSS_VAR * GNSS_VAR, GNSS_VAR * GNSS_VAR);
+                    //  // const V3D &gnss_in_mls = gnss_pose.translation();
+                    //  V3D gnss_in_mls = se3.translation();
+                    //  estimator_.update(gnss_in_mls, gps_cov_, NUM_MAX_ITERATIONS, global_error);
+
+                    if ((se3.inverse() * curr_mls).log().norm() > 5)
+                    {
+                        std::cout << "detected crash.." << std::endl;
+                        std::cin.get();
+                        break;
+                    }
+
                     if (use_lc)
                     {
                         state_point = estimator_.get_x();
@@ -1140,7 +1143,7 @@ void DataHandler::Subscribe()
                         reader.cloud_and_odom_callback(pubLaserCloudDebug, feats_down_body, curr_mls, cov_, have_lc_ref); // build the graph and save the scans
                     }
 
-                    //als_integrated = true; // to save the poses
+                    // als_integrated = true; // to save the poses
 
                     // if(imu_obj->backwardPass(Measures, estimator_, *feats_undistort))
                     // {
@@ -1169,8 +1172,8 @@ void DataHandler::Subscribe()
                         auto std_pos_m = V3D(.5, .5, .5); // take this from the measurement itself - 10cm
                         auto std_rot_deg = V3D(1, 1, 1);  //- 5 degrees
 
-                        std_pos_m = V3D(.05, .05, .05); // take this from the measurement itself - 10cm
-                        std_rot_deg = V3D(.1, .1, .1);  //- 5 degrees
+                        std_pos_m = V3D(.01, .01, .01);
+                        std_rot_deg = V3D(.1, .1, .1);
 
                         if (false)
                         {
@@ -1181,10 +1184,10 @@ void DataHandler::Subscribe()
                             // std::cout<<"GNSS rot :"<<rot_std.transpose()<<" deg"<<std::endl;
 
                             {
-                                double scale = .1; // 10;
+                                double scale = 1; // 10;
                                 M3D R = (T_LG * first_ppk_gnss_pose_inverse).so3().matrix();
                                 std_pos_m = scale * (R * tran_std).cwiseAbs();
-                                // std_rot_deg  = scale*((R * rot_std).cwiseAbs() * 180.0/M_PI);
+                                std_rot_deg = scale * ((R * rot_std).cwiseAbs() * 180.0 / M_PI);
 
                                 std::cout << "Transformed translation std (m): " << std_pos_m.transpose() << "\n";
                                 std::cout << "Transformed rotation std (deg): " << std_rot_deg.transpose() << "\n";
@@ -1197,10 +1200,28 @@ void DataHandler::Subscribe()
                     state_point = estimator_.get_x();
                     curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
 
+                    // {
+                    //     ba_x.push_back(state_point.ba.x());
+                    //     ba_y.push_back(state_point.ba.y());
+                    //     ba_z.push_back(state_point.ba.z());
+
+                    //     bw_x.push_back(state_point.bg.x());
+                    //     bw_y.push_back(state_point.bg.y());
+                    //     bw_z.push_back(state_point.bg.z());
+
+                    //     v_x.push_back(state_point.vel.x());
+                    //     v_y.push_back(state_point.vel.y());
+                    //     v_z.push_back(state_point.vel.z());
+
+                    //     imu_idx.push_back(ba_x.size());
+
+                    //     imu_msgs.push_back(Measures.imu.size());
+                    // }
+
                     // Update the local map--------------------------------------------------
                     feats_down_world->resize(feats_down_size);
 
-                    local_map_update(); // this will update local map with curr measurements and crop the map
+                    // local_map_update(); // this will update local map with curr measurements and crop the map
                     // Publish odometry and point clouds------------------------------------
 
                     publish_odometry(pubOdomAftMapped);
@@ -1323,21 +1344,21 @@ void DataHandler::Subscribe()
                         }
                     }
 
-                    // EXTRINSIC ESTIMATION - Motion based 
-                    if (true)
+                    // EXTRINSIC ESTIMATION - Motion based
+                    if (false && als_integrated)
                     {
                         curr_mls = Sophus::SE3(state_point.rot, state_point.pos); // updated pose
-                        lidar_poses_.push_back(curr_mls); //mls frame
+                        lidar_poses_.push_back(curr_mls);                         // mls frame
                         gnss_imu_poses_.push_back(se3);
 
-                        *feats_down_body = *Measures.lidar;
+                        //*feats_down_body = *Measures.lidar;
 
                         scans_in_base_frame.push_back(feats_down_body);
 
                         auto dist = se3.translation().norm();
 
-                        std::cout << "dist:" << dist << std::endl;
-                        if (dist >= 500) //200
+                        std::cout << "dist:" << dist << ", als_integrated:" << als_integrated << std::endl;
+                        if (dist >= 500) // 200
                         {
                             Sophus::SE3 extrins = Sophus::SE3();
 
@@ -1354,16 +1375,15 @@ void DataHandler::Subscribe()
                             std::cout << "extrins:\n"
                                       << extrins.matrix() << std::endl;
 
-                            extrins = Sophus::SE3();
+                            // extrins = Sophus::SE3();
 
-                            extrins = motion_based_extrinsic_estimation::find_extrinsic_(extrins, lidar_poses_, gnss_imu_poses_,
-                                                      scans_in_base_frame, lc_map_pub, Lidar_wrt_IMU);
-                            
+                            // extrins = motion_based_extrinsic_estimation::find_extrinsic_(extrins, lidar_poses_, gnss_imu_poses_,
+                            //                           scans_in_base_frame, lc_map_pub, Lidar_wrt_IMU);
+
                             std::cout << "\nEnd calibration, press enter..." << std::endl;
                             std::cin.get();
 
-                            //throw std::runtime_error("Finished extrinsic estimation");
-
+                            // throw std::runtime_error("Finished extrinsic estimation");
                         }
                     }
 
@@ -1414,6 +1434,55 @@ void DataHandler::Subscribe()
         b->close();
 
     // cv::destroyAllWindows(); */
+
+    if (false)
+    {
+        // plt::scatter(inddex_, time_gnss, 3, {{"label", "time_gnss"}, {"color", "blue"}});
+        // plt::scatter(inddex_, time_lidar, 3, {{"label", "time_lidar"}, {"color", "red"}});
+
+        // plt::figure();
+        // plt::title("BIAS acc");
+        // plt::plot(imu_idx, ba_x, {{"label", "acc bias x"}, {"color", "red"}});
+        // plt::plot(imu_idx, ba_y, {{"label", "acc bias y"}, {"color", "green"}});
+        // plt::plot(imu_idx, ba_z, {{"label", "acc bias z"}, {"color", "blue"}});
+        // plt::grid(true);
+        // plt::legend();
+        // plt::draw();
+
+        // //plt::show();
+
+        // //imu_idx, ba_x,ba_y,ba_z, bw_x,bw_y,bw_z,v_x,vy,vz;
+
+        // plt::figure();
+        // plt::title("BIAS gyro");
+        // plt::plot(imu_idx, bw_x, {{"label", "gyro bias x"}, {"color", "red"}});
+        // plt::plot(imu_idx, bw_y, {{"label", "gyro bias y"}, {"color", "green"}});
+        // plt::plot(imu_idx, bw_z, {{"label", "gyro bias z"}, {"color", "blue"}});
+        // plt::grid(true);
+        // plt::legend();
+        // plt::draw();
+
+        // plt::figure();
+        // plt::title("Velocity");
+        // plt::plot(imu_idx, v_x, {{"label", "vel x"}, {"color", "red"}});
+        // plt::plot(imu_idx, v_y, {{"label", "vel y"}, {"color", "green"}});
+        // plt::plot(imu_idx, v_z, {{"label", "vel z"}, {"color", "blue"}});
+        // plt::grid(true);
+        // plt::legend();
+        // plt::draw();
+
+        // plt::figure();
+        // plt::title("NUmber of imu_msgs");
+        // plt::plot(imu_idx, imu_msgs, {{"label", "imu_msgs"}, {"color", "red"}});
+        // plt::grid(true);
+        // plt::legend();
+        // plt::draw();
+
+        // plt::show();
+
+        // std::cout << "\nsynchronised\n, press enter..." << std::endl;
+        // std::cin.get();
+    }
 
     plt::close();
 }
