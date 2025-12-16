@@ -3309,6 +3309,7 @@ public:
         const std::vector<T>& u, const std::vector<T>& v, const std::vector<T>& w,
         const std::vector<T>& xGT, const std::vector<T>& yGT, const std::vector<T>& zGT,
         const std::vector<T>& uGT, const std::vector<T>& vGT, const std::vector<T>& wGT,
+        const std::vector<T>& x_, const std::vector<T>& y_, const std::vector<T>& z_,
         double s)
     {   
 
@@ -3340,12 +3341,12 @@ public:
         }
 
         //--- IMU translation (scatter) ---
-        if(false)
+        if(true)
         {
             PyObject* args = PyTuple_New(3);
-            PyTuple_SetItem(args, 0, detail::get_array(x));
-            PyTuple_SetItem(args, 1, detail::get_array(y));
-            PyTuple_SetItem(args, 2, detail::get_array(z));
+            PyTuple_SetItem(args, 0, detail::get_array(x_));
+            PyTuple_SetItem(args, 1, detail::get_array(y_));
+            PyTuple_SetItem(args, 2, detail::get_array(z_));
 
             PyObject* kwargs = PyDict_New();
             PyDict_SetItemString(kwargs, "s", PyFloat_FromDouble(s));
@@ -3372,7 +3373,7 @@ public:
 
             PyObject* kwargs = PyDict_New();
             PyDict_SetItemString(kwargs, "color", PyString_FromString(c[i % 2].c_str()));
-            PyDict_SetItemString(kwargs, "s", PyFloat_FromDouble(3*s));
+            PyDict_SetItemString(kwargs, "s", PyFloat_FromDouble(4*s));
             PyDict_SetItemString(kwargs, "label", PyString_FromString(labels[i % 2].c_str()));
 
             PyObject* ret = PyObject_Call(scatter, args, kwargs);
@@ -3479,8 +3480,8 @@ public:
         clear_axis(ax2,"Smoothed");
 
         // Plot the same thing on both axes
-        plot_on_axis(ax1, x,  y,   z,  u,  v,  w, xGT, yGT, zGT, uGT, vGT, wGT, s);
-        plot_on_axis(ax2, x2, y2, z2, u2, v2, w2, xGT, yGT, zGT, uGT, vGT, wGT, s);
+        plot_on_axis(ax1, x,  y,   z,  u,  v,  w, xGT, yGT, zGT, uGT, vGT, wGT, x2, y2, z2, s);
+        plot_on_axis(ax2, x2, y2, z2, u2, v2, w2, xGT, yGT, zGT, uGT, vGT, wGT, x2, y2, z2, s);
 
         draw();
         pause(0.0001);
