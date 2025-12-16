@@ -91,6 +91,29 @@ void GNSS::Process(std::deque<gps_common::GPSFix::ConstPtr> &gps_buffer,
             diff_curr_gnss2mls = gps_time - lidar_end_time; // gps_time = diff_curr_gnss2mls + lidar_end_time
         }
 
+        // {
+        //     //GNSS yaw
+        //     Eigen::Vector2d dir(0,0);
+        //     for (int i = 1; i < gnss_pos.size(); ++i)
+        //     {
+        //         Eigen::Vector2d d = (gnss_pos[i] - gnss_pos[i-1]).head<2>(); //delta vel on plane 
+        //         if (d.norm() > 0.5)
+        //             dir += d.normalized();
+        //     }
+        //     //init yaw angle of the orientation
+        //     double yaw = std::atan2(dir.y(), dir.x());
+        //     //Roll & pitch from gravity
+        //     Eigen::Vector3d g_b = -acc_mean.normalized();
+        //     Eigen::Vector3d z_w(0,0,-1);
+        //     Eigen::Quaterniond q_rp = Eigen::Quaterniond::FromTwoVectors(g_b, z_w);
+        //     //Combine yaw
+        //     Eigen::AngleAxisd yaw_rot(yaw, Eigen::Vector3d::UnitZ());
+        //     Eigen::Quaterniond q_init = yaw_rot * q_rp;
+        //     //initial LiDAR pose
+        //     imu_state.rot = Sophus::SO3(q_init);
+        //     imu_state.pos = gnss_pos[0];
+        // }
+
         if(true)
         {
             auto gpsTime = msg->time; //this is the actual GPS time  1980-01-06

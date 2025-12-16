@@ -109,24 +109,24 @@ state Estimator::boxplus(state x, vectorized_state f_)
     x_r.rot = x.rot * Sophus::SO3::exp(f_.block<3, 1>(R_ID, 0));
 
     // rotation and translation are coupled tightly coupled
-    if (coupled_rotation_translation)
-    {
-        // Sophus::SE3 T_updated_right = Sophus::SE3(x.rot, x.pos) * Sophus::SE3::exp(f_.block<6, 1>(P_ID, 0));
-        // Sophus::SE3 T_updated_left = Sophus::SE3::exp(f_.block<6, 1>(P_ID, 0)) * Sophus::SE3(x.rot, x.pos);
+    // if (coupled_rotation_translation)
+    // {
+    //     // Sophus::SE3 T_updated_right = Sophus::SE3(x.rot, x.pos) * Sophus::SE3::exp(f_.block<6, 1>(P_ID, 0));
+    //     // Sophus::SE3 T_updated_left = Sophus::SE3::exp(f_.block<6, 1>(P_ID, 0)) * Sophus::SE3(x.rot, x.pos);
 
-        // //Sophus::SE3 T_updated = T_updated_right;
-        // Sophus::SE3 T_updated = T_updated_left;
+    //     // //Sophus::SE3 T_updated = T_updated_right;
+    //     // Sophus::SE3 T_updated = T_updated_left;
 
-        // x_r.pos = T_updated.translation();
-        // x_r.rot = T_updated.so3();
+    //     // x_r.pos = T_updated.translation();
+    //     // x_r.rot = T_updated.so3();
 
-        x_r.pos = x.pos + x.rot * f_.block<3, 1>(P_ID, 0);  // Translation in body frame
-    }
-    else
-    {
+    //     x_r.pos = x.pos + x.rot * f_.block<3, 1>(P_ID, 0);  // Translation in body frame
+    // }
+    // else
+    // {
         // rotation and translation are weakly coupled
         x_r.pos = x.pos + f_.block<3, 1>(P_ID, 0);
-    }
+    // }
 
     x_r.offset_R_L_I = x.offset_R_L_I * Sophus::SO3::exp(f_.block<3, 1>(Re_ID, 0));
     x_r.offset_T_L_I = x.offset_T_L_I + f_.block<3, 1>(Te_ID, 0);
@@ -149,14 +149,14 @@ vectorized_state Estimator::boxminus(state x1, state x2)
     x_r.block<3, 1>(R_ID, 0) = Sophus::SO3(x2.rot.matrix().transpose() * x1.rot.matrix()).log();
 
     // rotation and translation are coupled coupled
-    if (coupled_rotation_translation)
-    {
-        Sophus::SE3 T1(x1.rot, x1.pos);
-        Sophus::SE3 T2(x2.rot, x2.pos);
-        Eigen::Matrix<double, 6, 1> dx = (T2.inverse() * T1).log();
-        x_r.block<3, 1>(P_ID, 0) = dx.block<3, 1>(P_ID, 0);
-        x_r.block<3, 1>(R_ID, 0) = dx.block<3, 1>(R_ID, 0);
-    }
+    // if (coupled_rotation_translation)
+    // {
+    //     Sophus::SE3 T1(x1.rot, x1.pos);
+    //     Sophus::SE3 T2(x2.rot, x2.pos);
+    //     Eigen::Matrix<double, 6, 1> dx = (T2.inverse() * T1).log();
+    //     x_r.block<3, 1>(P_ID, 0) = dx.block<3, 1>(P_ID, 0);
+    //     x_r.block<3, 1>(R_ID, 0) = dx.block<3, 1>(R_ID, 0);
+    // }
 
     x_r.block<3, 1>(Re_ID, 0) = Sophus::SO3(x2.offset_R_L_I.matrix().transpose() * x1.offset_R_L_I.matrix()).log();
     x_r.block<3, 1>(Te_ID, 0) = x1.offset_T_L_I - x2.offset_T_L_I;

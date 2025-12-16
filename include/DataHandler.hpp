@@ -269,6 +269,17 @@ public:
                     std::cout << "\033[32mSave the poses to: " << poseSavePath << "\033[0m" << std::endl;
                 }
             }
+            namespace fs = boost::filesystem;
+
+                fs::path dir(poseSavePath);
+
+                if (!fs::exists(dir)) {
+                    throw std::runtime_error("ERROR: Directory does not exist: " + poseSavePath);
+                }
+                if (!fs::is_directory(dir)) {
+                    throw std::runtime_error("ERROR: Path exists but is not a directory: " + poseSavePath);
+                }
+                std::cout << "[INFO] Directory exists: " << poseSavePath << std::endl;
         }
 #endif
 

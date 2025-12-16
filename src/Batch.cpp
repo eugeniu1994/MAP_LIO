@@ -1068,7 +1068,7 @@ void Batch::update_all(state &_state, const double &lidar_beg_time, const double
     change the correctionNoise for X(.) - take it from the system provided it
     */
 
-    std::cout << "update_se3" << std::endl;
+    std::cout << "Batch update_se3" << std::endl;
     if (imuQueOpt.empty())
     {
         std::cout << "No imuQueOpt messages" << std::endl;

@@ -1088,12 +1088,6 @@ public:
         auto pose = Sophus::SE3(R, t); // in GNSS
         //pose = pose * Sophus::SE3(Rz, V3D(0, 0, 0)); //rotate to MLS standard   X right, y forward, z-up
 
-
-        // IMU to GNSS Antenna Lever Arms:
-            //  x=0.009, y=-0.208, z=0.101 m (x-right, y-fwd, z-up)
-        // pose = Sophus::SE3(R, t + V3D(0.009, -0.208, 0.101)); 
-
-
         out = pose;
 
         // out = extrinsic_.inverse() * out * extrinsic_; //put in MLS frame 
