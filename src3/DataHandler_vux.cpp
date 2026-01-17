@@ -1184,6 +1184,7 @@ void DataHandler::Subscribe()
                 curr_raw_gnss_diff_time = gnss_obj->diff_curr_gnss2mls;
 
                 double time_of_day_sec = gnss_obj->tod;
+                #define integrate_vux
 #ifdef integrate_vux
 
                 if (gnss_obj->gps_init_origin && time_of_day_sec > .0001)
@@ -1724,6 +1725,9 @@ void DataHandler::Subscribe()
                             break;
                         }
                     }
+               
+               
+               
                 }
 #endif
 

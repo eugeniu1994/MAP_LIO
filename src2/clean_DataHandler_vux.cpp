@@ -215,10 +215,11 @@ void DataHandler::local_map_update()
     pcl::PointCloud<PointType>::Ptr tmpSurf(new pcl::PointCloud<PointType>());
     
     double local_map_radius = 150;// 100;// 75;// ;
-    //local_map_radius = 400;
 
-    local_map_radius = 100;// to make it faster
-    
+    local_map_radius = 100;
+                    
+    //local_map_radius = 500;//for extrinsic calibration 
+
     double x_min = state_point.pos.x() - local_map_radius;
     double y_min = state_point.pos.y() - local_map_radius;
     double z_min = state_point.pos.z() - local_map_radius;

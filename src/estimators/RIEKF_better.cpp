@@ -102,6 +102,8 @@ using Jacobian_point = Eigen::Matrix<double, 3, state_size>;
 
 using Jacobian_plane = Eigen::Matrix<double, 1, state_size>;
 
+double robust_sigma = 0.2;
+
 double cauchy(double residual, double scale = 1.0)
 {
     double x = residual / scale;
@@ -114,8 +116,8 @@ double huber(double residual, double threshold = 1.0)
     return abs_r <= threshold ? 1.0 : threshold / abs_r;
 }
 
-double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, const std::vector<bool> &global_valid, 
-    const std::vector<landmark> &global_landmarks)
+double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, const std::vector<bool> &global_valid,
+                        const std::vector<landmark> &global_landmarks)
 {
     const int N = src_frame->size();
 
@@ -124,13 +126,13 @@ double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, c
     const int num_chunks = (N + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
     std::vector<double> chunk_sums(num_chunks, 0.0);
-    std::vector<int>    chunk_counts(num_chunks, 0);
+    std::vector<int> chunk_counts(num_chunks, 0);
 
-    #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (int c = 0; c < num_chunks; ++c)
     {
         const int begin = c * CHUNK_SIZE;
-        const int end   = std::min(begin + CHUNK_SIZE, N);
+        const int end = std::min(begin + CHUNK_SIZE, N);
 
         double local_sum = 0.0;
         int local_count = 0;
@@ -154,7 +156,7 @@ double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, c
         }
 
         // Each chunk writes to a unique index → no race
-        chunk_sums[c]   = local_sum;
+        chunk_sums[c] = local_sum;
         chunk_counts[c] = local_count;
     }
 
@@ -165,10 +167,10 @@ double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, c
     for (int c = 0; c < num_chunks; ++c)
     {
         squared_residual += chunk_sums[c];
-        n_points         += chunk_counts[c];
+        n_points += chunk_counts[c];
     }
 
-    const int total_points = 1;// std::max(n_points, 1);
+    const int total_points = 1; // std::max(n_points, 1);
     return 0.5 * squared_residual / total_points;
 }
 
@@ -286,7 +288,7 @@ double estimateCost_tbb(const state &x_, const PointCloudXYZI::Ptr &src_frame, c
 double ComputeRelativeDisplacement(const Sophus::SE3 &relative_init_guess, double point_range)
 {
     // given the imu relative prediction ( x^{-1}_{k-1} * x_pred_{k}  )
-    // and the point range - compute the amount of potential displacement for a point 
+    // and the point range - compute the amount of potential displacement for a point
     const double theta = Eigen::AngleAxisd(relative_init_guess.rotation_matrix()).angle();
     const double delta_rot = 2.0 * point_range * std::sin(theta / 2.0);
     const double delta_trans = relative_init_guess.translation().norm();
@@ -366,16 +368,19 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
                 l.norm = V3D_4(pabcd(0), pabcd(1), pabcd(2));
                 l.d = pabcd(3);
 
-                double base_weight = 1 / R;
+                double base_weight = 1 / R; // Geometric (ML) weight
 
-                if (travelled_distance > 5) //only robust kernel 
+                if (travelled_distance > 5) // Geometric (ML) weight
                     base_weight = 1 / plane_var;
 
-                double kernel_weight = huber(pd2, 0.2); // cauchy(pd2, 0.2);
-                
+                double kernel_weight = huber(pd2, robust_sigma); // cauchy(pd2, robust_sigma);
+
+                // the best so far
+                double r_norm = pd2 / std::sqrt(plane_var);
+                kernel_weight = huber(r_norm, 1.0);
+
                 l.w = base_weight * kernel_weight;
-                // l.w = 1 / R;    //no weighting 
-                
+                // l.w = 1 / R;    //no weighting
 
                 l.tgt = V3D(p_tgt.x, p_tgt.y, p_tgt.z);
                 l.cost = pd2;
@@ -439,7 +444,7 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
                 if (travelled_distance > 5)
                     base_weight = 1 / var;
 
-                double kernel_weight = huber(l.p2p_cost.norm(), 0.2); // cauchy(pd2, 0.2);
+                double kernel_weight = huber(l.p2p_cost.norm(), robust_sigma); // cauchy(pd2, robust_sigma);
                 l.w = base_weight * kernel_weight;
 
                 MLS_valid_p2p[i] = true;
@@ -464,6 +469,9 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
 
     auto R = x_.rot.matrix();
     auto Rt = R.transpose();
+
+    // std::vector<double> abs_residuals;
+    // abs_residuals.reserve(feats_down_size);
 
 #ifdef MP_EN
 #pragma omp parallel for schedule(static) num_threads(NUM_THREADS)
@@ -496,7 +504,7 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
             // }
             // else
             // {
-                J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();
+            J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();
             // }
 
             J_r.block<1, 3>(0, R_ID) = A.transpose();
@@ -513,13 +521,19 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
 
             cov H = J_r.transpose() * w * J_r;
             vectorized_state b = J_r.transpose() * w * residual;
-            double e = w * residual * residual;
+            // double e = w * residual * residual;
+            double e = std::fabs(residual);
 
             const int thread_id = omp_get_thread_num();
             Hs[thread_id] += H;
             bs[thread_id] += b;
             es[thread_id] += e;
             points_used[thread_id]++;
+
+            // #pragma omp critical
+            // {
+            //     abs_residuals.push_back(e);
+            // }
         }
 
 #ifdef use_p2p
@@ -546,8 +560,8 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
             // }
             // else
             // {
-                // J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();
-                J_r.block<3, 3>(P_ID, P_ID) = Eye3d;
+            // J_r.block<1, 3>(0, P_ID) = lm.norm.transpose();
+            J_r.block<3, 3>(P_ID, P_ID) = Eye3d;
             // }
 
             // J_r.block<1, 3>(0, R_ID) = A.transpose();
@@ -560,7 +574,8 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
 
             cov H = J_r.transpose() * w * J_r;
             vectorized_state b = J_r.transpose() * w * residual;
-            double e = w * residual.squaredNorm();
+            // double e = w * residual.squaredNorm();
+            double e = std::fabs(residual.norm());
 
             const int thread_id = omp_get_thread_num();
             Hs[thread_id] += H;
@@ -578,8 +593,27 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
         es[0] += es[i];
         points_used[0] += points_used[i];
     }
-
     int da = std::max(points_used[0], 1);
+
+    // robust_sigma = 1.4826 * (es[0]/da) + 0.05;
+    // std::cout<<"Mean e:"<<es[0]/da<<", robust_sigma:"<< robust_sigma<<std::endl;
+    // double robust_sigma = 0.05; // fallback
+
+    // if (!abs_residuals.empty())
+    // {
+    //     size_t mid = abs_residuals.size() / 2;
+    //     //this one does the sorting too
+    //     std::nth_element(abs_residuals.begin(),
+    //                     abs_residuals.begin() + mid,
+    //                     abs_residuals.end());
+
+    //     double mad = abs_residuals[mid];
+    //     robust_sigma = 1.4826 * mad + 0.05;
+    //     std::cout<<"New robust_sigma:"<<robust_sigma<<std::endl;
+    // }
+
+    // std::cout << "MAD: " << robust_sigma << std::endl;
+
     return {Hs[0], bs[0], es[0], da};
 }
 
@@ -599,13 +633,14 @@ Eigen::Matrix<double, 6, 6> SE3numericalJacobian(const Sophus::SE3 &X, const Sop
         Vector6d d = Vector6d::Zero();
         d(i) = eps;
 
+        Vector6d r_plus, r_minus;
+
         // right perturbation: X * exp(+/- d)
         Sophus::SE3 X_plus = X * Sophus::SE3::exp(d);
         Sophus::SE3 X_minus = X * Sophus::SE3::exp(-d);
 
-        // assumes coupled_rotation_translation
-        Vector6d r_plus = (measured.inverse() * X_plus).log();
-        Vector6d r_minus = (measured.inverse() * X_minus).log();
+        r_plus = (measured.inverse() * X_plus).log();
+        r_minus = (measured.inverse() * X_minus).log();
 
         // central difference
         J.col(i) = (r_plus - r_minus) / (2.0 * eps);
@@ -613,6 +648,42 @@ Eigen::Matrix<double, 6, 6> SE3numericalJacobian(const Sophus::SE3 &X, const Sop
 
     return J;
 }
+
+Eigen::Matrix<double,6,6> SE3_Relative_NumericalJacobian(
+    const state &x_,
+    const Sophus::SE3 &prev_X,
+    const Sophus::SE3 &measured_Z,
+    double eps = 1e-6)
+{
+    Eigen::Matrix<double,6,6> J;
+    J.setZero();
+
+    // Nominal residual
+    Sophus::SE3 X = Sophus::SE3(x_.rot, x_.pos);
+    Sophus::SE3 pred_Z = prev_X.inverse() * X;
+
+    Vector6d r0;
+    r0.block<3,1>(P_ID,0) = pred_Z.translation() - measured_Z.translation();
+    r0.block<3,1>(R_ID,0) = (measured_Z.so3().inverse() * pred_Z.so3()).log();
+
+    for (int i = 0; i < 6; ++i)
+    {
+        Vector6d dx = Vector6d::Zero();
+        dx(i) = eps;
+
+        Sophus::SE3 X_pert = X * Sophus::SE3::exp(dx);
+        Sophus::SE3 pred_Z_pert = prev_X.inverse() * X_pert;
+
+        Vector6d r_pert;
+        r_pert.block<3,1>(P_ID,0) = pred_Z_pert.translation() - measured_Z.translation();
+        r_pert.block<3,1>(R_ID,0) = (measured_Z.so3().inverse() * pred_Z_pert.so3()).log();
+
+        J.col(i) = (r_pert - r0) / eps;
+    }
+
+    return J;
+}
+
 
 std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_, const Sophus::SE3 &measured_se3,
                                                                 const V3D &std_pos_m, const V3D &std_rot_deg)
@@ -628,8 +699,8 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     // }
     // else
     // {
-        r.block<3, 1>(P_ID, 0) = x_.pos - measured_se3.translation();
-        r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log();
+    r.block<3, 1>(P_ID, 0) = x_.pos - measured_se3.translation();
+    r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log();
     // }
 
     double kernel_weight = huber(r.norm(), 0.2); // cauchy(pd2, 0.2);
@@ -640,7 +711,15 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
     R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
     R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
-    Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse();                    // here take the element wise inverse
+
+    // Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt(R);
+    // Eigen::Matrix<double, 6, 6> L = llt.matrixL();
+    // // Whitening matrix
+    // Eigen::Matrix<double, 6, 6> R_inv_sqrt = L.inverse();
+    double maha = std::sqrt(r.transpose() * R.inverse() * r);
+    kernel_weight = huber(maha, 1.0);
+
+    Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse(); // here take the element wise inverse
 
     Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
     // APPROXIMATE WITH IDENTITY
@@ -648,7 +727,7 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
 
     // this should be called only if coupled_rotation_translation is used
-    //  J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+    // J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
 
     H.noalias() = J_se3.transpose() * W * J_se3;
     b.noalias() = J_se3.transpose() * W * r;
@@ -656,104 +735,57 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     return {H, b, e};
 }
 
-// to be tested
-/*
-
-VectorXd doglegStep(
-    const VectorXd& r,
-    const MatrixXd& J,
-    double Delta)
+std::tuple<cov, vectorized_state, double> Build_Relative_LinearSystem_SE3(const state &x_, const Sophus::SE3 &prev_X, const Sophus::SE3 &measured_Z,
+                                                                          const V3D &std_pos_m, const V3D &std_rot_deg)
 {
-    MatrixXd H = J.transpose() * J;
-    VectorXd g = J.transpose() * r;
+    cov H = cov::Zero();
+    vectorized_state b = vectorized_state::Zero();
+    double e = 0;
+    double kernel_weight = 1;
 
-    // Gauss–Newton step
-    VectorXd delta_gn = -H.ldlt().solve(g);
+    Sophus::SE3 pred_Z = prev_X.inverse() * Sophus::SE3(x_.rot, x_.pos);
 
-    if (delta_gn.norm() <= Delta)
-        return delta_gn;
+    Sophus::SO3 R_rel_pred = pred_Z.so3();
+    V3D p_rel_pred = pred_Z.translation();
 
-    // Steepest descent (Cauchy point)
-    double alpha = g.squaredNorm() / (g.transpose() * H * g);
-    VectorXd delta_sd = -alpha * g;
+    Vector6d r = Vector6d::Zero();
+    r.block<3, 1>(P_ID, 0) = p_rel_pred - measured_Z.translation();
+    r.block<3, 1>(R_ID, 0) = (measured_Z.so3().inverse() * R_rel_pred).log();
 
-    if (delta_sd.norm() >= Delta)
-        return Delta * delta_sd.normalized();
+    Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
 
-    // Dogleg interpolation
-    VectorXd a = delta_sd;
-    VectorXd b = delta_gn - delta_sd;
+    J_se3.block<3, 3>(P_ID, P_ID) = prev_X.so3().inverse().matrix();
+    J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
 
-    double A = b.dot(b);
-    double B = 2 * a.dot(b);
-    double C = a.dot(a) - Delta * Delta;
+    //numerical
+    // J_se3.block<6,6>(0,0) = SE3_Relative_NumericalJacobian(x_, prev_X, measured_Z, 1e-6);
 
-    double beta =(-B + std::sqrt(B*B - 4*A*C)) / (2*A);
+    // Convert rotation stddevs to radians
+    V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
+    Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
+    R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
+    R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
 
-    return a + beta * b;
+    //kernel_weight = huber(r.norm(), 0.2); 
+    //  Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt(R);
+    // Eigen::Matrix<double, 6, 6> L = llt.matrixL();
+    // // Whitening matrix
+    // Eigen::Matrix<double, 6, 6> R_inv_sqrt = L.inverse();
+    double maha = std::sqrt(r.transpose() * R.inverse() * r);
+    kernel_weight = huber(maha, 1.0);
+    
+    Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse();
+
+    H.noalias() = J_se3.transpose() * W * J_se3;
+    b.noalias() = J_se3.transpose() * W * r;
+    e = kernel_weight * r.squaredNorm();
+    return {H, b, e};
 }
-
-bool doglegIteration(
-    Sophus::SE3& pose,
-    double& Delta)
-{
-    // 1. Compute residuals and Jacobian
-    VectorXd r;
-    MatrixXd J;
-    computePointToPlane(pose, r, J);
-
-    double cost0 = 0.5 * r.squaredNorm();
-
-    // 2. Compute dogleg step
-    VectorXd delta = doglegStep(r, J, Delta);
-
-    // 3. Apply update (SE(3))
-    Sophus::SE3 pose_new = pose * Sophus::SE3::exp(delta);
-
-    // 4. Recompute cost
-    VectorXd r_new;
-    MatrixXd J_new;
-    computePointToPlane(pose_new, r_new, J_new);
-
-    double cost1 = 0.5 * r_new.squaredNorm();
-
-    // 5. Predicted reduction
-    VectorXd r_pred = r + J * delta;
-    double predicted = 0.5 * (r.squaredNorm() - r_pred.squaredNorm());
-
-    double actual = cost0 - cost1;
-
-    double rho = actual / predicted;
-
-    // 6. Trust-region update
-    if (rho < 0.25)
-        Delta *= 0.25;
-    else if (rho > 0.75 && std::abs(delta.norm() - Delta) < 1e-6)
-        Delta = std::min(2.0 * Delta, 5.0);
-
-    // 7. Accept / reject
-    if (rho > 0)
-    {
-        pose = pose_new;
-        return true;
-    }
-
-    return false;
-}
-Sophus::SE3 T = imu_predicted_pose;
-double Delta = 1.0;
-
-for (int iter = 0; iter < 10; ++iter)
-{
-    if (!doglegIteration(T, Delta))
-        break;
-}
-
-*/
 
 int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map, int maximum_iter, bool extrinsic_est,
                       const bool use_als, const PointCloudXYZI::Ptr &als_map, const pcl::KdTreeFLANN<PointType>::Ptr &als_tree,
                       bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &gnss_std_pos_m, const V3D &gnss_std_rot_deg,
+                      bool use_se3_rel, const Sophus::SE3 &se3_rel, const Sophus::SE3 &prev_X,
                       const bool use_lc, const PointCloudXYZI::Ptr &lc_map, const pcl::KdTreeFLANN<PointType>::Ptr &lc_tree)
 {
     if (false)
@@ -785,6 +817,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
     // std::cout << "Running standard update_ function" << std::endl;
 
+    robust_sigma = 0.2;
     residual_struct status;
     status.valid = true;
     status.converge = true;
@@ -806,7 +839,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     int iteration_finished = 0;
     cov P_inv = P_.inverse(); // 24x24
 
-    const bool Armijo = false;//true;
+    const bool Armijo = false; // true;
     double new_cost = 0., curr_cost = 9999999999999;
 
     bool use_mls = false; // true;
@@ -839,21 +872,25 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         // std::cout << "LC tree contains " << n_points << " points." << std::endl;
     }
 
+    if (use_se3_rel)
+    {
+        std::cout << "use_se3_rel" << std::endl;
+    }
     // just a test here
     // if (!use_als)
     // {
     //     // use_mls = true; //force MLS to be true
     // }
 
-    if(false) //just a test of the iekf proper implementation inserted in our system 
+    if (false) // just a test of the iekf proper implementation inserted in our system
     {
         int t = 0;
-		residual_struct status;
-		status.valid = true;
-		status.converge = true;
+        residual_struct status;
+        status.valid = true;
+        status.converge = true;
 
-		state x_propagated = x_;
-		cov P_propagated = P_;
+        state x_propagated = x_;
+        cov P_propagated = P_;
 
         cov L_;
         for (int i = -1; i < maximum_iter; i++)
@@ -882,35 +919,35 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
             P_ = P_propagated;
 
-            V3D seg_SO3 = dx.block<3,1>(R_ID,0);                //SO3 part from dx
-            M3D J_ = A_matrix(seg_SO3).transpose();   //A matrix
+            V3D seg_SO3 = dx.block<3, 1>(R_ID, 0);  // SO3 part from dx
+            M3D J_ = A_matrix(seg_SO3).transpose(); // A matrix
             dx_new.template block<3, 1>(R_ID, 0) = J_ * dx_new.template block<3, 1>(R_ID, 0);
-            
-            //Block of size (p,q), starting at (i,j)	
-            
+
+            // Block of size (p,q), starting at (i,j)
+
             // J =  [R 0​]
             //      [0 I​]
-            //P = J * P * J.T
+            // P = J * P * J.T
             // Left multiply (rows)
             P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);
             // Right multiply (columns)
             P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose();
 
-			//K_ = (h_x.transpose() * R_in * h_x + P_.inverse()).inverse() * h_x.transpose() * R_in;
+            // K_ = (h_x.transpose() * R_in * h_x + P_.inverse()).inverse() * h_x.transpose() * R_in;
 
             cov H = (JTJ + P_.inverse());
             cov H_inv = H.inverse(); // 24x24
-        
-            cov K_x = H_inv * JTJ; //KJ = H_inv * JTJ;   //cov K_x = K_ * h_x;
 
-            vectorized_state dx_;// = K_ * (z - h) + (K_x - Matrix<scalar_type, state_size, state_size>::Identity()) * dx_new;
+            cov K_x = H_inv * JTJ; // KJ = H_inv * JTJ;   //cov K_x = K_ * h_x;
+
+            vectorized_state dx_; // = K_ * (z - h) + (K_x - Matrix<scalar_type, state_size, state_size>::Identity()) * dx_new;
 
             // dx_.noalias() = H_inv * (-JTr);       //slower
-            dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
-            dx_ += (K_x - cov::Identity()) * dx_new;// boxminus(x_, x_propagated); // iterated error state kalmna filter part
+            dx_.noalias() = H.ldlt().solve(-JTr);    // faster
+            dx_ += (K_x - cov::Identity()) * dx_new; // boxminus(x_, x_propagated); // iterated error state kalmna filter part
 
             x_ = boxplus(x_, dx_);
-            
+
             status.converge = true;
             for (int j = 0; j < state_size; j++)
             {
@@ -934,21 +971,21 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             if (t > 1 || i == maximum_iter - 1)
             {
                 L_ = P_;
-				std::cout << "iteration time:" << t << "," << i << std::endl;
+                std::cout << "iteration time:" << t << "," << i << std::endl;
 
-				seg_SO3 = dx_.block<3,1>(R_ID,0);
+                seg_SO3 = dx_.block<3, 1>(R_ID, 0);
                 J_ = A_matrix(seg_SO3).transpose();
 
                 K_x.block(R_ID, 0, 3, state_size) = J_ * K_x.block(R_ID, 0, 3, state_size);
-                L_.block(R_ID, 0, 3, state_size) = J_ * L_.block(R_ID, 0, 3, state_size);              // Left multiply SO(3) rows
+                L_.block(R_ID, 0, 3, state_size) = J_ * L_.block(R_ID, 0, 3, state_size);             // Left multiply SO(3) rows
                 L_.block(0, R_ID, state_size, 3) = L_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply SO(3) columns
                 P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose();
 
                 P_ = L_ - K_x * P_;
             }
         }
-        
-        return iteration_finished;  //-------------------------------------------------------------------------------------------
+
+        return iteration_finished; //-------------------------------------------------------------------------------------------
     }
 
     for (int i = -1; i < maximum_iter; i++)
@@ -983,12 +1020,10 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
             double alpha = std::max(
                 static_cast<double>(da_mls) / static_cast<double>(da_als),
-                1.0
-            );
+                1.0);
 
-            // double alpha = 1; 
-            std::cout << "ALS register with " << da_als << "/" << feats_down_body->size() << " points, alpha:"<<alpha << std::endl;
-
+            // double alpha = 1;
+            std::cout << "ALS register with " << da_als << "/" << feats_down_body->size() << " points, alpha:" << alpha << std::endl;
 
             JTJ += alpha * JTJ_als;
             JTr += alpha * JTr_als;
@@ -1020,6 +1055,17 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             // JTr = a*JTr_mls + (1-a)*JTr_se3;
         }
 
+        if (use_se3_rel)
+        {
+            const auto &[JTJ_se3, JTr_se3, se3_cost] = Build_Relative_LinearSystem_SE3(x_, prev_X, se3_rel, gnss_std_pos_m, gnss_std_rot_deg);
+
+            double alpha = std::max(da_mls, 1); // ;
+            // double alpha = 1;
+            JTJ += alpha * JTJ_se3;
+            JTr += alpha * JTr_se3;
+            system_cost += alpha * se3_cost;
+        }
+
         vectorized_state dx;
         cov H = (JTJ + P_inv); // matrix H = JTJ + P_inv (+ lambda * H.diagonal().asDiagonal())  //JTJ - 24 x 24  JTr - 24 x 1      H += lambda * H.diagonal().asDiagonal();
 
@@ -1032,7 +1078,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
         dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
 
-        // vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new; //position only ekf
+        // vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new; //  
 
         // Armijo
         if (false)
@@ -1070,7 +1116,6 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
 
         // applied right update   x = x * exp(dx)
         x_ = boxplus(x_, dx_); // GN
-
 
         status.converge = true;
         for (int j = 0; j < state_size; j++)

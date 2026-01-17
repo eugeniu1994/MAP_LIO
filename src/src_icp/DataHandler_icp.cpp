@@ -1215,7 +1215,7 @@ void DataHandler::BagHandler()
             // const auto &frame_downsample = frame_downsample_;//test no double-undistortion 
             std::cout << "source:" << source.size() << ", frame_downsample:" << frame_downsample.size() << std::endl;
 
-            // use_als = false;// true;
+            use_als = false;// true;
             if (use_als && shift_time_sinc)
             {
                 state_point = estimator_icp.get_x(); // state after registration

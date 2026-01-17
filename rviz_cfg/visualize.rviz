@@ -35,7 +35,7 @@ Panels:
   - Class: rviz/Time
     Name: Time
     SyncMode: 0
-    SyncSource: ""
+    SyncSource: LiDAR
 Preferences:
   PromptSaveOnExit: true
 Toolbars:
@@ -68,6 +68,12 @@ Visualization Manager:
       Frame Timeout: 500
       Frames:
         All Enabled: false
+        GPSFix:
+          Value: true
+        MLS:
+          Value: true
+        PPK_GNSS:
+          Value: true
         VUX:
           Value: false
         world:
@@ -80,6 +86,12 @@ Visualization Manager:
       Show Names: true
       Tree:
         world:
+          GPSFix:
+            {}
+          MLS:
+            {}
+          PPK_GNSS:
+            {}
           VUX:
             {}
       Update Interval: 0
@@ -735,7 +747,7 @@ Visualization Manager:
       Marker Topic: /trajectory_points
       Name: Prior-traj
       Namespaces:
-        {}
+        trajectory_points: true
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
@@ -802,7 +814,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 766.5335693359375
+      Distance: 176.68997192382812
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -810,17 +822,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 29.734527587890625
-        Y: -101.1270751953125
-        Z: -665.5799560546875
-      Focal Shape Fixed Size: true
+        X: 8.533182144165039
+        Y: 3.927180528640747
+        Z: 3.5237648487091064
+      Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.379797101020813
+      Pitch: 0.8503981232643127
       Target Frame: global
-      Yaw: 1.7413036823272705
+      Yaw: 1.8803976774215698
     Saved: ~
 Window Geometry:
   Displays:
