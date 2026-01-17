@@ -60,7 +60,7 @@ import matplotlib.image as mpimg
 from scipy.ndimage import rotate
 # Define custom tile provider
 from matplotlib.ticker import FuncFormatter
-
+import random
 from xyzservices import TileProvider
 from PIL import Image
 
@@ -152,11 +152,11 @@ class TrajectoryReader(object):
         print("Reference trajectory:", self.traj_gt.positions_xyz.shape)
         print("Model:", self.traj_model.positions_xyz.shape)
 
-        # if path_time != '':
-        #     self.time = np.loadtxt(path_time)[:,2]
+        if path_time != '':
+            self.time = np.loadtxt(path_time)[:,2]
 
-        # if path_iterations != '':
-        #     self.iterations = np.loadtxt(path_iterations)[:,2]
+        if path_iterations != '':
+            self.iterations = np.loadtxt(path_iterations)[:,2]
 
     def transform_trajectory_to_ENU(self, traj: PoseTrajectory3D, T_origin_to_ENU: np.ndarray) -> PoseTrajectory3D:
         new_poses_se3 = []
@@ -263,7 +263,7 @@ class TrajectoryReader(object):
 
 
 path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS_prev.txt"
-path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS_gnss.txt"
+# path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS_gnss.txt"
 path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS.txt"
 
 
@@ -273,8 +273,34 @@ methods = {
     #  'rko'             : '/home/eugeniu/zz_zx_final/rko',
     # 'point-lio'             : '/home/eugeniu/zz_zx_final/point-lio',
 
-    'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
-    'dlo'             : '/home/eugeniu/zz_zx_final/dlo', 
+    # 'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
+    # 'dlo'             : '/home/eugeniu/zz_zx_final/dlo', 
+    # 'dlo-5'             : '/home/eugeniu/zz_zx_final/dlo.5', 
+
+    # 'a0'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
+    # 'a1'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
+    # 'a2'             : '/home/eugeniu/zz_zx_final/a2',    #our best with fixed prediction and robust & adaptive 
+    # 'a2_bar'             : '/home/eugeniu/zz_zx_final/a2_bar',    #a2 with update using original iekf code 
+    # 'a3'             : '/home/eugeniu/zz_zx_final/a3',    #a2 with gravity
+    'a4'             : '/home/eugeniu/zz_zx_final/a4',    #similar to a2 but with final best weighting 
+    
+    # 'b0'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
+    # 'b1'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
+    # 'b2'             : '/home/eugeniu/zz_zx_final/b2',    #a2 with added vux
+    'b4'             : '/home/eugeniu/zz_zx_final/b4',    #similar to b2 but with final best weighting 
+
+    # 'HeliALS'             : '/home/eugeniu/zz_zx_final/HeliALS',  # a4 LI + HeliALS
+    'Sparse ALS'             : '/home/eugeniu/zz_zx_final/s_ALS', # a4 LI + s-ALS
+    # 'Sparse ALS VUX'             : '/home/eugeniu/zz_zx_final/s_ALS_VUX', # b4 LI VUX + s-ALS
+
+    # 'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
+    # 'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
+
+
+    'GNSS_'             : '/home/eugeniu/zz_zx_final/GNSS_INS',   # a4 + GNSS-INS   9 sigma of gnss-ins
+    # 'GNSS_VUX'             : '/home/eugeniu/zz_zx_final/GNSS_INS_VUX', #same as GNSS_ + VUX
+    'GNSS_INS-alone'             : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    'GNSS_INS-alone-back'             : '/home/eugeniu/z_tighly_coupled/0',
 
     ## 'Reference trajectory' : '/home/eugeniu/zz_zx_final/ref',
     # '0_LI'                     : '/home/eugeniu/zz_zx_final/0_LI',
@@ -296,18 +322,13 @@ methods = {
     # 'Sparse ALS_LC'             : '/home/eugeniu/zz_zx_final/4.1',
     # 'Sparse ALS_LC_GNSS'             : '/home/eugeniu/zz_zx_final/4.2',
 
-    'test'             : '/home/eugeniu/zz_zx_final/test', 
+    
+    
 
-    'a0'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
-    'a1'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
-    'a2'             : '/home/eugeniu/zz_zx_final/a2',    #our best with fixed prediction and robust & adaptive 
-    'a2_bar'             : '/home/eugeniu/zz_zx_final/a2_bar',    #a2 with update using original iekf code 
-    'a3'             : '/home/eugeniu/zz_zx_final/a3',    #a2 with gravity
+    'GNSS_s-ALS'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS',     #  test gnss + li + sALS
+    'GNSS_s-ALS_rel'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',            #  a4 + rel SE3 +sALS
 
-
-    # 'test-prev'             : '/home/eugeniu/zz_zx_final/test-prev',    #our with iekf proper update 
-      
-
+    # 'test-prev'             : '/home/eugeniu/zz_zx_final/test-prev',  #  a4 + rel SE3
 }
 
 # raw_mat = file_interface.read_vel(path_gt)
@@ -459,7 +480,7 @@ def funct_debug():
 methods_data = {
     '0_LI' :  ["#1f77b4",'M'],
     '1_LI_robust_adaptive'      : ['#9467bd','D'],
-    '2_LI_robust_adaptive_g'             : ['#2ca02c','A'],
+    'GNSS_s-ALS_rel'             : ['#2ca02c','A'],
     '3_LI_robust_adaptive_p2p_p2pl'                 : ['#ff7f0e','C'],
     'HeliALS' : ['#17becf','F'],
     '5_LI_robust_adaptive_backwardPass_p2p_p2pl' : ['#e377c2','H'],
@@ -470,27 +491,31 @@ methods_data = {
 
 
     'test' : ["#648099",'Z'],
-    'madgwick_p2p_p2pl' : ['#8c564b','G'],
+    'GNSS_INS-alone' : ['#8c564b','G'],
 
     'Reference trajectory' : ['#d62728','L'],
     
-
+    'LI-VUX + S-ALS (l-coupled)' : ['#bcbd22','E'],
+    'LI-VUX + S-ALS (t-coupled)' : ['#17becf','F'],
 
     'GNSS_LC' : ['#bcbd22','E'],
     'Sparse ALS' : ["#808019",'E'],
-    'Sparse ALS_LC': ["#194280",'E'],
+    'Sparse ALS VUX': ["#196880",'E'],
+    'GNSS_s-ALS': ["#194280",'E'],
 
     'test-prev'      : ["#651e1e",'D'],
-    'rko' : ["#808019",'E'],
+    'b1' : ["#808019",'E'],
     'fast_lio2': ["#194280",'E'],
 
     'a0' : ["#808019",'E'],
     'a1' : ["#e377c2",'S'],
     'a2' : ["#ff7f0e",'N'],
     'a3' : ['#2ca02c','A'],
+    'a4': ["#194280",'E'],
+    'b4': ["#194280",'E'],
 
     'GNSS_'             : ['#2ca02c','A'],
-
+    'GNSS_VUX'          : ["#284828",'A'],
     # # # 'LI-VUX-(raw)GNSS'      : ['#7f7f7f','D'],
 
     
@@ -498,13 +523,13 @@ methods_data = {
 
     
 
-    'point-lio' : ["#ff7f0e",'N'], #['#04f810','N'],
+    'b0' : ["#ff7f0e",'N'], #['#04f810','N'],
 
     'g_p2p_p2pl' : ["#26391B",'Z'],
 
-    'prev_t_coupled_s' : ["#26391B",'Z'],
-    'test_now' : ["#a86b40",'S'],
-    'Sparse ALS_LC_GNSS' : ["#433123",'S'],
+    'dlo-5' : ["#26391B",'Z'],
+    'GNSS_INS-alone-back' : ["#a86b40",'S'],
+    'b2' : ["#433123",'S'],
      'dlo' : ["#433123",'S'],
     'a2_bar' : ["#e377c2",'S'],
 }
@@ -608,16 +633,19 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
     ind = 0
     legend_handles = []
     labels_local = []
-    colors_ = [methods_data[label][0] for label in labels]
+    # colors_ = [methods_data[label][0] for label in labels]
 
-    for patch, color, label in zip(box['boxes'], colors_, labels):
+    # for patch, color, label in zip(box['boxes'], colors_, labels):
+    for patch, label in zip(box['boxes'], labels):
+        color = (random.random(), random.random(), random.random())
         patch.set_facecolor(color)
         patch.set_edgecolor('black')
         patch.set_linewidth(1.2)
         patch_legend = mpatches.Patch(
             facecolor=color,
             # edgecolor='black',
-            label=methods_data[label][1] + " : " + label
+            # label=methods_data[label][1] + " : " + label
+            label = label
         )
         
         labels_local.append(methods_data[label][1])
@@ -629,7 +657,8 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
                 facecolor=color,
                 edgecolor='white',   
                 hatch='\\',          
-                label=methods_data[label][1] + " : " + label
+                # label=methods_data[label][1] + " : " + label
+                label = label
             )
         
         # legend_handles.append(mpatches.Patch(color=color, label = methods_data[label][1]+" : "+label))
@@ -703,11 +732,12 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
         values = [data[label] for label in labels]
 
         i=0
-        for patch, color, label in zip(box['boxes'], colors_, labels):
+        # for patch, color, label in zip(box['boxes'], colors_, labels):
+        for patch, label in zip(box['boxes'], labels):
             #for i, label in enumerate(data):
             values = np.sort(data[label])
             cdf = np.linspace(0, 1, len(values))
-            plt.plot(values, cdf, label=label, color = color, linestyle = linestyles[i])
+            plt.plot(values, cdf, label=label, linestyle = linestyles[i])
 
             #plt.title(f'Cumulative Distribution of {metric_name}')
             plt.xlabel(metric, fontsize=font)

@@ -504,7 +504,7 @@ namespace ekf
             pca_result.template head<3>() = norm.template cast<T>();
             pca_result(3) = static_cast<T>(d);
 
-            plane_var = 9. * lambda0; //tested so far 
+            plane_var = 9. * lambda0; // from 3-sigma rule,  plane_var = sigma ^ 2
             // plane_var = lambda0;
 
             return true;

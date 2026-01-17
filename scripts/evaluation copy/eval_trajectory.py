@@ -69,12 +69,12 @@ font = 14
 font = 22 #used for google map images 
 # font = 26 #for plots 
 font_legend = 18
-font = 22 # 20
+font = 22 
 
 
 
-font_legend = 20
-font = 22
+font_legend = 16
+font = 16
 
 # font = 28
 
@@ -507,8 +507,9 @@ class TrajectoryReader(object):
         delta_unit = metrics.Unit.meters
         delta = 100
                 
-        rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        # rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
         # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance_error_ratio, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
         rpe_metric.process_data((self.traj_gt, self.traj_model))
         self.rpe_statistics_t = rpe_metric.get_all_statistics()
@@ -910,7 +911,8 @@ def overlap_error(est_xyz, label, segment_passes,  plot = False):
 
 
 
-path_gt =  "/home/eugeniu/z_tighly_coupled/ref/MLS.txt"
+path_gt =  "/home/eugeniu/z_tighly_coupled/ref/MLS.txt" #prev
+path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS.txt"      #new one
 
 methods = {
     'Reference trajectory' : '/home/eugeniu/z_tighly_coupled/ref',
@@ -946,13 +948,13 @@ methods = {
     
 
     ## # # do not use this at all 'LI-VUX-(raw)GNSS'      : '/home/eugeniu/z_tighly_coupled/5',
-    # 'LI-VUX + GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
+    'LI-VUX + GNSS'      : '/home/eugeniu/z_tighly_coupled/6',
 
     
-    # 'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
-    # 'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
+    'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
+    'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
 
-    # 'LI-VUX + D-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
+    'LI-VUX + D-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/3',
 
     # '*-LI-VUX + D-ALS (t-coupled)': '/home/eugeniu/z_tighly_coupled/_last',
 
@@ -1003,6 +1005,100 @@ colors2 = [
 linestyles = ['-', '--', '-.', ':', '-', '--', '-.', '-', '--', ':',]
 lab = ['A','B','C','D','E','F','G','H','K','X']
 lt = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+
+methods = {
+    #'Reference trajectory' : '/home/eugeniu/z_tighly_coupled/ref',
+    'Reference trajectory' :  "/home/eugeniu/zz_zx_final/ref",
+    #  'rko'             : '/home/eugeniu/zz_zx_final/rko',
+    # 'point-lio'             : '/home/eugeniu/zz_zx_final/point-lio',
+
+    # 'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
+    # 'dlo'             : '/home/eugeniu/zz_zx_final/dlo', 
+    # 'dlo-5'             : '/home/eugeniu/zz_zx_final/dlo.5', 
+
+    # 'a0'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
+    # 'a1'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
+    # 'a2'             : '/home/eugeniu/zz_zx_final/a2',    #our best with fixed prediction and robust & adaptive 
+    # 'a2_bar'             : '/home/eugeniu/zz_zx_final/a2_bar',    #a2 with update using original iekf code 
+    # 'a3'             : '/home/eugeniu/zz_zx_final/a3',    #a2 with gravity
+    'a4'             : '/home/eugeniu/zz_zx_final/a4',    #similar to a2 but with final best weighting 
+    
+    # 'b0'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
+    # 'b1'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
+    # 'b2'             : '/home/eugeniu/zz_zx_final/b2',    #a2 with added vux
+    # 'b4'             : '/home/eugeniu/zz_zx_final/b4',    #similar to b2 but with final best weighting 
+
+    'HeliALS'             : '/home/eugeniu/zz_zx_final/HeliALS',  # a4 LI + HeliALS
+    'Sparse ALS'             : '/home/eugeniu/zz_zx_final/s_ALS', # a4 LI + s-ALS
+
+    'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
+    # 'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
+
+
+    'GNSS_'             : '/home/eugeniu/zz_zx_final/GNSS_INS',   # a4 + GNSS-INS   9 sigma of gnss-ins
+    'GNSS_INS-alone'             : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    
+    
+
+    'GNSS_s-ALS'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS',     #  test gnss + li + sALS
+}
+
+methods_data = {
+    '0_LI' :  ["#1f77b4",'M'],
+    '1_LI_robust_adaptive'      : ['#9467bd','D'],
+    '2_LI_robust_adaptive_g'             : ['#2ca02c','A'],
+    '3_LI_robust_adaptive_p2p_p2pl'                 : ['#ff7f0e','C'],
+    'HeliALS' : ['#17becf','F'],
+    '5_LI_robust_adaptive_backwardPass_p2p_p2pl' : ['#e377c2','H'],
+
+        'LC_fixed'      : ['#9467bd','D'],
+
+
+
+
+    'test' : ["#648099",'Z'],
+    'GNSS_INS-alone' : ['#8c564b','G'],
+
+    'Reference trajectory' : ['#d62728','L'],
+    
+    'LI-VUX + S-ALS (l-coupled)' : ['#bcbd22','E'],
+    'LI-VUX + S-ALS (t-coupled)' : ['#17becf','F'],
+
+    'GNSS_LC' : ['#bcbd22','E'],
+    'Sparse ALS' : ["#808019",'E'],
+    'GNSS_s-ALS': ["#194280",'E'],
+
+    'test-prev'      : ["#651e1e",'D'],
+    'b1' : ["#808019",'E'],
+    'fast_lio2': ["#194280",'E'],
+
+    'a0' : ["#808019",'E'],
+    'a1' : ["#e377c2",'S'],
+    'a2' : ["#ff7f0e",'N'],
+    'a3' : ['#2ca02c','A'],
+    'a4': ["#194280",'E'],
+    'b4': ["#194280",'E'],
+
+    'GNSS_'             : ['#2ca02c','A'],
+
+    # # # 'LI-VUX-(raw)GNSS'      : ['#7f7f7f','D'],
+
+    
+
+
+    
+
+    'b0' : ["#ff7f0e",'N'], #['#04f810','N'],
+
+    'g_p2p_p2pl' : ["#26391B",'Z'],
+
+    'dlo-5' : ["#26391B",'Z'],
+    'test_now' : ["#a86b40",'S'],
+    'b2' : ["#433123",'S'],
+     'dlo' : ["#433123",'S'],
+    'a2_bar' : ["#e377c2",'S'],
+}
 
 obj_gt = TrajectoryReader(path_gt, path_gt)
 

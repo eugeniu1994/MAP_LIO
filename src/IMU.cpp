@@ -629,7 +629,7 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
         angvel_last = V3D(tail->angular_velocity.x, tail->angular_velocity.y, tail->angular_velocity.z) - imu_state.bg;
         acc_s_last = V3D(tail->linear_acceleration.x, tail->linear_acceleration.y, tail->linear_acceleration.z) * G_m_s2 / mean_acc.norm();
 
-        bool use_g_update = true;//false;
+        bool use_g_update = false;
         if (use_g_update && done_update_) // we keep this one (compare estimated gravity with actual one) g_p2p_p2pl
         {
             // a_m ​= R.T * g + (a_lin​)
