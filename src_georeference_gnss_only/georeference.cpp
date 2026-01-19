@@ -736,7 +736,7 @@ void DataHandler::Subscribe()
     int iters = 0;
     bool first_time = true;
 
-// #define integrate_vux
+#define integrate_vux
 
 #ifdef integrate_vux
     std::vector<Sophus::SE3> known_T;
@@ -1049,7 +1049,7 @@ void DataHandler::Subscribe()
 
                         Nearest_Points.resize(feats_down_size);
 
-                        bool use_se3_update = false;// true;
+                        bool use_se3_update = true;
                         V3D std_pos_m = V3D(.5, .5, .5);
                         V3D std_rot_deg = V3D(5, 5, 5);
 
@@ -1061,15 +1061,17 @@ void DataHandler::Subscribe()
                             
                             scale = 9; // used when the gnss uses as absolute prior
 
+                            scale = 3; //test for now
+                            
                             std_pos_m = scale * V3D::Ones() * V3D(mi.SDEast, mi.SDNorth, mi.SDHeight).norm();
                             std_rot_deg = scale * V3D::Ones() * V3D(mi.RollSD, mi.PitchSD, mi.HdngSD).norm();
-                            // std::cout << "\nTransformed translation std (m): " << std_pos_m.transpose() << "\n";
-                            // std::cout << "Transformed rotation std (deg): " << std_rot_deg.transpose() << "\n";
+                            std::cout << "\nTransformed translation std (m): " << std_pos_m.transpose() << "\n";
+                            std::cout << "Transformed rotation std (deg): " << std_rot_deg.transpose() << "\n";
                         }
 
                         bool use_als_update = false; // true;
 
-                        use_als = true;
+                        use_als = false;// true;
                         if (use_als)
                         {
                             if (!als_obj->refine_als) // als was not setup
@@ -1229,7 +1231,7 @@ void DataHandler::Subscribe()
 
 
                         Sophus::SE3 se3_rel = prev_se3.inverse() * se3;
-                        bool use_se3_rel = true;
+                        bool use_se3_rel = false;// true;
 
                         iters = estimator_.update_MLS(LASER_POINT_COV, feats_down_body, laserCloudSurfMap, NUM_MAX_ITERATIONS, extrinsic_est_en,
                                                       use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
