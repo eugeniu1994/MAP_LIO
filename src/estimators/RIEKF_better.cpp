@@ -383,7 +383,9 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
                 // l.w = 1 / R;    //no weighting
 
                 l.tgt = V3D(p_tgt.x, p_tgt.y, p_tgt.z);
-                l.cost = pd2;
+                l.cost = pd2;   // in this case b is negative this should be 0 - pd2  
+
+                ///l.cost = -pd2;  in this case b is positive
 
                 global_valid[i] = true;
                 global_landmarks[i] = l;
@@ -496,6 +498,7 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
             V3D C = Rt * lm.norm;
             V3D A = point_I_crossmat * C;
 
+            //this will be the derivative of r not of h() as in the paper 
             Jacobian_plane J_r = Jacobian_plane::Zero();
 
             // if (coupled_rotation_translation)
@@ -529,11 +532,6 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
             bs[thread_id] += b;
             es[thread_id] += e;
             points_used[thread_id]++;
-
-            // #pragma omp critical
-            // {
-            //     abs_residuals.push_back(e);
-            // }
         }
 
 #ifdef use_p2p
@@ -727,7 +725,7 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
 
     // this should be called only if coupled_rotation_translation is used
-    // J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+    //J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
 
     H.noalias() = J_se3.transpose() * W * J_se3;
     b.noalias() = J_se3.transpose() * W * r;
@@ -1066,7 +1064,6 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             system_cost += alpha * se3_cost;
         }
 
-        vectorized_state dx;
         cov H = (JTJ + P_inv); // matrix H = JTJ + P_inv (+ lambda * H.diagonal().asDiagonal())  //JTJ - 24 x 24  JTr - 24 x 1      H += lambda * H.diagonal().asDiagonal();
 
         vectorized_state dx_; // nx1 vectorized_state dx_ = K * status.innovation + (KJ - cov::Identity()) * boxminus(x_, x_propagated);
@@ -1075,8 +1072,15 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         cov H_inv = H.inverse(); // 24x24
         KJ = H_inv * JTJ;        // same as (J.T * W * J + P.inv()).inv() * J.T * W * J
         // dx_.noalias() = H_inv * (-JTr);       //slower
-        dx_.noalias() = H.ldlt().solve(-JTr);                       // faster
+
+        dx_.noalias() = H.ldlt().solve(-JTr);                       // faster the one used so far
+
+        //dx_.noalias() = H.ldlt().solve(JTr); //the jacobians should be dh/dx
+        
+        //the one used
         dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
+
+        //dx_ -= KJ * boxminus(x_, x_propagated); //J is dr/dx = dr/dh * dh/dx
 
         // vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new; //  
 

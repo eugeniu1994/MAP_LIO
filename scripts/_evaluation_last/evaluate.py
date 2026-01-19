@@ -40,7 +40,7 @@ from matplotlib.collections import LineCollection
 from scipy.spatial import cKDTree
 import networkx as nx
 
-max_diff = 0.000001  #s
+max_diff = .01 # 0.000001  #s
 
 max_diff = 0.1
 
@@ -232,6 +232,9 @@ class TrajectoryReader(object):
         delta_unit = metrics.Unit.meters
         delta = 100
         # rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        
+        
+        
         rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
         # rpe_metric = metrics.RPE(metrics.PoseRelation.full_transformation, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
@@ -270,7 +273,7 @@ path_gt =  "/home/eugeniu/zz_zx_final/ref/MLS.txt"
 # todo compare the prev results with the current one se which ones are better 
 
 methods = {
-    #  'rko'             : '/home/eugeniu/zz_zx_final/rko',
+    # 'rko'             : '/home/eugeniu/zz_zx_final/rko',
     # 'point-lio'             : '/home/eugeniu/zz_zx_final/point-lio',
 
     # 'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
@@ -284,6 +287,8 @@ methods = {
     # 'a3'             : '/home/eugeniu/zz_zx_final/a3',    #a2 with gravity
     'a4'             : '/home/eugeniu/zz_zx_final/a4',    #similar to a2 but with final best weighting 
     
+    'test'             : '/home/eugeniu/zz_zx_final/test',
+
     # 'b0'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
     # 'b1'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
     # 'b2'             : '/home/eugeniu/zz_zx_final/b2',    #a2 with added vux
@@ -330,6 +335,47 @@ methods = {
 
     # 'test-prev'             : '/home/eugeniu/zz_zx_final/test-prev',  #  a4 + rel SE3
 }
+
+methods = {
+    'GNSS_INS-alone'        : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    
+    'GNSS-INS'              : '/home/eugeniu/z_tighly_coupled/0',  # '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    'LI'                    : '/home/eugeniu/zz_zx_final/a4',
+    'LI-VUX'                : '/home/eugeniu/zz_zx_final/b4',
+
+    'LI-VUX + SE3'          : '/home/eugeniu/zz_zx_final/GNSS_INS',    #a4 + GNSS-INS   3 sigma of gnss-ins
+    'LI-VUX + S-ALS'        : '/home/eugeniu/zz_zx_final/s_ALS',
+    'LI-VUX + S-ALS + SE3'  : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',
+
+    'LI-VUX + D-ALS'        : '/home/eugeniu/zz_zx_final/HeliALS',
+
+    #test2 the LI-VUX + SE3 with smaller SE3 cov scale 3 
+    # 'test2'             : '/home/eugeniu/zz_zx_final/test2',
+
+    #same as test2 but with vux 
+    # 'test'             : '/home/eugeniu/zz_zx_final/test',
+}
+
+methods_data = {
+    'Reference trajectory'      : ['#d62728','8'],
+
+    'GNSS-INS'                  : ['#2ca02c','1'],
+    'LI'                        : ['#1f77b4','2'],    
+    'LI-VUX'                    : ['#ff7f0e','3'],
+
+    'LI-VUX + SE3'              : ['#9467bd','4'], 
+    'LI-VUX + S-ALS'            : ['#17becf','5'],
+    'LI-VUX + S-ALS + SE3'      : ['#7f7f7f','6'],
+
+    'LI-VUX + D-ALS'            : ['#8c564b','7'],
+
+
+
+    'GNSS_INS-alone' : ["#6c2416",'G'],
+    'test' : ["#648099",'Z'],
+    'test2' : ["#6F1E6A",'f'],
+}   
+
 
 # raw_mat = file_interface.read_vel(path_gt)
 
@@ -477,7 +523,7 @@ def funct_debug():
 # funct_debug()
 # exit()
 
-methods_data = {
+methods_data_old = {
     '0_LI' :  ["#1f77b4",'M'],
     '1_LI_robust_adaptive'      : ['#9467bd','D'],
     'GNSS_s-ALS_rel'             : ['#2ca02c','A'],
@@ -534,10 +580,12 @@ methods_data = {
     'a2_bar' : ["#e377c2",'S'],
 }
 
+
 colors = ['tab:brown', 'tab:red', 'tab:blue', 'tab:green', 'tab:purple', 'tab:orange', 'cyan', 'lime','orange','gray']
 
 linestyles = ['-', '--', '-.', ':', '-', '--', '-.', '-', '--', ':',]
-lab = ['A','B','C','D','E','F','G','H','K','X']
+# lab = ['A','B','C','D','E','F','G','H','K','X']
+lab = ['0','1','2','3','4','5','6','7','8','9']
 lt = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 obj_gt = TrajectoryReader(path_gt, path_gt)
@@ -617,11 +665,11 @@ plt.draw()
 # plt.show()
 # exit()
 
-def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, add_arrows = False):
+def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False, add_arrows = False):
     print('plot_box for ',metric)
     labels = list(data.keys())
 
-    #labels_local = lab[0:len(labels)]
+    labels_local = lab[0:len(labels)]
     lt_local = lt[0:len(labels)]
 
     plt.figure(figsize=(10, 6))
@@ -629,37 +677,54 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
 
     values = [data[label] for label in labels]
 
-    box = plt.boxplot(values, patch_artist=True, showmeans=True, meanline=True, showfliers=False, notch=False) 
+    box = plt.boxplot(values, patch_artist=True, showmeans=False, meanline=False, showfliers=False, notch=False) 
     ind = 0
     legend_handles = []
     labels_local = []
-    # colors_ = [methods_data[label][0] for label in labels]
+    colors_ = [methods_data[label][0] for label in labels]
 
-    # for patch, color, label in zip(box['boxes'], colors_, labels):
-    for patch, label in zip(box['boxes'], labels):
-        color = (random.random(), random.random(), random.random())
+    for patch, color, label in zip(box['boxes'], colors_, labels):
+    # for patch, label in zip(box['boxes'], labels):
+        # color = (random.random(), random.random(), random.random())
         patch.set_facecolor(color)
         patch.set_edgecolor('black')
         patch.set_linewidth(1.2)
         patch_legend = mpatches.Patch(
             facecolor=color,
             # edgecolor='black',
-            # label=methods_data[label][1] + " : " + label
-            label = label
+            label=methods_data[label][1] + " : " + label
+            # label = label
         )
         
         labels_local.append(methods_data[label][1])
         
-        if '*' in label:
-            patch.set_hatch('\\')  # or 'xx', '\\',  //etc.
-            patch.set_edgecolor('white') 
-            patch_legend = mpatches.Patch(
-                facecolor=color,
-                edgecolor='white',   
-                hatch='\\',          
-                # label=methods_data[label][1] + " : " + label
-                label = label
+        mean_value = np.mean(data[label])
+        median_value = np.median(data[label])
+
+        # Median (white dot)
+        plt.scatter(
+                ind + 1, median_value,
+                color='white', edgecolor='black',
+                zorder=3, s=40
             )
+
+            # Mean (black dashed line)
+        plt.plot(
+                [ind + 0.85, ind + 1.15],
+                [mean_value, mean_value],
+                color='black', linestyle='--', linewidth=2
+            )
+
+        # if '*' in label:
+        #     patch.set_hatch('\\')  # or 'xx', '\\',  //etc.
+        #     patch.set_edgecolor('white') 
+        #     patch_legend = mpatches.Patch(
+        #         facecolor=color,
+        #         edgecolor='white',   
+        #         hatch='\\',          
+        #         # label=methods_data[label][1] + " : " + label
+        #         label = label
+        #     )
         
         # legend_handles.append(mpatches.Patch(color=color, label = methods_data[label][1]+" : "+label))
         legend_handles.append(patch_legend)
@@ -701,6 +766,13 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
     for line in box['whiskers'] + box['caps']:
         line.set(color='black', linewidth=1.2)
 
+
+
+
+
+    
+
+
     plt.title(f'Box plot of {metric}')
     
 
@@ -732,8 +804,8 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
         values = [data[label] for label in labels]
 
         i=0
-        # for patch, color, label in zip(box['boxes'], colors_, labels):
-        for patch, label in zip(box['boxes'], labels):
+        for patch, color, label in zip(box['boxes'], colors_, labels):
+        # for patch, label in zip(box['boxes'], labels):
             #for i, label in enumerate(data):
             values = np.sort(data[label])
             cdf = np.linspace(0, 1, len(values))
@@ -750,6 +822,132 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
             plt.tick_params(axis='both', which='major', labelsize=font)
             plt.draw()
             i+=1
+
+def plot_box(data, metric='', show_legend=True, add_arrows=False):
+    print('plot_violin for ', metric)
+
+
+    labels = list(data.keys())
+    values = [data[label] for label in labels]
+
+    values = [data[label][100:] for label in labels] #skip some outliers in the begining 
+
+
+    def clip_top_percentile(arr, percentile=95):
+        """
+        Clip array values to the given percentile
+        (values above percentile are set to the percentile value)
+        """
+        arr = np.asarray(arr)
+        max_val = np.percentile(arr, percentile)
+        return np.clip(arr, None, max_val)
+
+    values = [clip_top_percentile(d, 99) for d in values]
+
+    labels_local = lab[0:len(labels)]
+    lt_local = lt[0:len(labels)]
+
+    plt.figure(figsize=(10, 6))
+
+    # Create violin plot
+    parts = plt.violinplot(
+        values,
+        # quantiles = [0.25, 0.75] * len(values),
+        showmeans= False,
+        showmedians = False,
+        showextrema= False,
+        # points = 100, #The number of points to evaluate each of the gaussian kernel density estimations at.
+        # bw_method = 1.5
+    )
+
+    colors_ = [methods_data[label][0] for label in labels]
+
+    legend_handles = []
+
+    # Color each violin
+    for i, (body, color, label) in enumerate(zip(parts['bodies'], colors_, labels)):
+        body.set_facecolor(color)
+        body.set_edgecolor('black')
+        body.set_alpha(0.8)
+        body.set_linewidth(1.2)
+        
+        # Legend entry
+        patch_legend = mpatches.Patch(
+            facecolor=color,
+            label=methods_data[label][1] + " : " + label
+        )
+        legend_handles.append(patch_legend)
+
+        # Statistics
+        mean_value = np.mean(values[i])
+        median_value = np.median(values[i])
+
+        # Optional arrows for large mean values
+        if add_arrows and mean_value > 0.9:
+            y_base = 0.85
+            plt.annotate(
+                "",
+                xy=(i + 1, y_base + 0.15),
+                xytext=(i + 1, y_base),
+                arrowprops=dict(arrowstyle="->", lw=3, color='black'),
+                annotation_clip=False
+            )
+            plt.text(
+                i + 1 - 0.26, y_base + 0.15,
+                f"{mean_value:.2f}",
+                fontsize=font - 2, weight=600
+            )
+
+            body.set_visible(False)
+            continue
+
+        
+
+        # Median (white dot)
+        plt.scatter(
+            i + 1, median_value,
+            color='white', edgecolor='black',
+            zorder=3, s=40
+        )
+
+        # Mean (black dashed line)
+        plt.plot(
+            [i + 0.85, i + 1.15],
+            [mean_value, mean_value],
+            color='black', linestyle='--', linewidth=2
+        )
+
+    
+
+    plt.title(f'Violin plot of {metric}')
+    plt.ylabel(metric, fontsize=font)
+
+    plt.xticks(lt_local, labels_local, fontsize=font)
+    plt.tick_params(axis='both', which='major', labelsize=font)
+
+    plt.grid(True)
+
+    if show_legend:
+        plt.legend(
+            handles=legend_handles,
+            loc='upper center',
+            bbox_to_anchor=bbox_to_anchor,
+            ncol=ncol,
+            fancybox=True,
+            shadow=True,
+            fontsize=font_legend
+        )
+
+    plt.tight_layout()
+    plt.draw()
+
+
+    # plt.figure()
+    # for i, (errors, color, label) in enumerate(zip(values, colors_, labels)):
+    #     plt.plot(errors, label = label, color = color)
+
+    # plt.legend()
+    # plt.draw()
 
 def plot_lines(data, metric = '',  show_legend = True):
     print('plot_lines for ',metric)
@@ -774,8 +972,156 @@ def plot_lines(data, metric = '',  show_legend = True):
     plt.draw()
     plt.legend()
 
-plot_box(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
-plot_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+
+def plot_box_violin(
+    data,
+    metric='',
+    show_legend=True,
+    add_arrows=False,
+    skip_start=100,
+    # bw_method=1.5,
+    figsize=(10, 6)
+):
+    labels = list(data.keys())
+    values = [np.asarray(data[label][skip_start:]) for label in labels]
+
+    labels_local = lab[0:len(labels)]
+    lt_local = lt[0:len(labels)]
+    colors_ = [methods_data[label][0] for label in labels]
+
+    plt.figure(figsize=figsize)
+
+    positions = np.arange(1, len(values) + 1)
+
+    # -----------------------------
+    # 1) Transparent box plot
+    # -----------------------------
+    box = plt.boxplot(
+        values,
+        positions=positions,
+        widths=0.15,
+        patch_artist=True,
+        showfliers=False
+    )
+
+    for patch, color in zip(box['boxes'], colors_):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.3)
+        patch.set_edgecolor('black')
+        patch.set_linewidth(1.2)
+
+    for median in box['medians']:
+        median.set_color('black')
+        median.set_linewidth(2)
+
+    for whisker in box['whiskers']:
+        whisker.set_color('black')
+        whisker.set_linewidth(1.2)
+
+    for cap in box['caps']:
+        cap.set_color('black')
+        cap.set_linewidth(1.2)
+
+    # -----------------------------
+    # 2) Violin plot (distribution overlay)
+    # -----------------------------
+    vp = plt.violinplot(
+        values,
+        positions=positions,
+        showmeans=False,
+        showmedians=False,
+        showextrema=False,
+        # bw_method=bw_method
+    )
+
+    legend_handles = []
+
+    for i, (body, color, label) in enumerate(zip(vp['bodies'], colors_, labels)):
+        body.set_facecolor(color)
+        body.set_edgecolor('black')
+        body.set_alpha(0.5)
+        body.set_linewidth(1.2)
+
+        # Legend
+        patch_legend = mpatches.Patch(
+            facecolor=color,
+            edgecolor='black',
+            label=methods_data[label][1] + " : " + label
+        )
+        legend_handles.append(patch_legend)
+
+        # Median & mean markers
+        median_value = np.median(values[i])
+        mean_value = np.mean(values[i])
+
+        plt.scatter(
+            i + 1, median_value,
+            color='white', edgecolor='black',
+            zorder=3, s=40
+        )
+
+        plt.plot(
+            [i + 0.85, i + 1.15],
+            [mean_value, mean_value],
+            color='black', linestyle='--', linewidth=2
+        )
+
+        # Optional arrow for large means
+        if add_arrows and mean_value > 0.9:
+            y_base = 0.85
+            plt.annotate(
+                "",
+                xy=(i + 1, y_base + 0.15),
+                xytext=(i + 1, y_base),
+                arrowprops=dict(arrowstyle="->", lw=3, color='black'),
+                annotation_clip=False
+            )
+            plt.text(
+                i + 1 - 0.26, y_base + 0.15,
+                f"{mean_value:.2f}",
+                fontsize=font - 2, weight=600
+            )
+            body.set_visible(False)
+
+    # -----------------------------
+    # 3) Axes, labels, legend
+    # -----------------------------
+    plt.xticks(lt_local, labels_local, fontsize=font)
+    plt.ylabel(metric, fontsize=font)
+    plt.title(f"Box + Violin plot of {metric}")
+    plt.tick_params(axis='both', which='major', labelsize=font)
+    plt.grid(True, axis='y', linestyle='--', alpha=0.5)
+
+    if show_legend:
+        plt.legend(
+            handles=legend_handles,
+            loc='upper center',
+            bbox_to_anchor=bbox_to_anchor,
+            ncol=ncol,
+            fancybox=True,
+            shadow=True,
+            fontsize=font_legend
+        )
+
+    plt.tight_layout()
+    plt.draw()
+
+
+# plot_box(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
+# plot_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+
+
+plot_box_old(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
+plot_box_old(data_rpe_t, 'RTE translation (%)', show_legend = True)
+
+
+# plot_box_violin(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
+# plot_box_violin(data_rpe_t, 'RTE translation (%)', show_legend = True)
+
+
+
+# plot_violin_with_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+
 
 # plot_box(data_ape_r, 'ATE rotation (m)', show_legend = True, add_arrows = False)
 # plot_box(data_rpe_r, 'RTE rotation (%)', show_legend = True)

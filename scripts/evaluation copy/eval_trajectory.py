@@ -73,8 +73,8 @@ font = 22
 
 
 
-font_legend = 16
-font = 16
+# font_legend = 16
+# font = 16
 
 # font = 28
 
@@ -509,6 +509,8 @@ class TrajectoryReader(object):
                 
         # rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
         # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance_error_ratio, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        # rpe_metric = metrics.RPE(metrics.PoseRelation.full_transformation, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+
         rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
         rpe_metric.process_data((self.traj_gt, self.traj_model))
@@ -1003,7 +1005,9 @@ colors2 = [
     '#d62728',  # Red
 ]
 linestyles = ['-', '--', '-.', ':', '-', '--', '-.', '-', '--', ':',]
+linestyles = ['-', '--', '-.', '-', '-', '--', '-.', '-', '--', ':',]
 lab = ['A','B','C','D','E','F','G','H','K','X']
+lab = ['0','1','2','3','4','5','6','7','8','9']
 lt = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
@@ -1102,6 +1106,43 @@ methods_data = {
 
 obj_gt = TrajectoryReader(path_gt, path_gt)
 
+methods = {
+     'Reference trajectory' :  "/home/eugeniu/zz_zx_final/ref",
+    'GNSS_INS-alone'        : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    
+    'GNSS-INS'              : '/home/eugeniu/z_tighly_coupled/0',  # '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    'LI'                    : '/home/eugeniu/zz_zx_final/a4',
+    'LI-VUX'                : '/home/eugeniu/zz_zx_final/b4',
+
+    'LI-VUX + SE3'          : '/home/eugeniu/zz_zx_final/GNSS_INS',    #a4 + GNSS-INS   3 sigma of gnss-ins
+    'LI-VUX + S-ALS'        : '/home/eugeniu/zz_zx_final/s_ALS',
+    'LI-VUX + S-ALS + SE3'  : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',
+
+    'LI-VUX + D-ALS'        : '/home/eugeniu/zz_zx_final/HeliALS',
+
+    
+    
+}
+
+methods_data = {
+    'Reference trajectory'      : ['#d62728','8'],
+
+    'GNSS-INS'                  : ['#2ca02c','1'],
+    'LI'                        : ['#1f77b4','2'],    
+    'LI-VUX'                    : ['#ff7f0e','3'],
+
+    'LI-VUX + SE3'              : ['#9467bd','4'], 
+    'LI-VUX + S-ALS'            : ['#17becf','5'],
+    'LI-VUX + S-ALS + SE3'      : ['#7f7f7f','6'],
+
+    'LI-VUX + D-ALS'            : ['#8c564b','7'],
+
+
+
+    'GNSS_INS-alone' : ["#6c2416",'G'],
+    'test' : ["#648099",'Z'],
+    'test2' : ["#6F1E6A",'f'],
+}   
 
 if False:
     est_xyz = obj_gt.traj_model.positions_xyz
@@ -1533,7 +1574,7 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
 
     values = [data[label] for label in labels]
 
-    box = plt.boxplot(values, patch_artist=True, showmeans=True, meanline=True, showfliers=False, notch=False) 
+    box = plt.boxplot(values, patch_artist=True, showmeans=False, meanline=False, showfliers=False, notch=False) 
     ind = 0
     legend_handles = []
     labels_local = []
@@ -1550,6 +1591,23 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
         )
         
         labels_local.append(methods_data[label][1])
+        
+        mean_value = np.mean(data[label])
+        median_value = np.median(data[label])
+
+        # Median (white dot)
+        plt.scatter(
+                ind + 1, median_value,
+                color='white', edgecolor='black',
+                zorder=3, s=40
+            )
+
+            # Mean (black dashed line)
+        plt.plot(
+                [ind + 0.85, ind + 1.15],
+                [mean_value, mean_value],
+                color='black', linestyle='--', linewidth=2
+            )
         
         if '*' in label:
             patch.set_hatch('\\')  # or 'xx', '\\',  //etc.
@@ -1575,7 +1633,7 @@ def plot_box(data, metric = '',  show_legend = True, show_cumulative = False, ad
                 box['caps'][2*ind].set_visible(False)
                 box['caps'][2*ind + 1].set_visible(False)
                 box['medians'][ind].set_visible(False)
-                box['means'][ind].set_visible(False)
+                # box['means'][ind].set_visible(False)
 
 
                 x_pos = ind + 1  # boxplot x positions are 1-indexed
@@ -1676,7 +1734,7 @@ def plot_z_overlap(data, metric_name=''):
 
 plot_box(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = True)
 #plot_box(data_ape_r, 'ATE rotation (deg)')
-plot_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+plot_box(data_rpe_t, 'RTE translation (%)', show_legend = False)
 #plot_box(data_rpe_r, 'RTE rotation (deg)')
 
 # label = "Reference trajectory"
