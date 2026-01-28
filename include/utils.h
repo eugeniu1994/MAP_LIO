@@ -95,6 +95,48 @@ inline M3D hat(const V3D& v)
     return m;
 }
 
+//right jacobian 
+inline M3D J_right(const V3D& v)
+{
+    M3D I = M3D::Identity();
+    const double squaredNorm = v.squaredNorm();
+    const double norm = std::sqrt(squaredNorm);
+
+    if (norm < tolerance()) {
+        return I;
+    }
+    
+    const M3D v_hat = hat(v);
+    
+    return (I 
+         - (1.0 - std::cos(norm)) / squaredNorm * v_hat
+         + (1.0 - std::sin(norm) / norm) / squaredNorm * (v_hat * v_hat));
+
+}
+
+inline M3D Jr_inv(const Eigen::Vector3d &phi)
+{
+    double theta = phi.norm();
+    M3D I = M3D::Identity();
+
+    if (theta < 1e-5)
+    {
+        M3D phi_hat = hat(phi);
+        return I + 0.5 * phi_hat + (1.0 / 12.0) * phi_hat * phi_hat;
+    }
+    else
+    {
+        M3D phi_hat = hat(phi);
+        M3D phi_hat2 = phi_hat * phi_hat;
+
+        double a = 1.0 / (theta * theta);
+        double b = (1 + cos(theta)) / (2 * theta * sin(theta));
+
+        return I + 0.5 * phi_hat + (a - b) * phi_hat2;
+    }
+}
+
+//this returns left jacobian transpose
 inline M3D A_matrix(const V3D& v)
 {
     M3D I = M3D::Identity();
@@ -106,9 +148,31 @@ inline M3D A_matrix(const V3D& v)
     }
     
     const M3D v_hat = hat(v);
-    return I
+    
+    
+
+    //to be tested - this should be the correct one 
+    //it should be Jr - test this and add transpose, since it is added later 
+    // return (I 
+    //     - (1.0 - std::cos(norm)) / squaredNorm * v_hat
+    //     + (1.0 - std::sin(norm) / norm) / squaredNorm * (v_hat * v_hat)).transpose();
+
+    //tests were done with this  left jacobian SO(3)
+    return I 
         + (1.0 - std::cos(norm)) / squaredNorm * v_hat
         + (1.0 - std::sin(norm) / norm) / squaredNorm * (v_hat * v_hat);
+
+
+    // auto part = (1.0 - std::cos(norm)) / squaredNorm * v_hat + (1.0 - std::sin(norm) / norm) / squaredNorm * (v_hat * v_hat);
+    
+    //left
+    //res = Eigen::Matrix<typename Base::scalar, 3, 3>::Identity() + (1 - std::cos(norm)) / squaredNorm * hat(v) + (1 - std::sin(norm) / norm) / squaredNorm * hat(v) * hat(v);
+    //right
+    //res = Eigen::Matrix<typename Base::scalar, 3, 3>::Identity() - (1 - std::cos(norm)) / squaredNorm * hat(v) + (1 - std::sin(norm) / norm) / squaredNorm * hat(v) * hat(v);
+
+
+    //I - part => Right jacobian
+    //I + part => Left jacobian -> J_r(-angle)
 }
 
 namespace ekf

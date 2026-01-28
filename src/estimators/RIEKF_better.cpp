@@ -383,9 +383,9 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
                 // l.w = 1 / R;    //no weighting
 
                 l.tgt = V3D(p_tgt.x, p_tgt.y, p_tgt.z);
-                l.cost = pd2;   // in this case b is negative this should be 0 - pd2  
+                l.cost = pd2; // in this case b is negative this should be 0 - pd2
 
-                ///l.cost = -pd2;  in this case b is positive
+                /// l.cost = -pd2;  in this case b is positive
 
                 global_valid[i] = true;
                 global_landmarks[i] = l;
@@ -498,7 +498,7 @@ std::tuple<cov, vectorized_state, double, int> BuildLinearSystem_openMP(
             V3D C = Rt * lm.norm;
             V3D A = point_I_crossmat * C;
 
-            //this will be the derivative of r not of h() as in the paper 
+            // this will be the derivative of r not of h() as in the paper
             Jacobian_plane J_r = Jacobian_plane::Zero();
 
             // if (coupled_rotation_translation)
@@ -647,13 +647,13 @@ Eigen::Matrix<double, 6, 6> SE3numericalJacobian(const Sophus::SE3 &X, const Sop
     return J;
 }
 
-Eigen::Matrix<double,6,6> SE3_Relative_NumericalJacobian(
+Eigen::Matrix<double, 6, 6> SE3_Relative_NumericalJacobian(
     const state &x_,
     const Sophus::SE3 &prev_X,
     const Sophus::SE3 &measured_Z,
     double eps = 1e-6)
 {
-    Eigen::Matrix<double,6,6> J;
+    Eigen::Matrix<double, 6, 6> J;
     J.setZero();
 
     // Nominal residual
@@ -661,8 +661,8 @@ Eigen::Matrix<double,6,6> SE3_Relative_NumericalJacobian(
     Sophus::SE3 pred_Z = prev_X.inverse() * X;
 
     Vector6d r0;
-    r0.block<3,1>(P_ID,0) = pred_Z.translation() - measured_Z.translation();
-    r0.block<3,1>(R_ID,0) = (measured_Z.so3().inverse() * pred_Z.so3()).log();
+    r0.block<3, 1>(P_ID, 0) = pred_Z.translation() - measured_Z.translation();
+    r0.block<3, 1>(R_ID, 0) = (measured_Z.so3().inverse() * pred_Z.so3()).log();
 
     for (int i = 0; i < 6; ++i)
     {
@@ -673,15 +673,14 @@ Eigen::Matrix<double,6,6> SE3_Relative_NumericalJacobian(
         Sophus::SE3 pred_Z_pert = prev_X.inverse() * X_pert;
 
         Vector6d r_pert;
-        r_pert.block<3,1>(P_ID,0) = pred_Z_pert.translation() - measured_Z.translation();
-        r_pert.block<3,1>(R_ID,0) = (measured_Z.so3().inverse() * pred_Z_pert.so3()).log();
+        r_pert.block<3, 1>(P_ID, 0) = pred_Z_pert.translation() - measured_Z.translation();
+        r_pert.block<3, 1>(R_ID, 0) = (measured_Z.so3().inverse() * pred_Z_pert.so3()).log();
 
         J.col(i) = (r_pert - r0) / eps;
     }
 
     return J;
 }
-
 
 std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_, const Sophus::SE3 &measured_se3,
                                                                 const V3D &std_pos_m, const V3D &std_rot_deg)
@@ -690,46 +689,145 @@ std::tuple<cov, vectorized_state, double> BuildLinearSystem_SE3(const state &x_,
     vectorized_state b = vectorized_state::Zero();
     double e = 0;
 
-    Vector6d r = Vector6d::Zero();
-    // if (coupled_rotation_translation)
-    // {
-    //     r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
-    // }
-    // else
-    // {
-    r.block<3, 1>(P_ID, 0) = x_.pos - measured_se3.translation();
-    r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log();
-    // }
-
-    double kernel_weight = huber(r.norm(), 0.2); // cauchy(pd2, 0.2);
-    // double kernel_weight = 1;
-
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
     Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
     R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
     R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
 
-    // Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt(R);
-    // Eigen::Matrix<double, 6, 6> L = llt.matrixL();
-    // // Whitening matrix
-    // Eigen::Matrix<double, 6, 6> R_inv_sqrt = L.inverse();
-    double maha = std::sqrt(r.transpose() * R.inverse() * r);
-    kernel_weight = huber(maha, 1.0);
+    Vector6d r = Vector6d::Zero();
 
-    Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse(); // here take the element wise inverse
+    if (true) // z - h(x)
+    {
+        r.block<3, 1>(P_ID, 0) = measured_se3.translation() - x_.pos; // z.pos - x.pos   ( r = z-h )
+        // r.block<3, 1>(R_ID, 0) = measured_se3.so3().log() - x_.rot.log();  //z.rot - x.rot  this fails
 
-    Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
-    // APPROXIMATE WITH IDENTITY
-    J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
-    J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
+        // r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log(); //( r = h-z )
+        r.block<3, 1>(R_ID, 0) = Sophus::SO3(x_.rot.matrix().transpose() * measured_se3.so3().matrix()).log(); //( r = z-h )
 
-    // this should be called only if coupled_rotation_translation is used
-    //J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+        double kernel_weight = huber(r.norm(), 0.2);
+        double maha = std::sqrt(r.transpose() * R.inverse() * r);
+        kernel_weight = huber(maha, 1.0);
+        Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse();
 
-    H.noalias() = J_se3.transpose() * W * J_se3;
-    b.noalias() = J_se3.transpose() * W * r;
-    e = kernel_weight * r.squaredNorm();
+        // dh/dx
+        Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
+        J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+        J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
+        // dr/dx = d(z - h(x))/dx = -1 * dh/dx
+
+        if (false)
+        {
+            // M3D R_rel = x_.rot.matrix().transpose() * measured_se3.so3().matrix();
+            // V3D phi = Sophus::SO3(R_rel).log();  // R_rel = Rx^T * Rz
+            V3D phi = r.block<3, 1>(R_ID, 0);
+
+            double angle = phi.norm();
+
+            // right Jacobian of SO(3):
+            M3D J;
+            if (angle < 1e-5)
+            {
+                J = M3D::Identity();
+            }
+            else
+            {
+                M3D phi_hat = Sophus::SO3::hat(phi);
+                J = M3D::Identity() - (1 - cos(angle)) / (angle * angle) * phi_hat + (angle - sin(angle)) / (angle * angle * angle) * (phi_hat * phi_hat);
+            }
+
+            // Then the Jacobian of residual: dr/dtheta = -J  (for r = z - h(x))
+
+            J_se3.block<3, 3>(R_ID, R_ID) = J;
+
+            if (true)
+            {
+                M3D H; // dr/dx,  but dr/dx = dr/dh  * dh/dx
+                // dr/dh = -1 ->  dr/dx = -1 * dh/dx
+
+                M3D R = x_.rot.matrix();
+                M3D Z = measured_se3.so3().matrix();
+                V3D r0 = Sophus::SO3(R.transpose() * Z).log();
+
+                double eps = 1e-6;
+                for (int i = 0; i < 3; ++i)
+                {
+                    V3D delta = V3D::Zero();
+                    delta(i) = eps;
+
+                    // Perturb rotation: R' = R * exp(delta)
+                    M3D dR = Sophus::SO3::exp(delta).matrix();
+                    M3D Rp = R * dR;
+
+                    V3D ri = Sophus::SO3(Rp.transpose() * Z).log();
+
+                    H.col(i) = (ri - r0) / eps;
+                }
+
+                std::cout << "\nAnalytical jacobian:\n"
+                          << J << std::endl;
+                std::cout << "Numerical  jacobian:\n"
+                          << H << std::endl;
+
+                // J_se3.block<3, 3>(R_ID, R_ID) = -H; //dr/dx = -1 * dh/dx -> dh/dx = -dr/dx
+
+                M3D Jr_inv;
+                M3D I = M3D::Identity();
+
+                if (angle < 1e-5)
+                {
+                    // small angle approximation
+                    Jr_inv = I - 0.5 * Sophus::SO3::hat(phi) + (1.0 / 12.0) * Sophus::SO3::hat(phi) * Sophus::SO3::hat(phi);
+                }
+
+                M3D phi_hat = Sophus::SO3::hat(phi);
+                Jr_inv = I + 0.5 * phi_hat + (1.0 / (angle * angle) - (1 + cos(angle)) / (2 * angle * sin(angle))) * phi_hat * phi_hat;
+
+                J_se3.block<3, 3>(R_ID, R_ID) = Jr_inv;
+                std::cout << "Jr_inv :\n"
+                          << H << std::endl;
+            }
+        }
+
+        r = -r; // this is requires, since the system expects r = h(x) - z   --->  z - h(x) = -r
+        H.noalias() = J_se3.transpose() * W * J_se3;
+        b.noalias() = J_se3.transpose() * W * r;
+
+        e = kernel_weight * r.squaredNorm();
+    }
+    else
+    {
+        // if (coupled_rotation_translation)
+        // {
+        //     r = (measured_se3.inverse() * Sophus::SE3(x_.rot, x_.pos)).log();
+        // }
+        // else
+        // {
+        r.block<3, 1>(P_ID, 0) = x_.pos - measured_se3.translation(); //( r = h-z )
+        r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * x_.rot.matrix()).log();
+        // }
+
+        double kernel_weight = huber(r.norm(), 0.2); // cauchy(pd2, 0.2);
+        // double kernel_weight = 1;
+
+        double maha = std::sqrt(r.transpose() * R.inverse() * r);
+        kernel_weight = huber(maha, 1.0);
+
+        Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse(); // here take the element wise inverse
+
+        Eigen::Matrix<double, 6, state_size> J_se3 = Eigen::Matrix<double, se3_dim, state_size>::Zero();
+        // APPROXIMATE WITH IDENTITY
+        J_se3.block<3, 3>(P_ID, P_ID) = Eye3d;
+        J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
+
+        // this should be called only if coupled_rotation_translation is used
+        // J_se3.block<6, 6>(0, 0) = SE3numericalJacobian(Sophus::SE3(x_.rot, x_.pos), measured_se3, 1e-6);
+
+        H.noalias() = J_se3.transpose() * W * J_se3;
+        b.noalias() = J_se3.transpose() * W * r;
+        e = kernel_weight * r.squaredNorm();
+    }
+
     return {H, b, e};
 }
 
@@ -755,8 +853,8 @@ std::tuple<cov, vectorized_state, double> Build_Relative_LinearSystem_SE3(const 
     J_se3.block<3, 3>(P_ID, P_ID) = prev_X.so3().inverse().matrix();
     J_se3.block<3, 3>(R_ID, R_ID) = Eye3d;
 
-    //numerical
-    // J_se3.block<6,6>(0,0) = SE3_Relative_NumericalJacobian(x_, prev_X, measured_Z, 1e-6);
+    // numerical
+    //  J_se3.block<6,6>(0,0) = SE3_Relative_NumericalJacobian(x_, prev_X, measured_Z, 1e-6);
 
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
@@ -764,14 +862,14 @@ std::tuple<cov, vectorized_state, double> Build_Relative_LinearSystem_SE3(const 
     R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
     R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
 
-    //kernel_weight = huber(r.norm(), 0.2); 
-    //  Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt(R);
-    // Eigen::Matrix<double, 6, 6> L = llt.matrixL();
-    // // Whitening matrix
-    // Eigen::Matrix<double, 6, 6> R_inv_sqrt = L.inverse();
+    // kernel_weight = huber(r.norm(), 0.2);
+    //   Eigen::LLT<Eigen::Matrix<double, 6, 6>> llt(R);
+    //  Eigen::Matrix<double, 6, 6> L = llt.matrixL();
+    //  // Whitening matrix
+    //  Eigen::Matrix<double, 6, 6> R_inv_sqrt = L.inverse();
     double maha = std::sqrt(r.transpose() * R.inverse() * r);
     kernel_weight = huber(maha, 1.0);
-    
+
     Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse();
 
     H.noalias() = J_se3.transpose() * W * J_se3;
@@ -837,9 +935,6 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     int iteration_finished = 0;
     cov P_inv = P_.inverse(); // 24x24
 
-    const bool Armijo = false; // true;
-    double new_cost = 0., curr_cost = 9999999999999;
-
     bool use_mls = false; // true;
 
     // if the open MP is static - this is not needed
@@ -880,6 +975,341 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
     //     // use_mls = true; //force MLS to be true
     // }
 
+    // auto ComputePriorJacobianFD = [&](const state &x_curr,
+    //                               const state &x_prior,
+    //                               double eps = 1e-6)
+    // {
+    //     cov J = cov::Zero();
+
+    //     vectorized_state e0 = boxminus(x_curr, x_prior);
+
+    //     for (int i = 0; i < state_size; ++i)
+    //     {
+    //         vectorized_state dx = vectorized_state::Zero();
+    //         dx[i] = eps;
+
+    //         state x_perturbed = boxplus(x_curr, dx);
+    //         vectorized_state e_perturbed = boxminus(x_perturbed, x_prior);
+
+    //         J.col(i) = (e_perturbed - e0) / eps;
+    //     }
+    //     return J;
+    // };
+
+    if (true) // MAP on manifold using
+    {
+        state x = x_;      // Current estimate
+        state x_prop = x_; // Prior mean
+        cov P_prop = P_;   // Prior covariance
+
+        int iteration_finished = 0;
+        const int max_iters = 5;
+
+        for (int iter = 0; iter < max_iters; ++iter)
+        {
+            iteration_finished = iter;
+
+            // ================= MEASUREMENT SYSTEM =================
+            cov JTJ = cov::Zero();                           // Hᵀ R⁻¹ H
+            vectorized_state JTr = vectorized_state::Zero(); // Hᵀ R⁻¹ r
+
+            establishCorrespondences(R, x, true,
+                                     feats_down_body, map,
+                                     localKdTree_map,
+                                     MLS_valid, MLS_landmarks, MLS_Neighbours);
+
+            const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] =
+                BuildLinearSystem_openMP(x, feats_down_body,
+                                         extrinsic_est,
+                                         MLS_valid, MLS_landmarks);
+
+            JTJ += JTJ_mls;
+            JTr += JTr_mls;
+
+            std::cout << "MAP --- MLS register with "
+                      << da_mls << "/" << feats_down_body->size()
+                      << " points" << std::endl;
+
+            int als_planes = 0;
+            if (use_als)
+            {
+                establishCorrespondences(R, x, status.converge, feats_down_body, als_map, als_tree, ALS_valid, ALS_landmarks, ALS_Neighbours);
+                const auto &[JTJ_als, JTr_als, als_cost, da_als] = BuildLinearSystem_openMP(x, feats_down_body, extrinsic_est, ALS_valid, ALS_landmarks);
+
+                double alpha = std::max(static_cast<double>(da_mls) / static_cast<double>(da_als),1.0);
+
+                als_planes = da_als;
+                // alpha = 1;
+
+                std::cout << "ALS register with " << da_als << "/" << feats_down_body->size() << " points, alpha:" << alpha << std::endl;
+
+                JTJ += alpha * JTJ_als;
+                JTr += alpha * JTr_als;
+            }
+
+            // if(true)
+            //     {
+            //         std::ofstream foutMLS_iter("/home/eugeniu/zz_zx_final/planes.txt", std::ios::app);
+            //         foutMLS_iter << std::to_string(da_mls) << " " << std::to_string(als_planes) << std::endl;
+            //         foutMLS_iter.close();
+            //     }
+
+            if (use_lc)
+            {
+                establishCorrespondences(R, x, status.converge, feats_down_body, lc_map, lc_tree, LC_valid, LC_landmarks, LC_Neighbours);
+                const auto &[JTJ_lc, JTr_lc, lc_cost, da_lc] = BuildLinearSystem_openMP(x, feats_down_body, extrinsic_est, LC_valid, LC_landmarks);
+
+                // add the alpha here todo:
+
+                JTJ += JTJ_lc;
+                JTr += JTr_lc;
+            }
+
+            if (use_se3)
+            {
+                const auto &[JTJ_se3, JTr_se3, se3_cost] = BuildLinearSystem_SE3(x, gnss_se3, gnss_std_pos_m, gnss_std_rot_deg);
+                double alpha = std::max(da_mls, 1); // ;
+
+                // alpha = 1;
+
+                JTJ += alpha * JTJ_se3;
+                JTr += alpha * JTr_se3;
+
+                // JTJ = JTJ_se3;
+                // JTr = JTr_se3;
+            }
+
+            if (use_se3_rel)
+            {
+                const auto &[JTJ_se3, JTr_se3, se3_cost] = Build_Relative_LinearSystem_SE3(x, prev_X, se3_rel, gnss_std_pos_m, gnss_std_rot_deg);
+
+                double alpha = std::max(da_mls, 1); // ;
+                // double alpha = 1;
+                JTJ += alpha * JTJ_se3;
+                JTr += alpha * JTr_se3;
+            }
+
+            // ================= PRIOR RESIDUAL =================
+            vectorized_state e = boxminus(x, x_prop); // e = x ⊖ x_prop
+
+            // Build prior Jacobian J_p
+            cov Jp = cov::Identity();
+
+            V3D phi = e.block<3, 1>(R_ID, 0);
+
+            cov Lambda;
+            vectorized_state b;
+            if (true)
+            {
+                // M3D Jr = J_right(phi);
+                //  Prior residual defined in prior tangent space → need Jr^{-1}
+                // Jp.block<3, 3>(R_ID, R_ID) = Jr.inverse();
+
+                Jp.block<3, 3>(R_ID, R_ID) = Jr_inv(phi); // Jp_analytic
+
+                // cov Jp_fd       = ComputePriorJacobianFD(x, x_prop);
+
+                // std::cout << "\nJp analytic:\n" << Jp << std::endl;
+                // std::cout << "Jp finite diff:\n" << Jp_fd << std::endl;
+                // std::cout << "Difference:\n" << Jp - Jp_fd << std::endl;
+                // std::cout << "Difference norm:\n" << (Jp - Jp_fd).norm() << std::endl;
+
+                // Jp = Jp_fd;
+
+                // ================= MAP NORMAL EQUATIONS =================
+                cov Pinv = P_prop.inverse();
+
+                Lambda = JTJ + Jp.transpose() * Pinv * Jp;
+                b = -JTr - Jp.transpose() * Pinv * e;
+
+                // dx = -J_ * e + K * (z + G * J * e); = -J_ * e + K*r + K*G*J_*e = K*r - (I - K*G)*J_*e = K*r + (K*G - I)*J_*e
+            }
+            else
+            {
+                M3D J_ = A_matrix(phi).transpose(); // A matrix J_r right jacobian
+
+                // cov P = J * x.covariance * J.transpose();
+                P_ = P_prop;                                                                          // reset the covariance P
+                P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);             // Left multiply (rows)
+                P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply (columns)
+
+                Lambda = JTJ + P_.inverse();
+
+                vectorized_state e_tilde = e;
+                e_tilde.block<3, 1>(R_ID, 0) = J_ * e.block<3, 1>(R_ID, 0);
+                b = -JTr - P_.inverse() * e_tilde;
+                // P_.inverse() * e_tilde = P.inv * J_ * e_tilde
+            }
+
+            // Solve
+            vectorized_state dx = Lambda.ldlt().solve(b);
+
+            // Update state
+            x = boxplus(x, dx);
+
+            // ================= CONVERGENCE CHECK =================
+            bool converged = true;
+            for (int j = 0; j < state_size; ++j)
+            {
+                if (std::fabs(dx[j]) > ESTIMATION_THRESHOLD_)
+                {
+                    converged = false;
+                    break;
+                }
+            }
+
+            if (converged || iter == max_iters - 1)
+            {
+                // Recompute Jp at final state
+                vectorized_state e_final = boxminus(x, x_prop);
+                V3D phi_final = e_final.block<3, 1>(R_ID, 0);
+                if (true)
+                {
+                    // M3D Jr_final = J_right(phi_final);
+
+                    cov Jp_final = cov::Identity();
+                    // Jp_final.block<3, 3>(R_ID, R_ID) = Jr_final.inverse();
+                    Jp_final.block<3, 3>(R_ID, R_ID) = Jr_inv(phi_final);
+                    // cov Jp_fd       = ComputePriorJacobianFD(x, x_prop);
+                    // Jp_final = Jp_fd;
+
+                    // Final posterior covariance
+                    cov Pinv = P_prop.inverse();
+                    cov Lambda_final = JTJ + Jp_final.transpose() * Pinv * Jp_final;
+                    P_ = Lambda_final.inverse();
+
+                    // Symmetrize
+                    P_ = 0.5 * (P_ + P_.transpose());
+                }
+                else
+                {
+                    M3D J_ = A_matrix(phi_final).transpose();
+                    P_ = P_prop;                                                                          // reset the covariance P
+                    P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);             // Left multiply (rows)
+                    P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply (columns)
+
+                    cov Lambda_final = JTJ + P_.inverse();
+
+                    P_ = Lambda_final.inverse();
+                }
+
+                x_ = x;
+                break;
+            }
+        }
+
+        return iteration_finished;
+    }
+
+    if (false) // from python
+    {
+        state x_propagated = x_; // predicted nominal state
+        cov P_propagated = P_;
+        int t = 0;
+        residual_struct status;
+        status.valid = true;
+        status.converge = true;
+
+        vectorized_state dx = vectorized_state::Zero();
+
+        int count = 0;
+        int n_iter = 5;
+        while (count < n_iter)
+        {
+            cov JTJ = cov::Zero();
+            vectorized_state JTr = vectorized_state::Zero();
+            double system_cost = 0;
+
+            // if (use_mls)
+            //{
+            establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
+            const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
+            JTJ += JTJ_mls;
+            JTr += JTr_mls;
+            std::cout << "IesEKF (own) --- MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+
+            // auto e = x_op.minus(x.state);            // prior residual
+            vectorized_state e = boxminus(x_, x_propagated); // prior residual // nomial - propagated, should be zero for j=0 iter
+            vectorized_state dx_new = vectorized_state::Zero();
+            dx_new = e;
+
+            // Eigen::MatrixXd J = x_op.plusJacobian(e);
+            V3D seg_SO3 = e.block<3, 1>(R_ID, 0);   // SO3 part from e
+            M3D J_ = A_matrix(seg_SO3).transpose(); // A matrix J_r right jacobian
+
+            // cov P = J * x.covariance * J.transpose();
+            P_ = P_propagated; // reset the covariance P
+
+            P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);             // Left multiply (rows)
+            P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply (columns)
+
+            cov H = (JTJ + P_.inverse());
+            cov H_inv = H.inverse(); // 24x24
+
+            cov KJ = cov::Zero(); //  matrix K * J
+            KJ = H_inv * JTJ;     // cov K_x = K_ * h_x;
+
+            // Eigen::MatrixXd K = P * G.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
+
+            // dx = -J_ * e + K * (z + G * J * e); = -J_ * e + K*r + K*G*J_*e = K*r - (I - K*G)*J_*e = K*r + (K*G - I)*J_*e
+
+            // J_*e
+            dx_new.template block<3, 1>(R_ID, 0) = J_ * dx.template block<3, 1>(R_ID, 0);
+
+            dx = vectorized_state::Zero();         // reset delta x
+            dx.noalias() = H.ldlt().solve(-JTr);   // K * (z-h(x)) part K*r
+            dx += (KJ - cov::Identity()) * dx_new; // the (K*G - I)*J_*e part
+
+            // MatrixXd Pinv = P_propagated.inverse();
+            // cov Lambda = JTJ + P_.inverse();
+            // vectorized_state b_ = JTr - J_.transpose() * P_.inverse() * e;
+            // dx = Lambda.ldlt().solve(b);
+
+            x_ = boxplus(x_, dx);
+
+            status.converge = true;
+            for (int j = 0; j < state_size; j++)
+            {
+                if (std::fabs(dx[j]) > ESTIMATION_THRESHOLD_) // If dx>ESTIMATION_THRESHOLD_ = 0.001 no convergence is considered
+                {
+                    status.converge = false;
+                    break;
+                }
+            }
+
+            if (status.converge)
+            {
+                t++;
+            }
+
+            if (!converged_times && count == 3) // if did not converge and last iteration - force converge
+            {
+                status.converge = true;
+            }
+
+            //// --- Final covariance update ---
+            if (t > 1 || count == n_iter - 1)
+            {
+                // Eigen::MatrixXd P = J * x.covariance * J.transpose();
+                P_ = P_propagated;                                                        // reset the covariance P
+                P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size); // Left multiply (rows)
+                P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose();
+
+                // Eigen::MatrixXd K = P * G.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
+                // x.covariance = (Eigen::MatrixXd::Identity(n, n) - K * G) * P;
+
+                P_ = (cov::Identity() - KJ) * P_;
+
+                break;
+            }
+
+            count++;
+        }
+
+        return count;
+    }
+
+    // Iterated error-state EKF
     if (false) // just a test of the iekf proper implementation inserted in our system
     {
         int t = 0;
@@ -891,7 +1321,8 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         cov P_propagated = P_;
 
         cov L_;
-        for (int i = -1; i < maximum_iter; i++)
+        int N_iters = 4;
+        for (int i = -1; i < N_iters; i++)
         {
             iteration_finished = i + 1;
             status.valid = true;
@@ -900,49 +1331,121 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             vectorized_state JTr = vectorized_state::Zero();
             double system_cost = 0;
 
+            // to be done
+            // if MLS and ALS toghether - do the search once for the same cloud and populate both MLS & ALS & LC globals
+
             // if (use_mls)
             //{
             establishCorrespondences(R, x_, status.converge, feats_down_body, map, localKdTree_map, MLS_valid, MLS_landmarks, MLS_Neighbours);
+
+            // const auto &[JTJ_mls, JTr_mls, mls_cost] = BuildLinearSystem_tbb(x_, feats_down_body, extrinsic_est); // fast but not deterministic
             const auto &[JTJ_mls, JTr_mls, mls_cost, da_mls] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
+
             JTJ += JTJ_mls;
             JTr += JTr_mls;
             system_cost += mls_cost;
-            std::cout << "new --- MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+            std::cout << "IesEKF --- MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+
             //}
+
+            int als_planes = 0;
+            if (use_als)
+            {
+                establishCorrespondences(R, x_, status.converge, feats_down_body, als_map, als_tree, ALS_valid, ALS_landmarks, ALS_Neighbours);
+                const auto &[JTJ_als, JTr_als, als_cost, da_als] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, ALS_valid, ALS_landmarks);
+
+                double alpha = std::max(
+                    static_cast<double>(da_mls) / static_cast<double>(da_als),
+                    1.0);
+
+                als_planes = da_als;
+                // alpha = 1;
+
+                std::cout << "ALS register with " << da_als << "/" << feats_down_body->size() << " points, alpha:" << alpha << std::endl;
+
+                JTJ += alpha * JTJ_als;
+                JTr += alpha * JTr_als;
+                system_cost += alpha * als_cost;
+            }
+
+            if (use_lc)
+            {
+                establishCorrespondences(R, x_, status.converge, feats_down_body, lc_map, lc_tree, LC_valid, LC_landmarks, LC_Neighbours);
+                const auto &[JTJ_lc, JTr_lc, lc_cost, da_lc] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, LC_valid, LC_landmarks);
+
+                // add the alpha here todo:
+
+                JTJ += JTJ_lc;
+                JTr += JTr_lc;
+                system_cost += lc_cost;
+            }
+
+            if (use_se3)
+            {
+                const auto &[JTJ_se3, JTr_se3, se3_cost] = BuildLinearSystem_SE3(x_, gnss_se3, gnss_std_pos_m, gnss_std_rot_deg);
+                double alpha = std::max(da_mls, 1); // ;
+
+                // alpha = 1;
+
+                JTJ += alpha * JTJ_se3;
+                JTr += alpha * JTr_se3;
+                system_cost += alpha * se3_cost;
+
+                // JTJ = JTJ_se3;
+                // JTr = JTr_se3;
+            }
+
+            if (use_se3_rel)
+            {
+                const auto &[JTJ_se3, JTr_se3, se3_cost] = Build_Relative_LinearSystem_SE3(x_, prev_X, se3_rel, gnss_std_pos_m, gnss_std_rot_deg);
+
+                double alpha = std::max(da_mls, 1); // ;
+                // double alpha = 1;
+                JTJ += alpha * JTJ_se3;
+                JTr += alpha * JTr_se3;
+                system_cost += alpha * se3_cost;
+            }
 
             vectorized_state dx = vectorized_state::Zero();
             vectorized_state dx_new = vectorized_state::Zero();
-            dx = boxminus(x_, x_propagated); // x_.boxminus(dx, x_propagated);
+            dx = boxminus(x_, x_propagated); // nomial - propagated, should be zero for j=0 iter
             dx_new = dx;
 
-            P_ = P_propagated;
+            P_ = P_propagated; // reset the covariance P
 
             V3D seg_SO3 = dx.block<3, 1>(R_ID, 0);  // SO3 part from dx
-            M3D J_ = A_matrix(seg_SO3).transpose(); // A matrix
-            dx_new.template block<3, 1>(R_ID, 0) = J_ * dx_new.template block<3, 1>(R_ID, 0);
+            M3D J_ = A_matrix(seg_SO3).transpose(); // A matrix J_r right jacobian
+
+            // these 2 are the same
+            //  dx_new.template block<3, 1>(R_ID, 0) = J_ * dx_new.template block<3, 1>(R_ID, 0);
+            // code has
+            dx_new.template block<3, 1>(R_ID, 0) = J_ * dx.template block<3, 1>(R_ID, 0);
+            //-------------------------------------------------------------------
 
             // Block of size (p,q), starting at (i,j)
-
             // J =  [R 0​]
             //      [0 I​]
             // P = J * P * J.T
-            // Left multiply (rows)
-            P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);
-            // Right multiply (columns)
-            P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose();
+            // the covariance P is defined in the tangent space of the current nominal state.
+            // But after we inject the estimated error, the tangent space changes.
+            // So we must transport the covariance from the old tangent space to the new one.
+
+            P_.block(R_ID, 0, 3, state_size) = J_ * P_.block(R_ID, 0, 3, state_size);             // Left multiply (rows)
+            P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply (columns)
 
             // K_ = (h_x.transpose() * R_in * h_x + P_.inverse()).inverse() * h_x.transpose() * R_in;
 
             cov H = (JTJ + P_.inverse());
             cov H_inv = H.inverse(); // 24x24
 
-            cov K_x = H_inv * JTJ; // KJ = H_inv * JTJ;   //cov K_x = K_ * h_x;
+            cov KJ = cov::Zero(); //  matrix K * J
+            KJ = H_inv * JTJ;     // cov K_x = K_ * h_x;
 
             vectorized_state dx_; // = K_ * (z - h) + (K_x - Matrix<scalar_type, state_size, state_size>::Identity()) * dx_new;
 
             // dx_.noalias() = H_inv * (-JTr);       //slower
-            dx_.noalias() = H.ldlt().solve(-JTr);    // faster
-            dx_ += (K_x - cov::Identity()) * dx_new; // boxminus(x_, x_propagated); // iterated error state kalmna filter part
+            dx_.noalias() = H.ldlt().solve(-JTr);   // K * (z-h(x)) part
+            dx_ += (KJ - cov::Identity()) * dx_new; // the error-state iterated part -(I-KH)*J*dx
 
             x_ = boxplus(x_, dx_);
 
@@ -961,31 +1464,37 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
                 t++;
             }
 
-            if (!converged_times && i == maximum_iter - 2) // if did not converge and last iteration - force converge
+            if (!converged_times && i == N_iters - 2) // if did not converge and last iteration - force converge
             {
                 status.converge = true;
             }
 
-            if (t > 1 || i == maximum_iter - 1)
+            if (t > 1 || i == N_iters - 1)
             {
-                L_ = P_;
                 std::cout << "iteration time:" << t << "," << i << std::endl;
 
                 seg_SO3 = dx_.block<3, 1>(R_ID, 0);
                 J_ = A_matrix(seg_SO3).transpose();
+                L_ = P_;
 
-                K_x.block(R_ID, 0, 3, state_size) = J_ * K_x.block(R_ID, 0, 3, state_size);
+                // do P = J*P.J.T, but put it in L_
                 L_.block(R_ID, 0, 3, state_size) = J_ * L_.block(R_ID, 0, 3, state_size);             // Left multiply SO(3) rows
                 L_.block(0, R_ID, state_size, 3) = L_.block(0, R_ID, state_size, 3) * J_.transpose(); // Right multiply SO(3) columns
+
+                KJ.block(R_ID, 0, 3, state_size) = J_ * KJ.block(R_ID, 0, 3, state_size);
+
                 P_.block(0, R_ID, state_size, 3) = P_.block(0, R_ID, state_size, 3) * J_.transpose();
 
-                P_ = L_ - K_x * P_;
+                P_ = L_ - KJ * P_; // same as J_*(P)*J_.T - J_*(KJ* P_)*J_.T
+
+                break; 
             }
         }
 
         return iteration_finished; //-------------------------------------------------------------------------------------------
     }
 
+    // Iterated EKF
     for (int i = -1; i < maximum_iter; i++)
     {
         iteration_finished = i + 1;
@@ -1008,9 +1517,10 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         JTJ += JTJ_mls;
         JTr += JTr_mls;
         system_cost += mls_cost;
-        std::cout << "MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
+        std::cout << "IEKF  MLS register with " << da_mls << "/" << feats_down_body->size() << " points" << std::endl;
         //}
 
+        int als_planes = 0;
         if (use_als)
         {
             establishCorrespondences(R, x_, status.converge, feats_down_body, als_map, als_tree, ALS_valid, ALS_landmarks, ALS_Neighbours);
@@ -1020,7 +1530,9 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
                 static_cast<double>(da_mls) / static_cast<double>(da_als),
                 1.0);
 
-            // double alpha = 1;
+            als_planes = da_als;
+            // alpha = 1;
+
             std::cout << "ALS register with " << da_als << "/" << feats_down_body->size() << " points, alpha:" << alpha << std::endl;
 
             JTJ += alpha * JTJ_als;
@@ -1028,10 +1540,19 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
             system_cost += alpha * als_cost;
         }
 
+        // if(true)
+        //     {
+        //         std::ofstream foutMLS_iter("/home/eugeniu/zz_zx_final/planes.txt", std::ios::app);
+        //         foutMLS_iter << std::to_string(da_mls) << " " << std::to_string(als_planes) << std::endl;
+        //         foutMLS_iter.close();
+        //     }
+
         if (use_lc)
         {
             establishCorrespondences(R, x_, status.converge, feats_down_body, lc_map, lc_tree, LC_valid, LC_landmarks, LC_Neighbours);
             const auto &[JTJ_lc, JTr_lc, lc_cost, da_lc] = BuildLinearSystem_openMP(x_, feats_down_body, extrinsic_est, LC_valid, LC_landmarks);
+
+            // add the alpha here todo:
 
             JTJ += JTJ_lc;
             JTr += JTr_lc;
@@ -1042,15 +1563,15 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         {
             const auto &[JTJ_se3, JTr_se3, se3_cost] = BuildLinearSystem_SE3(x_, gnss_se3, gnss_std_pos_m, gnss_std_rot_deg);
             double alpha = std::max(da_mls, 1); // ;
-            // double alpha = 1;
+
+            // alpha = 1;
 
             JTJ += alpha * JTJ_se3;
             JTr += alpha * JTr_se3;
             system_cost += alpha * se3_cost;
 
-            // double a = .5;
-            // JTJ = a*JTJ_mls + (1-a)*JTJ_se3;
-            // JTr = a*JTr_mls + (1-a)*JTr_se3;
+            // JTJ = JTJ_se3;
+            // JTr = JTr_se3;
         }
 
         if (use_se3_rel)
@@ -1073,50 +1594,11 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         KJ = H_inv * JTJ;        // same as (J.T * W * J + P.inv()).inv() * J.T * W * J
         // dx_.noalias() = H_inv * (-JTr);       //slower
 
-        dx_.noalias() = H.ldlt().solve(-JTr);                       // faster the one used so far
+        // this requires r = h - z
+        dx_.noalias() = H.ldlt().solve(-JTr); // faster the one used so far
 
-        //dx_.noalias() = H.ldlt().solve(JTr); //the jacobians should be dh/dx
-        
-        //the one used
+        // the one used
         dx_ += (KJ - cov::Identity()) * boxminus(x_, x_propagated); // iterated error state kalmna filter part
-
-        //dx_ -= KJ * boxminus(x_, x_propagated); //J is dr/dx = dr/dh * dh/dx
-
-        // vectorized_state dx_ = K * residual + (KH - cov::Identity()) * dx_new; //  
-
-        // Armijo
-        if (false)
-        {
-            // curr_cost = estimateCost_tbb(x_, feats_down_body, MLS_valid, MLS_landmarks);
-            // std::cout << "curr_cost:" << curr_cost << std::endl;
-            // double gTd = -JTr.transpose() * dx_; // 1 x 24  *  24 x 1
-            // std::cout<<"gTd:"<<gTd<<std::endl;
-            // if(gTd < 0){
-            //     double step = 1.0;
-            //     while (true)
-            //     {
-            //         auto trial_x = boxplus(x_, step * dx_);
-            //         new_cost = estimateCost_tbb(trial_x, feats_down_body, MLS_valid, MLS_landmarks);
-
-            //         if (new_cost > curr_cost)
-            //         {
-            //             double d_cost = new_cost - curr_cost;
-            //             std::cout << "gTd:"<<gTd<< ", new_cost :" << new_cost << ", d_cost:" << d_cost << ", step:" << step << std::endl;
-            //         }
-            //         else
-            //         {
-            //             std::cout << "gTd:"<<gTd<< ",new_cost :" << new_cost << ", step:" << step << std::endl;
-            //         }
-
-            //         if (new_cost <= curr_cost + 1e-4 * step * gTd)
-            //             break; // f(x+α*δ) <= f(x)+c1 * ​α* g⊤*δ
-            //         step *= 0.5;
-            //         if (step < 1e-4)
-            //             break; // give up
-            //     }
-            //     dx_ = step * dx_;
-            // }
-        }
 
         // applied right update   x = x * exp(dx)
         x_ = boxplus(x_, dx_); // GN
@@ -1146,7 +1628,7 @@ int RIEKF::update_MLS(double R, PointCloudXYZI::Ptr &feats_down_body, const Poin
         {
             P_ -= KJ * P_; // P_ = (cov::Identity() - KJ) * P_;// same as P_ = P_ - KJ*P_ = P_-= KJ*P_
 
-            break;
+            break; // this break will stop the for loop
         }
     }
 
