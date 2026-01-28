@@ -67,11 +67,14 @@ from PIL import Image
 sns.set()
 
 
-font_legend = 20-4
-font = 22-4
 
 font_legend = 14
 font = 14
+
+
+font_legend = 16-2
+font = 18-2
+
 
 #PUT THESE BACK 
 matplotlib.rc('xtick', labelsize=font)
@@ -103,7 +106,7 @@ t_origin_to_ENU = -R_origin_to_ENU @ translation_ENU_to_origin
 
 bbox_to_anchor=(0.5, -0.12) #bottom
 bbox_to_anchor=(0.5, 1.2)   #top
-bbox_to_anchor=(0.5, 1)   #top
+# bbox_to_anchor=(0.5, 1)   #top
 
 ncol = 3
 # ncol = 4
@@ -131,7 +134,7 @@ class TrajectoryReader(object):
         traj_gt = file_interface.read_custom_trajectory_file2(self.path_gt)
         traj_model = file_interface.read_custom_trajectory_file2(self.path_model)
 
-        # traj_gt = self.clip(traj_gt)
+        traj_gt = self.clip(traj_gt)
 
         # self.traj_gt, self.traj_model = traj_gt, traj_model
         self.traj_gt, self.traj_model = sync.associate_trajectories(traj_gt, traj_model, max_diff)
@@ -139,7 +142,7 @@ class TrajectoryReader(object):
         # if align:
         self.traj_model.align(self.traj_gt, correct_scale=False, correct_only_scale=False, n=-1)     
         # self.traj_model.align_origin(traj_ref=self.traj_gt)
-        # self.traj_model.align(self.traj_gt, correct_scale=False, correct_only_scale=False, n=20)     
+        # self.traj_model.align(self.traj_gt, correct_scale=False, correct_only_scale=False, n=150)     
 
         
         self.T_origin_to_ENU = np.eye(4)
@@ -185,9 +188,19 @@ class TrajectoryReader(object):
         # test_no_fail = 1300
         test_no_fail = 196
 
-        return PoseTrajectory3D(
-            poses_se3=new_poses_se3[:test_no_fail],
-            timestamps=traj.timestamps[:test_no_fail])
+        # values = [data[label][100:]
+
+        print("Original poses:", np.shape(new_poses_se3))
+
+        test_no_fail = 7780 # 7716
+        start = 0 # 100
+        ret = PoseTrajectory3D(
+            poses_se3=new_poses_se3[start:test_no_fail],
+            timestamps=traj.timestamps[start:test_no_fail])
+    
+        print("Return model poses:", np.shape(ret.poses_se3))
+
+        return ret
 
     
 
@@ -212,6 +225,7 @@ class TrajectoryReader(object):
         print("Model ape_statistics_t:", self.ape_statistics_t)
 
         self.ape_t_error_vectors = ape_metric.error  # shape (N, 3)
+        print("ATE shape:", np.shape(self.ape_t_error_vectors))
     
     def APE_rotation(self):
         print('\nAPE_rotation')
@@ -231,22 +245,29 @@ class TrajectoryReader(object):
         all_pairs = True
         delta_unit = metrics.Unit.meters
         delta = 100
-        # rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
-        
-        
-        
-        rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
+        
+
+        # delta = 1000
+        rpe_metric = metrics.RPE(metrics.PoseRelation.translation_part, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
         # rpe_metric = metrics.RPE(metrics.PoseRelation.full_transformation, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+        # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance_error_ratio, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
+        segment_lengths = [100] # [25, 50, 100, 200, 400, 800, 1000]
+        
+        for i, delta in enumerate(segment_lengths):
+            # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance_error_ratio, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
+            # rpe_metric = metrics.RPE(metrics.PoseRelation.point_distance, delta=delta, delta_unit=delta_unit, all_pairs=all_pairs)
 
-
-
-        rpe_metric.process_data((self.traj_gt, self.traj_model))
-        self.rpe_statistics_t = rpe_metric.get_all_statistics()
-        print("Model rpe_statistics_t:", self.rpe_statistics_t)
-        print("RPE shape:", np.shape(rpe_metric.error))
-        self.rpe_t_error_vectors = rpe_metric.error  # shape (N, 3)
+            rpe_metric.process_data((self.traj_gt, self.traj_model))
+            self.rpe_statistics_t = rpe_metric.get_all_statistics()
+            print("Model rpe_statistics_t at {} length:".format(delta), self.rpe_statistics_t)
+            print("RPE shape:", np.shape(rpe_metric.error))
+            if(i == 0):
+                self.rpe_t_error_vectors = rpe_metric.error  # shape (N, 3)
+            else:
+                self.rpe_t_error_vectors = np.hstack((self.rpe_t_error_vectors, rpe_metric.error)) 
 
     def RPE_rotation(self):
         print('\nRPE_rotation')
@@ -276,36 +297,36 @@ methods = {
     # 'rko'             : '/home/eugeniu/zz_zx_final/rko',
     # 'point-lio'             : '/home/eugeniu/zz_zx_final/point-lio',
 
-    # 'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
-    # 'dlo'             : '/home/eugeniu/zz_zx_final/dlo', 
+    'fast_lio2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
+    'dlo'             : '/home/eugeniu/zz_zx_final/dlo', 
     # 'dlo-5'             : '/home/eugeniu/zz_zx_final/dlo.5', 
 
-    # 'a0'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
-    # 'a1'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
+    'a0'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
+    'a1'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
     # 'a2'             : '/home/eugeniu/zz_zx_final/a2',    #our best with fixed prediction and robust & adaptive 
     # 'a2_bar'             : '/home/eugeniu/zz_zx_final/a2_bar',    #a2 with update using original iekf code 
     # 'a3'             : '/home/eugeniu/zz_zx_final/a3',    #a2 with gravity
     'a4'             : '/home/eugeniu/zz_zx_final/a4',    #similar to a2 but with final best weighting 
     
-    'test'             : '/home/eugeniu/zz_zx_final/test',
+    # 'test'             : '/home/eugeniu/zz_zx_final/test',
 
-    # 'b0'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
-    # 'b1'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
+    'b0'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
+    'b1'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
     # 'b2'             : '/home/eugeniu/zz_zx_final/b2',    #a2 with added vux
     'b4'             : '/home/eugeniu/zz_zx_final/b4',    #similar to b2 but with final best weighting 
 
     # 'HeliALS'             : '/home/eugeniu/zz_zx_final/HeliALS',  # a4 LI + HeliALS
-    'Sparse ALS'             : '/home/eugeniu/zz_zx_final/s_ALS', # a4 LI + s-ALS
+    # 'Sparse ALS'             : '/home/eugeniu/zz_zx_final/s_ALS', # a4 LI + s-ALS
     # 'Sparse ALS VUX'             : '/home/eugeniu/zz_zx_final/s_ALS_VUX', # b4 LI VUX + s-ALS
 
     # 'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
     # 'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
 
 
-    'GNSS_'             : '/home/eugeniu/zz_zx_final/GNSS_INS',   # a4 + GNSS-INS   9 sigma of gnss-ins
+    # 'GNSS_'             : '/home/eugeniu/zz_zx_final/GNSS_INS',   # a4 + GNSS-INS   9 sigma of gnss-ins
     # 'GNSS_VUX'             : '/home/eugeniu/zz_zx_final/GNSS_INS_VUX', #same as GNSS_ + VUX
-    'GNSS_INS-alone'             : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
-    'GNSS_INS-alone-back'             : '/home/eugeniu/z_tighly_coupled/0',
+    # 'GNSS_INS-alone'             : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    # 'GNSS_INS-alone-back'             : '/home/eugeniu/z_tighly_coupled/0',
 
     ## 'Reference trajectory' : '/home/eugeniu/zz_zx_final/ref',
     # '0_LI'                     : '/home/eugeniu/zz_zx_final/0_LI',
@@ -330,30 +351,31 @@ methods = {
     
     
 
-    'GNSS_s-ALS'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS',     #  test gnss + li + sALS
-    'GNSS_s-ALS_rel'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',            #  a4 + rel SE3 +sALS
+    # 'GNSS_s-ALS'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS',     #  test gnss + li + sALS
+    # 'GNSS_s-ALS_rel'             : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',            #  a4 + rel SE3 +sALS
 
     # 'test-prev'             : '/home/eugeniu/zz_zx_final/test-prev',  #  a4 + rel SE3
 }
 
-methods = {
+methods_ = {
     'GNSS_INS-alone'        : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
     
     'GNSS-INS'              : '/home/eugeniu/z_tighly_coupled/0',  # '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
-    'LI'                    : '/home/eugeniu/zz_zx_final/a4',
-    'LI-VUX'                : '/home/eugeniu/zz_zx_final/b4',
+    # 'LI'                    : '/home/eugeniu/zz_zx_final/a4',
+    # 'LI-VUX'                : '/home/eugeniu/zz_zx_final/b4',
 
     'LI-VUX + SE3'          : '/home/eugeniu/zz_zx_final/GNSS_INS',    #a4 + GNSS-INS   3 sigma of gnss-ins
+    
+    # 'test-prev'             : '/home/eugeniu/zz_zx_final/test-prev',
+        'test'             : '/home/eugeniu/zz_zx_final/test',  #li-vux + SE3
+
+
     'LI-VUX + S-ALS'        : '/home/eugeniu/zz_zx_final/s_ALS',
     'LI-VUX + S-ALS + SE3'  : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',
 
     'LI-VUX + D-ALS'        : '/home/eugeniu/zz_zx_final/HeliALS',
 
-    #test2 the LI-VUX + SE3 with smaller SE3 cov scale 3 
-    # 'test2'             : '/home/eugeniu/zz_zx_final/test2',
-
-    #same as test2 but with vux 
-    # 'test'             : '/home/eugeniu/zz_zx_final/test',
+    
 }
 
 methods_data = {
@@ -374,6 +396,142 @@ methods_data = {
     'GNSS_INS-alone' : ["#6c2416",'G'],
     'test' : ["#648099",'Z'],
     'test2' : ["#6F1E6A",'f'],
+
+    'LI-*'                      : ["#4d6a7f",'2'],    
+    'LI-VUX-*'                  : ['#ff7f0e','3'],
+    'LI-**'                     : ["#94afc3",'2'],    
+    'LI-VUX-**'                 : ['#ff7f0e','3'],
+    'Fast-LIO2'                 : ['#2ca02c','1'],
+    'DLIO'                       : ['#d62728','8'],
+
+     'test-prev'      : ["#651e1e",'D'],
+
+     'LI_iesekf': ["#996487",'r'],
+     'LI_VUX_iesekf': ["#996487",'v'],
+
+     'x1': ["#690C4A",'v'],
+     'x2': ["#649995",'s'],
+     'x3': ["#996487",'j'],
+     'x4': ["#64998E",'r'],
+     'x5': ["#999664",'w'],
+     'x6': ["#686499",'q'],
+
+    'z1': ["#690C4A",'v'],
+     'z2': ["#649995",'s'],
+     'z3': ["#996487",'j'],
+     'z4': ["#64998E",'r'],
+     'z5': ["#999664",'w'],
+     'z6': ["#686499",'q'],
+
+     'xv3': ["#996487",'j'],
+     'xv4': ["#64998E",'r'],
+     'xv5': ["#999664",'w'],
+     'xv6': ["#686499",'q'],
+}   
+
+
+
+methods = {
+    # 'point-lio'             : '/home/eugeniu/zz_zx_final/point-lio',
+
+    # 'Fast-LIO2'             : '/home/eugeniu/zz_zx_final/fast_lio2', 
+    # 'DLIO'             : '/home/eugeniu/zz_zx_final/dlo', 
+
+    # 'LI-**'             : '/home/eugeniu/zz_zx_final/a0',    #our implementation with no robust no cov, with fixed Fx and Fw 
+    # 'LI-VUX-**'             : '/home/eugeniu/zz_zx_final/b0',    #a0 with vux
+
+    # 'LI-*'             : '/home/eugeniu/zz_zx_final/a1',    #prev a0 with robust kernel only 
+    # 'LI-VUX-*'             : '/home/eugeniu/zz_zx_final/b1',    #a1 with vux 
+
+    # 'LI'             : '/home/eugeniu/zz_zx_final/a4',    #similar to a2 but with final best weighting 
+    # 'x1'             : '/home/eugeniu/zz_zx_final/x1',  #MAP with analytical J derivation 
+    #'z1'             : '/home/eugeniu/zz_zx_final/z1',  #MAP with analytical J derivation 
+
+    # 'LI-VUX'         : '/home/eugeniu/zz_zx_final/b4',    #similar to b2 but with final best weighting 
+    # 'x2'             : '/home/eugeniu/zz_zx_final/x2',  #MAP with analytical J derivation  
+    # 'z2'             : '/home/eugeniu/zz_zx_final/z2',  #MAP with analytical J derivation 
+
+    
+    # 'test'             : '/home/eugeniu/zz_zx_final/test',  #MAP with analytical J derivation  
+    # 'GNSS_INS-alone'        : '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    # 'GNSS-INS'              : '/home/eugeniu/z_tighly_coupled/0',  # '/home/eugeniu/zz_zx_final/GNSS_INS-alone',
+    'LI-VUX + SE3'          : '/home/eugeniu/zz_zx_final/GNSS_INS',    #a4 + GNSS-INS   3 sigma of gnss-ins
+    'x3'             : '/home/eugeniu/zz_zx_final/x3',
+    'xv3'             : '/home/eugeniu/zz_zx_final/xv3',
+    #'z3'             : '/home/eugeniu/zz_zx_final/z3',
+
+    'LI-VUX + S-ALS'        : '/home/eugeniu/zz_zx_final/s_ALS',
+    'x4'             : '/home/eugeniu/zz_zx_final/x4',
+    'xv4'             : '/home/eugeniu/zz_zx_final/xv4',
+
+    'LI-VUX + S-ALS + SE3'  : '/home/eugeniu/zz_zx_final/GNSS_s-ALS_rel',
+    'x5'             : '/home/eugeniu/zz_zx_final/x5',
+    'xv5'             : '/home/eugeniu/zz_zx_final/xv5',
+
+    'LI-VUX + D-ALS'        : '/home/eugeniu/zz_zx_final/HeliALS',
+    'x6'             : '/home/eugeniu/zz_zx_final/x6',
+    'xv6'             : '/home/eugeniu/zz_zx_final/xv6',
+
+
+}   
+
+'''solutions with MAP 
+-x1 - LI
+-x2 - LI-VUX
+
+the rest are done without VUX 
+
+-x3 - LI-VUX + SE3    
+-x4 - LI-VUX + S-ALS
+-x5 - LI-VUX + S-ALS + SE3
+-x6 - LI-VUX + D-ALS
+
+xv3 - LI-VUX + SE3    
+xv4 - LI-VUX + S-ALS
+xv5 - LI-VUX + S-ALS + SE3
+xv6 - LI-VUX + D-ALS
+
+
+
+
+do everything with MAP 
+
+
+the ieekf - as adapted from fast-lio2
+
+-z1 - LI
+z2 - LI-VUX
+
+the rest are done without VUX 
+
+z3 - LI-VUX + SE3    
+z4 - LI-VUX + S-ALS
+z5 - LI-VUX + S-ALS + SE3
+
+
+'''
+
+methods_ = {
+    'LI-VUX + S-ALS'        : '/home/eugeniu/zz_zx_final/s_ALS',
+    # 'LI-VUX + S-ALS (no scalling)'             : '/home/eugeniu/zz_zx_final/s_ALS_no_Scalling',
+    # 'LI-VUX + SE3'          : '/home/eugeniu/zz_zx_final/GNSS_INS',
+    # 'LI-VUX + SE3 (no scalling)'          : '/home/eugeniu/zz_zx_final/GNSS_INS_no_Scalling',
+    
+    'LI-VUX + S-ALS (l-coupled)' : '/home/eugeniu/z_tighly_coupled/7',
+    # 'LI-VUX + S-ALS (t-coupled)' : '/home/eugeniu/z_tighly_coupled/8',
+}
+
+methods_data_ = {
+    
+    'LI-VUX + S-ALS'            : ['#17becf','1'],
+    'LI-VUX + S-ALS (no scalling)'                       : ['#d62728','2'],
+
+    'LI-VUX + SE3'              : ['#9467bd','3'], 
+    'LI-VUX + SE3 (no scalling)'                 : ['#2ca02c','4'],
+
+    'LI-VUX + S-ALS (l-coupled)' : ['#ff7f0e','2'],
+    'LI-VUX + S-ALS (t-coupled)' : ["#352c3e",'2'],
+
 }   
 
 
@@ -583,7 +741,7 @@ methods_data_old = {
 
 colors = ['tab:brown', 'tab:red', 'tab:blue', 'tab:green', 'tab:purple', 'tab:orange', 'cyan', 'lime','orange','gray']
 
-linestyles = ['-', '--', '-.', ':', '-', '--', '-.', '-', '--', ':',]
+linestyles = ['-', '--', '-.', ':', '-', '--', '-.', '-', '--', ':','--', '-.', '-', '--', ':',]
 # lab = ['A','B','C','D','E','F','G','H','K','X']
 lab = ['0','1','2','3','4','5','6','7','8','9']
 lt = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -665,6 +823,10 @@ plt.draw()
 # plt.show()
 # exit()
 
+use_hatches = False # True 
+
+hatches = ['','', 'x', '*','x', '*','x', '*' ]
+
 def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False, add_arrows = False):
     print('plot_box for ',metric)
     labels = list(data.keys())
@@ -675,9 +837,18 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
     plt.figure(figsize=(10, 6))
     
 
-    values = [data[label] for label in labels]
+    # values = [data[label] for label in labels]
+    values = [data[label][100:] for label in labels] #skip some outliers in the begining 
+    # values = [data[label][100:] for label in labels] #skip some outliers in the begining
 
-    box = plt.boxplot(values, patch_artist=True, showmeans=False, meanline=False, showfliers=False, notch=False) 
+    box = plt.boxplot(values, patch_artist=True, 
+                    # showmeans=False,
+                    # meanline=False, 
+                    showmeans=True,
+                    meanline=True,
+                    meanprops=dict(color='black', linestyle='--', linewidth=2.),
+                    showfliers=False, notch=False) 
+
     ind = 0
     legend_handles = []
     labels_local = []
@@ -687,18 +858,27 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
     # for patch, label in zip(box['boxes'], labels):
         # color = (random.random(), random.random(), random.random())
         patch.set_facecolor(color)
+
+        if use_hatches:
+            hatch = hatches[ind]
+            patch.set_hatch(hatch)
+            # patch.set_edgecolor('white')   # hatch color
+
+
         patch.set_edgecolor('black')
         patch.set_linewidth(1.2)
         patch_legend = mpatches.Patch(
             facecolor=color,
-            # edgecolor='black',
+            edgecolor='black',
             label=methods_data[label][1] + " : " + label
             # label = label
         )
         
         labels_local.append(methods_data[label][1])
         
-        mean_value = np.mean(data[label])
+        # mean_value = np.mean(data[label])
+        # mean_value = np.sqrt(np.mean(data[label]**2)) #rmse
+
         median_value = np.median(data[label])
 
         # Median (white dot)
@@ -709,11 +889,11 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
             )
 
             # Mean (black dashed line)
-        plt.plot(
-                [ind + 0.85, ind + 1.15],
-                [mean_value, mean_value],
-                color='black', linestyle='--', linewidth=2
-            )
+        # plt.plot(
+        #         [ind + 0.85, ind + 1.15],
+        #         [mean_value, mean_value],
+        #         color='red', linestyle='--', linewidth=2
+        #     )
 
         # if '*' in label:
         #     patch.set_hatch('\\')  # or 'xx', '\\',  //etc.
@@ -767,25 +947,17 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
         line.set(color='black', linewidth=1.2)
 
 
-
-
-
-    
-
-
     plt.title(f'Box plot of {metric}')
     
-
-
     # plt.xticks(np.arange(1, len(labels) + 1), labels, labelsize=font)
     if show_legend:
         plt.legend(handles=legend_handles,  loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
             ncol = ncol, fancybox=True, shadow=True, fontsize=font_legend)
     plt.grid(True)
-    #plt.tight_layout()
-    #plt.xticks(rotation=90)
-    #plt.xticks([])
-    plt.xticks(lt_local, labels_local, fontsize = font) 
+    try:
+        plt.xticks(lt_local, labels_local, fontsize = font) 
+    except:
+        pass 
     # if first_got_legend:
     #     plt.legend().set_visible(False)
     
@@ -794,7 +966,6 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
     plt.ylabel(metric, fontsize=font)
     plt.tick_params(axis='both', which='major', labelsize=font)
     plt.draw()
-
 
     # plt.gca().xaxis.set_major_formatter(FuncFormatter(lambda val, pos: f"{val:.2f}"))  
 
@@ -809,7 +980,7 @@ def plot_box_old(data, metric = '',  show_legend = True, show_cumulative = False
             #for i, label in enumerate(data):
             values = np.sort(data[label])
             cdf = np.linspace(0, 1, len(values))
-            plt.plot(values, cdf, label=label, linestyle = linestyles[i])
+            plt.plot(values, cdf, linewidth=2, color = color, label=label, linestyle = linestyles[i])
 
             #plt.title(f'Cumulative Distribution of {metric_name}')
             plt.xlabel(metric, fontsize=font)
@@ -874,7 +1045,8 @@ def plot_box(data, metric='', show_legend=True, add_arrows=False):
         # Legend entry
         patch_legend = mpatches.Patch(
             facecolor=color,
-            label=methods_data[label][1] + " : " + label
+            label=methods_data[label][1] + " : " + label,
+            edgecolor='black',
         )
         legend_handles.append(patch_legend)
 
@@ -959,7 +1131,7 @@ def plot_lines(data, metric = '',  show_legend = True):
     for label in labels:
         mean = np.mean(data[label])
         std = np.std(data[label])
-        plt.plot(data[label], color = methods_data[label][0], label = methods_data[label][1] + " : " + label+ " ( mean:" + str(round(mean, 2)) + " ) ( std:" + str(round(std, 2)) + " )")
+        plt.plot(data[label], linewidth=2, color = methods_data[label][0], label = methods_data[label][1] + " : " + label+ " ( mean:" + str(round(mean, 2)) + " ) ( std:" + str(round(std, 2)) + " )")
 
     plt.title(f'Box plot of {metric}')
     
@@ -1031,7 +1203,8 @@ def plot_box_violin(
         showmeans=False,
         showmedians=False,
         showextrema=False,
-        # bw_method=bw_method
+        # bw_method=bw_method  bw_method=1.5,
+        # points=1000
     )
 
     legend_handles = []
@@ -1107,24 +1280,324 @@ def plot_box_violin(
     plt.draw()
 
 
-# plot_box(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
-# plot_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+plot_box_old(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False, show_cumulative = True)
+plot_box_old(data_rpe_t, 'RTE translation (%)', show_legend = True, show_cumulative = True)
 
 
-plot_box_old(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
-plot_box_old(data_rpe_t, 'RTE translation (%)', show_legend = True)
+# plot_lines(data_ape_t, 'ATE translation (m)', show_legend = True)
 
 
-# plot_box_violin(data_ape_t, 'ATE translation (m)', show_legend = True, add_arrows = False)
-# plot_box_violin(data_rpe_t, 'RTE translation (%)', show_legend = True)
+#to show the scalling effect 
+def plot_line_(data, metric = '',  show_legend = True):
+    print('plot_line_ for ',metric)
+    labels = list(data.keys())
+
+    labels_local = lab[0:len(labels)]
+    lt_local = lt[0:len(labels)]
+
+    plt.figure(figsize=(10, 6))
+    
+    values = [data[label] for label in labels]
+    colors_ = [methods_data[label][0] for label in labels]
+
+    for val, color, label in zip(values, colors_, labels):
+        plt.plot(val, color = color, linewidth=2, label = methods_data[label][1] + " : " + label)
+
+    
+    if show_legend:
+        plt.legend( loc='best', #ncol = ncol,  #bbox_to_anchor=bbox_to_anchor, #title="Method",
+        fancybox=True, shadow=True, fontsize=font_legend)
+            
+    plt.grid(True)
+    plt.ylabel(metric, fontsize=font)
+    plt.xlabel("Scans", fontsize=font)
+    # plt.xticks(lt_local, labels_local, fontsize = font) 
+    plt.tick_params(axis='both', which='major', labelsize=font)
+
+    plt.draw()
+
+    plt.figure()
+    planes = np.loadtxt("/home/eugeniu/zz_zx_final/planes.txt")
+
+    print("planes ", np.shape(planes))
+
+    plt.plot(planes[::4, 0], label = "MLS")
+    plt.plot(planes[::4, 1], label = "ALS")
+    plt.xlabel('Scans')
+    plt.ylabel('Planes')
+    plt.legend()
+    plt.grid(True)
+    plt.draw()
+
+    
+
+# plot_line_(data_ape_t, 'ATE translation (m)',  show_legend = True)
+    
+    
+
+#to compare the Tightly coupled vs loosely coupled
+def f_kernel(data_ate, data_rte, metric_ate = '', metric_rte = ''):
+
+    labels = list(data_ate.keys())
+    values_ate = [data_ate[label] for label in labels]
+    values_rte = [data_rte[label] for label in labels]
+
+    colors_ = [methods_data[label][0] for label in labels]
 
 
+    fig, ax1 = plt.subplots(figsize=(7, 4))
 
-# plot_violin_with_box(data_rpe_t, 'RTE translation (%)', show_legend = True)
+    # --- Positions ---
+    ate_pos = [0.85, 1.15]   # Absolute (ATE)
+    rte_pos = [1.85, 2.15]   # Relative (RTE)
+    positions_ate = ate_pos
+    positions_rte = rte_pos
+
+    color_t = colors_[0]
+    color_l = colors_[1]
+    
+
+    # --- Absolute error (ATE) ---
+    bp_abs = ax1.boxplot(
+        [values_ate[0], values_ate[1]],
+        positions=ate_pos,
+        widths=0.25,
+        showmeans=True,
+        meanline=True,
+        patch_artist=True,
+        # medianprops=dict(marker='o', markerfacecolor='white',
+        #                 markeredgecolor='black', markersize=6),
+        meanprops=dict(color='black', linestyle='--', linewidth=1.5),
+        boxprops=dict(color='black'),
+        whiskerprops=dict(color='black'),
+        capprops=dict(color='black'),
+        flierprops=dict(marker='.'),
+        showfliers=False,
+        medianprops=dict(linewidth=0)  # hide default median line
+    )
+    ax1.set_ylabel(metric_ate)
+
+    for ind, (patch, color, label) in enumerate(zip(bp_abs['boxes'], [color_t, color_l], [labels[0], labels[1]])):
+        patch.set_facecolor(color)
+        patch.set_edgecolor('black')
+        patch.set_linewidth(1.2)
+
+        # --- Median (white dot) ---
+        median_value = np.median(values_ate[ind])
+        plt.scatter(
+            positions_ate[ind], median_value,
+            color='white', edgecolor='black', zorder=3, s=40
+        )
+
+    # --- Relative error (RTE) ---
+    ax2 = ax1.twinx()
+    bp_rel = ax2.boxplot(
+        [values_rte[0], values_rte[1]],
+        positions=rte_pos,
+        widths=0.25,
+        showmeans=True,
+        patch_artist=True,
+        meanline=True,
+        # medianprops=dict(marker='o', markerfacecolor='white',
+        #                 markeredgecolor='black', markersize=6),
+        meanprops=dict(color='black', linestyle='--', linewidth=1.5),
+        boxprops=dict(color='black'),
+        whiskerprops=dict(color='black'),
+        capprops=dict(color='black'),
+        flierprops=dict(marker='.'),
+        showfliers=False,
+        medianprops=dict(linewidth=0)
+    )
+
+    ax2.set_ylabel(metric_rte)
+
+    
+    for median in bp_abs['medians']:
+        median.set_visible(False)
+
+    for median in bp_rel['medians']:
+        median.set_visible(False)
 
 
-# plot_box(data_ape_r, 'ATE rotation (m)', show_legend = True, add_arrows = False)
-# plot_box(data_rpe_r, 'RTE rotation (%)', show_legend = True)
+    
+
+    for ind, (patch, color, label) in enumerate(zip(bp_rel['boxes'], [color_t, color_l], [labels[0], labels[1]])):
+        patch.set_facecolor(color)
+        patch.set_edgecolor('black')
+        patch.set_linewidth(1.2)
+
+        # --- Median (white dot) ---
+        median_value = np.median(values_rte[ind])
+        plt.scatter(
+            positions_rte[ind], median_value,
+            color='white', edgecolor='black', zorder=3, s=40
+        )
+        
+    legend_handles = [
+        mpatches.Patch(
+            facecolor=color_t,
+            edgecolor='black',
+            label=labels[0]
+        ),
+        mpatches.Patch(
+            facecolor=color_l,
+            edgecolor='black',
+            label=labels[1]
+        )
+    ]
+   
+    plt.legend(handles=legend_handles,  loc='upper center', bbox_to_anchor=bbox_to_anchor, #title="Method",
+            ncol = ncol, fancybox=True, shadow=True, fontsize=font_legend)
+
+    ax1.set_xticks([1, 2])
+    ax1.set_xticklabels(["ATE ", "RTE"])
+    ax1.set_xlim(0.5, 2.5)
+
+    ax1.grid(True, axis='y', linestyle=':', linewidth=0.8)
+    ax2.grid(False)
+
+    ax1.axvline(x=1.5, color='black', linewidth=0.8, alpha=0.6)
+
+
+    plt.tight_layout()
+    plt.draw()
+# f_kernel(data_ape_t, data_rpe_t, 'ATE translation (m)','RTE translation (%)')
+
+import matplotlib.pyplot as plt
+import numpy as np
+import matplotlib.patches as mpatches
+
+#to show the effect of weighting and state-of-the-art methods
+def plot_box_LI_vs_LIVUX_matplotlib_extended(data, metric):
+    """
+    Matplotlib boxplot comparing:
+    - Fast-LIO2 and DLIO as individual boxes
+    - LI and LI-VUX variants grouped by **, *, baseline
+    """
+
+    # --- Extra standalone boxes ---
+    extra_labels = ['Fast-LIO2', 'DLIO']
+    extra_colors = [methods_data[l][0] for l in extra_labels]
+    extra_values = [data[l] for l in extra_labels]
+
+    # --- Grouped LI/LI-VUX boxes ---
+    families = ['LI', 'LI-VUX']
+    variants_ = ['Our(**)', 'Our(*)', 'Our best']  # x-axis labels
+    variants = ['**', '*', '']  # used to build labels
+
+    box_width = 0.3
+    spacing = 1.0  # space between groups
+
+    # --- Compute x positions ---
+    x_positions = []
+
+    # First: positions for extra boxes
+    extra_positions = [i * (box_width + 0.2) for i in range(len(extra_labels))]
+    x_positions.extend(extra_positions)
+
+    # Next: positions for grouped boxes
+    for i, var in enumerate(variants):
+        for j, fam in enumerate(families):
+            pos = max(extra_positions) + spacing + i * spacing + j * box_width
+            x_positions.append(pos)
+
+    # --- Gather values and colors in order ---
+    box_values = extra_values.copy()
+    box_colors = extra_colors.copy()
+
+    # LI/LI-VUX grouped boxes
+    for var in variants:
+        for fam in families:
+            label = fam if var=='' else f"{fam}-{var}"
+            if label in data:
+                box_values.append(data[label])
+                box_colors.append(methods_data[fam][0])
+            else:
+                box_values.append([])
+                box_colors.append(methods_data[fam][0])
+
+    plt.figure(figsize=(12,6))
+
+    # --- Plot all boxes ---
+    box = plt.boxplot(
+        box_values,
+        positions=x_positions,
+        widths=box_width,
+        patch_artist=True,
+        showfliers=False,
+        showmeans=False,
+        meanline=False,
+        notch=False
+    )
+
+    # Hide median lines
+    for median_line in box['medians']:
+        median_line.set_visible(False)
+
+    # Color boxes and add median/mean markers
+    for patch, color, values in zip(box['boxes'], box_colors, box_values):
+        patch.set_facecolor(color)
+        patch.set_edgecolor('black')
+        patch.set_linewidth(1.2)
+
+    for i, values in enumerate(box_values):
+        if len(values) == 0:
+            continue
+        median_val = np.median(values)
+        plt.scatter(
+            x_positions[i],
+            median_val,
+            color='white', edgecolor='black',
+            zorder=3, s=40
+        )
+
+        mean_val = np.mean(values)
+        plt.plot(
+            [x_positions[i]-box_width/2, x_positions[i]+box_width/2],
+            [mean_val, mean_val],
+            color='black', linestyle='--', linewidth=2
+        )
+
+    # --- X-ticks ---
+    xticks_pos = []
+
+    # Extra boxes
+    xticks_pos.extend(extra_positions)
+    xticks_labels = extra_labels.copy()
+
+    # Grouped boxes
+    for i, var_label in enumerate(variants_):
+        # center position between LI and LI-VUX boxes
+        left_pos = max(extra_positions) + spacing + i * spacing
+        right_pos = left_pos + box_width
+        xticks_pos.append((left_pos + right_pos)/2)
+        xticks_labels.append(var_label)
+
+    plt.xticks(xticks_pos, xticks_labels, fontsize=font)
+    plt.ylabel(metric, fontsize=font)
+    plt.title(f'Comparison — {metric}', fontsize=font+2)
+    plt.grid(True)
+
+    # --- Legend ---
+    legend_handles = []
+
+    # LI and LI-VUX
+    for fam in families:
+        legend_handles.append(
+            mpatches.Patch(facecolor=methods_data[fam][0], edgecolor='black', label=fam)
+        )
+    # Extra methods
+    for lab in extra_labels:
+        legend_handles.append(
+            mpatches.Patch(facecolor=methods_data[lab][0], edgecolor='black', label=lab)
+        )
+
+    plt.legend(handles=legend_handles, fontsize=font_legend)
+    plt.tight_layout()
+    plt.draw()
+
+# plot_box_LI_vs_LIVUX_matplotlib_extended(data_ape_t, 'ATE translation (m)')
+# plot_box_LI_vs_LIVUX_matplotlib_extended(data_rpe_t, 'RTE translation (%)')
 
 
 # plot_lines(data_time, 'Time (ms)', show_legend = True)
