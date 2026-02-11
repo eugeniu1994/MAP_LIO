@@ -10,15 +10,13 @@ This code was developed as part of the work for the paper:
   <em>Example output</em>
 </p>
 ---
-## ✨ Features
 
-- **Range image projection** for efficient organisation of LiDAR points  
-- **Rank estimation**   
-- **Rank-based voxelization**:  
-  - First point per voxel (highest rank)  
-  - Weighted average of points (rank-weighted centroid)  
-- **Scan cleaning**: drop low-rank/noisy points (configurable percentage)  
-- Designed for **robust LiDAR odometry & mapping in rain, fog, or dust**  
+✨ #Features
+
+- **MAP-LIO** a single-state maximum a posteriori (MAP) state estimator   
+- **Robust data-driven covariances**   
+- **Tightly fusion with prior map**:  Airborn laser data was used in the paper
+- **Absolute and relative SE(3) integrations**:  provided from GNSS-INS 
 
 ---
 
@@ -59,7 +57,7 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path
 
 🛠️ TODO
 
-Add support for different LiDARs (currently only Hesai is supported)
+-Add support for different LiDARs (currently only Hesai is supported)
 Note: In the paper, the Riegl VUX LiDAR was used, which requires proprietary software API to read the data. Therefore, this implementation has been omitted from public access
 
 
