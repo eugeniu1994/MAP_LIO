@@ -558,7 +558,7 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
 }
 
 
-std::tuple<cov, vectorized_state> BuildLinearSystem_SE3(const state &x_, const Sophus::SE3 &measured_se3,
+std::tuple<cov, vectorized_state> BuildLinearSystem_SE3(const Sophus::SE3 &predicted_se3, const Sophus::SE3 &measured_se3,
                                                                 const V3D &std_pos_m, const V3D &std_rot_deg)
 {
     cov H = cov::Zero();
@@ -567,14 +567,18 @@ std::tuple<cov, vectorized_state> BuildLinearSystem_SE3(const state &x_, const S
     // Convert rotation stddevs to radians
     V3D std_rot_rad = std_rot_deg * M_PI / 180.0;
     Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
-    R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance (diagonal with variances)
-    R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance (diagonal with variances in radians^2)
+    R.block<3, 3>(P_ID, P_ID) = std_pos_m.array().square().matrix().asDiagonal();   // Position covariance 
+    R.block<3, 3>(R_ID, R_ID) = std_rot_rad.array().square().matrix().asDiagonal(); // Orientation covariance 
 
     Vector6d r = Vector6d::Zero();
-    // z - h(x)
-    r.block<3, 1>(P_ID, 0) = measured_se3.translation() - x_.pos; // z.pos - x.pos
-    r.block<3, 1>(R_ID, 0) = Sophus::SO3(x_.rot.matrix().transpose() * measured_se3.so3().matrix()).log(); //log(z - h(x)) = h(x).T * z
+    // r = z - h(x)
+    r.block<3, 1>(P_ID, 0) = measured_se3.translation() - predicted_se3.translation(); // z.pos - x.pos
+    r.block<3, 1>(R_ID, 0) = Sophus::SO3(predicted_se3.so3().matrix().transpose() * measured_se3.so3().matrix()).log(); //log(z - h(x)) = h(x).T * z
     
+    // r = h(x) - z
+    // r.block<3, 1>(P_ID, 0) = predicted_se3.translation() - measured_se3.translation(); //( r = h-z )
+    // r.block<3, 1>(R_ID, 0) = Sophus::SO3(measured_se3.so3().matrix().transpose() * predicted_se3.so3().matrix()).log();
+
     double maha = std::sqrt(r.transpose() * R.inverse() * r);
     double kernel_weight = huber(maha, 1.0);
     Eigen::Matrix<double, 6, 6> W = kernel_weight * R.inverse();
@@ -673,10 +677,20 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
 
         if (use_se3)
         {
-            const auto &[JTJ_se3, JTr_se3] = BuildLinearSystem_SE3(x, gnss_se3, se3_std_pos_m, se3_std_rot_deg);
+            const Sophus::SE3 &predicted_absolute_se3 = Sophus::SE3(x.rot, x.pos);
+            const auto &[JTJ_se3, JTr_se3] = BuildLinearSystem_SE3(predicted_absolute_se3, gnss_se3, se3_std_pos_m, se3_std_rot_deg);
             JTJ += l * JTJ_se3;
             JTr += l * JTr_se3;
         }
+
+        if(use_se3_rel)
+        {
+            const Sophus::SE3 &predicted_relative_se3 = prev_X.inverse() * Sophus::SE3(x_.rot, x_.pos);
+            const auto &[JTJ_se3, JTr_se3] = BuildLinearSystem_SE3(predicted_relative_se3, gnss_se3, se3_std_pos_m, se3_std_rot_deg);
+            JTJ += l * JTJ_se3;
+            JTr += l * JTr_se3;
+        }
+        
 
 
         // PRIOR RESIDUAL
