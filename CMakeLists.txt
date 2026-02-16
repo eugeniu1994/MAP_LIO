@@ -35,8 +35,8 @@ find_package(GeographicLib REQUIRED) #required for GNSS stuff
 
 
 #todo remove TBB dependency 
-find_package(TBB REQUIRED)
-message(STATUS "TBB version: ${TBB_VERSION}")
+# find_package(TBB REQUIRED)
+# message(STATUS "TBB version: ${TBB_VERSION}")
 
 
 option(USE_ALS "Enable ALS" OFF)
@@ -66,7 +66,7 @@ include_directories(
   ${EIGEN3_INCLUDE_DIR}
   ${PCL_INCLUDE_DIRS}
   ${Sophus_INCLUDE_DIRS}
-  ${TBB_INCLUDE_DIRS}
+  # ${TBB_INCLUDE_DIRS}
   ${LIBLAS_INCLUDE_DIRS}
   include
 )
@@ -77,7 +77,7 @@ catkin_package(
   INCLUDE_DIRS  
 )
 
-SET(TARGET_LINK_LIBS ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} ${PCL_LIBRARIES} Sophus ${TBB_LIBRARIES} TBB::tbb 
+SET(TARGET_LINK_LIBS ${catkin_LIBRARIES} ${PYTHON_LIBRARIES} ${PCL_LIBRARIES} Sophus #${TBB_LIBRARIES} TBB::tbb 
 ${GCC_COVERAGE_LINK_FLAGS} ${GeographicLib_LIBRARIES} ${LIBLAS_LIBRARIES} OpenMP::OpenMP_CXX ) 
 
 add_executable(estimate_map src/main.cpp ${MAIN_SOURCE_FILES} ) 

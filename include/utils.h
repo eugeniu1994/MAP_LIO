@@ -34,10 +34,10 @@
 #include <sophus/se3.h>
 #include <sophus/so3.h>
 
-#include <tbb/global_control.h>
-#include <tbb/tbb.h>
-#include <tbb/parallel_for.h>
-#include <tbb/blocked_range.h>
+// #include <tbb/global_control.h>
+// #include <tbb/tbb.h>
+// #include <tbb/parallel_for.h>
+// #include <tbb/blocked_range.h>
 
 
 #include <thread>

@@ -89,14 +89,23 @@ void DataHandler::publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
     int size = laserCloudFullRes->points.size();
     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
 
-    tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
-                      {
-                    for (int i = r.begin(); i < r.end(); i++)
-                    //for (int i = 0; i < size; i++)
-                    {
-                        pointBodyToWorld(&laserCloudFullRes->points[i],
-                                        &laserCloudWorld->points[i]);
-                    } });
+    // tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
+    //                   {
+    //                 for (int i = r.begin(); i < r.end(); i++)
+    //                 //for (int i = 0; i < size; i++)
+    //                 {
+    //                     pointBodyToWorld(&laserCloudFullRes->points[i],
+    //                                     &laserCloudWorld->points[i]);
+    //                 } });
+
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < size; i++)
+    {
+        pointBodyToWorld(&laserCloudFullRes->points[i],
+                         &laserCloudWorld->points[i]);
+    }
 
     sensor_msgs::PointCloud2 laserCloudmsg;
     pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
@@ -110,15 +119,24 @@ void DataHandler::publish_frame_body(const ros::Publisher &pubLaserCloudFull_bod
     PointCloudXYZI::Ptr laserCloudFullRes(dense_pub_en ? feats_undistort : feats_down_body);
     int size = laserCloudFullRes->points.size();
     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(size, 1));
-    tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
-                      {
-                    for (int i = r.begin(); i < r.end(); i++)
-                    {
-                         pointBodyLidarToIMU(&laserCloudFullRes->points[i],
-                                         &laserCloudWorld->points[i]);
+    // tbb::parallel_for(tbb::blocked_range<int>(0, size), [&](tbb::blocked_range<int> r)
+    //                   {
+    //                 for (int i = r.begin(); i < r.end(); i++)
+    //                 {
+    //                      pointBodyLidarToIMU(&laserCloudFullRes->points[i],
+    //                                      &laserCloudWorld->points[i]);
 
-                         //laserCloudWorld->points[i] = laserCloudFullRes->points[i];
-                    } });
+    //                      //laserCloudWorld->points[i] = laserCloudFullRes->points[i];
+    //                 } });
+
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < size; i++)
+    {
+        pointBodyLidarToIMU(&laserCloudFullRes->points[i],
+                            &laserCloudWorld->points[i]);
+    }
 
     sensor_msgs::PointCloud2 laserCloudmsg;
     pcl::toROSMsg(*laserCloudWorld, laserCloudmsg);
@@ -146,15 +164,22 @@ void DataHandler::publish_frame_debug(const ros::Publisher &pubLaserCloudFrame_,
 
 void DataHandler::local_map_update()
 {
-    tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
-                      [&](tbb::blocked_range<int> r)
-                      {
-                          for (int i = r.begin(); i < r.end(); i++)
-                          // for (int i = 0; i < feats_down_size; i++)
-                          {
-                              pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
-                          }
-                      });
+// tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
+//                   [&](tbb::blocked_range<int> r)
+//                   {
+//                       for (int i = r.begin(); i < r.end(); i++)
+//                       // for (int i = 0; i < feats_down_size; i++)
+//                       {
+//                           pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+//                       }
+//                   });
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < feats_down_size; ++i)
+    {
+        pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
+    }
 
     *laserCloudSurfMap += *feats_down_world;
 
@@ -467,7 +492,7 @@ void DataHandler::Subscribe()
     signal(SIGINT, SigHandle); // Handle Ctrl+C (SIGINT)
     flg_exit = false;
 
-    int iters = 0,pcd_index = 0;
+    int iters = 0, pcd_index = 0;
     for (const rosbag::MessageInstance &m : view)
     {
         ros::spinOnce();
@@ -558,14 +583,22 @@ void DataHandler::Subscribe()
                 feats_down_size = feats_undistort->size();
                 feats_down_world->resize(feats_down_size);
 
-                tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
-                                  [&](tbb::blocked_range<int> r)
-                                  {
-                                      for (int i = r.begin(); i < r.end(); i++)
-                                      {
-                                          pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
-                                      }
-                                  });
+                // tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
+                //                   [&](tbb::blocked_range<int> r)
+                //                   {
+                //                       for (int i = r.begin(); i < r.end(); i++)
+                //                       {
+                //                           pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
+                //                       }
+                //                   });
+
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+                for (int i = 0; i < feats_down_size; i++)
+                {
+                    pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
+                }
 
                 *laserCloudSurfMap += *feats_down_world;
                 map_init = true;
@@ -636,8 +669,7 @@ void DataHandler::Subscribe()
             prev_mls = curr_mls;
         }
     }
-    std::cout<<"End of the bag file"<<std::endl;
+    std::cout << "End of the bag file" << std::endl;
     for (auto &b : bags)
         b->close();
-
 }

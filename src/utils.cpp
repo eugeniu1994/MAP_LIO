@@ -7,16 +7,15 @@ M3F Eye3f(M3F::Identity());
 V3D Zero3d(0, 0, 0);
 V3F Zero3f(0, 0, 0);
 
-
 V3D calculateStdDev(const std::vector<V3D> &measurements, const V3D &mean)
 {
     V3D sum = Zero3d;
     for (const auto &measurement : measurements)
     {
         V3D diff = measurement - mean;
-        sum += diff.cwiseProduct(diff); 
+        sum += diff.cwiseProduct(diff);
     }
-    return (sum / measurements.size()).cwiseSqrt(); 
+    return (sum / measurements.size()).cwiseSqrt();
 }
 
 double calculateMean(const std::vector<double> &values)
@@ -113,37 +112,65 @@ void TransformPoints(const M3D &R, const V3D &T, PointCloudXYZI::Ptr &points)
     if (!points || points->empty())
         return;
 
-    tbb::parallel_for(tbb::blocked_range<int>(0, points->size()),
-                      [&](const tbb::blocked_range<int> &r)
-                      {
-                          for (int i = r.begin(); i < r.end(); ++i)
-                          {
-                              V3D point(points->points[i].x,
-                                        points->points[i].y,
-                                        points->points[i].z);
-                              V3D transformed_position = R * point + T;
-                              points->points[i].x = transformed_position.x();
-                              points->points[i].y = transformed_position.y();
-                              points->points[i].z = transformed_position.z();
-                          }
-                      });
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < points->size(); ++i)
+    {
+        V3D point(points->points[i].x,
+                  points->points[i].y,
+                  points->points[i].z);
+
+        V3D transformed_position = R * point + T;
+
+        points->points[i].x = transformed_position.x();
+        points->points[i].y = transformed_position.y();
+        points->points[i].z = transformed_position.z();
+    }
+
+    // tbb::parallel_for(tbb::blocked_range<int>(0, points->size()),
+    //                   [&](const tbb::blocked_range<int> &r)
+    //                   {
+    //                       for (int i = r.begin(); i < r.end(); ++i)
+    //                       {
+    //                           V3D point(points->points[i].x,
+    //                                     points->points[i].y,
+    //                                     points->points[i].z);
+    //                           V3D transformed_position = R * point + T;
+    //                           points->points[i].x = transformed_position.x();
+    //                           points->points[i].y = transformed_position.y();
+    //                           points->points[i].z = transformed_position.z();
+    //                       }
+    //                   });
 }
 
 void TransformPoints(const Sophus::SE3 &T, pcl::PointCloud<PointType>::Ptr &cloud)
 {
-    tbb::parallel_for(tbb::blocked_range<int>(0, cloud->size()),
-                      [&](tbb::blocked_range<int> r)
-                      {
-                          for (int i = r.begin(); i < r.end(); ++i)
-                          {
-                              V3D p_src(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
-                              V3D p_transformed = T * p_src;
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
+    for (int i = 0; i < cloud->size(); ++i)
+    {
+        V3D p_src(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+        V3D p_transformed = T * p_src;
 
-                              cloud->points[i].x = p_transformed.x();
-                              cloud->points[i].y = p_transformed.y();
-                              cloud->points[i].z = p_transformed.z();
-                          }
-                      });
+        cloud->points[i].x = p_transformed.x();
+        cloud->points[i].y = p_transformed.y();
+        cloud->points[i].z = p_transformed.z();
+    }
+    // tbb::parallel_for(tbb::blocked_range<int>(0, cloud->size()),
+    //                   [&](tbb::blocked_range<int> r)
+    //                   {
+    //                       for (int i = r.begin(); i < r.end(); ++i)
+    //                       {
+    //                           V3D p_src(cloud->points[i].x, cloud->points[i].y, cloud->points[i].z);
+    //                           V3D p_transformed = T * p_src;
+
+    //                           cloud->points[i].x = p_transformed.x();
+    //                           cloud->points[i].y = p_transformed.y();
+    //                           cloud->points[i].z = p_transformed.z();
+    //                       }
+    //                   });
 }
 
 std::vector<std::string> expandBagPattern(const std::string &pattern_path)
@@ -183,4 +210,3 @@ std::vector<std::string> expandBagPattern(const std::string &pattern_path)
     std::sort(results.begin(), results.end());
     return results;
 }
-
