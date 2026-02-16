@@ -10,7 +10,7 @@ This code was developed as part of the work for the paper:
   <em>Example output</em>
 </p>
 
-✨ Features
+##  ✨ Features
 
 - **MAP-LIO** a single-state maximum a posteriori (MAP) state estimator   
 - **Robust data-driven covariances**   
@@ -46,11 +46,17 @@ catkin_make -DCATKIN_WHITELIST_PACKAGES="map_lio" -DUSE_ALS=OFF
 catkin_make -DCATKIN_WHITELIST_PACKAGES="map_lio" -DUSE_ALS=ON
 ```
 
-▶️ Usage
+📦 Dataset
+## 📦 Dataset  
+Download the toy example ROS bag dataset for quick testing:  
+🔗 [Toy Example ROS Bag](https://your-dataset-link-here)
+
+
+##  ▶️ Usage
 
 Example of running the system with ROS:
 ```bash
-roslaunch map_lio hesai.launch bag_file:=bag_file_path
+roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 ```
 
 
