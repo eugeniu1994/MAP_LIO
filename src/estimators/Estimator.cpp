@@ -39,7 +39,7 @@ Eigen::Matrix<double, state_size, state_size> df_dx(state s, input in)
     V3D acc_ = in.acc - s.ba;
     cov.block<3, 3>(V_ID, R_ID) = -s.rot.matrix() * Sophus::SO3::hat(acc_);
     cov.block<3, 3>(V_ID, BA_ID) = -s.rot.matrix();
-    cov.template block<3, 3>(V_ID, G_ID) = Eye3d;
+    cov.block<3, 3>(V_ID, G_ID) = Eye3d;
     return cov;
 }
 

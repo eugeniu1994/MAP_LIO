@@ -191,7 +191,6 @@ void DataHandler::pointBodyToWorld(PointType const *const pi, PointType *const p
     po->z = p_global(2);
     po->intensity = pi->intensity;
     po->time = pi->time;
-    //po->ring = pi->ring;
 }
 
 void DataHandler::pointBodyLidarToIMU(PointType const *const pi, PointType *const po)
@@ -204,7 +203,6 @@ void DataHandler::pointBodyLidarToIMU(PointType const *const pi, PointType *cons
     po->z = p_global(2);
     po->intensity = pi->intensity;
     po->time = pi->time;
-    //po->ring = pi->ring;
 }
 
 void DataHandler::gps_cbk(const gps_common::GPSFix::ConstPtr &msg)
@@ -329,7 +327,6 @@ void DataHandler::msg2cloud(const sensor_msgs::PointCloud2::ConstPtr &msg, Point
                 pcl_out->points[index].z = point.z;
                 pcl_out->points[index].intensity = sqrt(sqrt(range));             // Save the sqrt range in the intensity field
                 pcl_out->points[index].time = point.timestamp - first_point_time; // Time relative to first point
-                // pcl_out->points[index].ring = point.ring;
 
                 index++;
             }
@@ -639,7 +636,8 @@ void DataHandler::Subscribe()
             prev_mls = curr_mls;
         }
     }
-
+    std::cout<<"End of the bag file"<<std::endl;
     for (auto &b : bags)
         b->close();
+
 }
