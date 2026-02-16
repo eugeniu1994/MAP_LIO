@@ -10,7 +10,7 @@ This code was developed as part of the work for the paper:
   <em>Example output</em>
 </p>
 
-✨ #Features
+✨ Features
 
 - **MAP-LIO** a single-state maximum a posteriori (MAP) state estimator   
 - **Robust data-driven covariances**   
