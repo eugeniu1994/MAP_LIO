@@ -67,6 +67,7 @@ Note:
 -The experiments in this paper used the 2D Riegl VUX LiDAR. Accessing the raw data requires the proprietary Riegl software API. Due to this dependency, the VUX LiDAR data interface is not included in the public release.
 
 -The ALS dataset cannot be redistributed because its license does not permit resharing. However, the data can be obtained directly from the National Land Survey of Finland:https://www.maanmittauslaitos.fi/en/maps-and-spatial-data/datasets-and-interfaces/product-descriptions/laser-scanning-data-5-p
+The released code assumes that the prior map is supplied as 50 × 50 m tiles in LAS format.
 
 ## ⚖️ License
 Academic Research Use Only
