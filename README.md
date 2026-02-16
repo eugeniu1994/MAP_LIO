@@ -46,10 +46,9 @@ catkin_make -DCATKIN_WHITELIST_PACKAGES="map_lio" -DUSE_ALS=OFF
 catkin_make -DCATKIN_WHITELIST_PACKAGES="map_lio" -DUSE_ALS=ON
 ```
 
-📦 Dataset
 ## 📦 Dataset  
 Download the toy example ROS bag dataset for quick testing:  
-🔗 [Toy Example ROS Bag](https://your-dataset-link-here)
+🔗 [Toy Example ROS Bag]( https://drive.google.com/file/d/1uCoBnLeaZuqW00wt41YLrFWCleYauWaX/view?usp=sharing )
 
 
 ##  ▶️ Usage
@@ -64,10 +63,12 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 
 -Add support for different LiDARs (currently only Hesai is supported)
 
--Note: In the paper, the 2D Riegl VUX LiDAR was used, which requires proprietary software API to read the data. Therefore, this DEPENDENCY of the 2D VUX LiDAR has been omitted from public access
+Note: 
+-The experiments in this paper used the 2D Riegl VUX LiDAR. Accessing the raw data requires the proprietary Riegl software API. Due to this dependency, the VUX LiDAR data interface is not included in the public release.
 
+-The ALS dataset cannot be redistributed because its license does not permit resharing. However, the data can be obtained directly from the National Land Survey of Finland:https://www.maanmittauslaitos.fi/en/maps-and-spatial-data/datasets-and-interfaces/product-descriptions/laser-scanning-data-5-p
 
-##  License
+## ⚖️ License
 Academic Research Use Only
 This software is provided for academic research purposes only. It is not licensed for commercial use.
 By downloading or using this software, you agree to use it solely for non-commercial, research-oriented purposes.
