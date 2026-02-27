@@ -34,11 +34,6 @@ find_package(Sophus REQUIRED )
 find_package(GeographicLib REQUIRED) #required for GNSS stuff
 
 
-#todo remove TBB dependency 
-# find_package(TBB REQUIRED)
-# message(STATUS "TBB version: ${TBB_VERSION}")
-
-
 option(USE_ALS "Enable ALS" OFF)
 
 SET(MAIN_SOURCE_FILES src/IMU.cpp src/GNSS.cpp src/utils.cpp src/estimators/Estimator.cpp 

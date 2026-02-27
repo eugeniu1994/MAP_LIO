@@ -27,6 +27,9 @@ Eigen::Matrix<double, state_size, 1> f(state s, input in)
         result(i + R_ID) = omega[i];                  // Angular velocity
         result(i + V_ID) = a_inertial[i] + s.grav[i]; // gravity-free acceleration
     }
+
+    // std::cout<<"\nf: a raw:"<<in.acc.transpose()<<", a_inertial:"<<a_inertial.transpose()<<", s.grav:"<<s.grav.transpose()<<std::endl;
+    // std::cout<<"result(i + V_ID):"<<result.block<3, 1>(V_ID,0).transpose()<<std::endl;
     return result;
 }
 

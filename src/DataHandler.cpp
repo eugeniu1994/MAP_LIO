@@ -7,11 +7,12 @@
 
 #ifdef USE_ALS
 #include "ALS.hpp"
+#include <liblas/liblas.hpp>
 #endif
 
-#include <GeographicLib/UTMUPS.hpp>
+// #include <GeographicLib/UTMUPS.hpp>
 
-#include <liblas/liblas.hpp>
+
 #include <chrono>
 
 void DataHandler::publish_odometry(const ros::Publisher &pubOdomAftMapped)
@@ -667,6 +668,8 @@ void DataHandler::Subscribe()
             }
 
             prev_mls = curr_mls;
+
+            // std::cout<<"System extrinsic orientaion:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
         }
     }
     std::cout << "End of the bag file" << std::endl;

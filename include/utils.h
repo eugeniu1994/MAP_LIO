@@ -52,6 +52,9 @@
 constexpr double ESTIMATION_THRESHOLD_ = 0.001;
 const double G_m_s2 = 9.81; // positive z axis up
 
+// const double G_m_s2 = -9.81; 
+
+
 inline int NUM_THREADS = 16;
 
 #define NUM_MATCH_POINTS (5)

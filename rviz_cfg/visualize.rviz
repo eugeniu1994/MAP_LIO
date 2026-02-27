@@ -42,7 +42,7 @@ Visualization Manager:
       Cell Size: 1
       Class: rviz/Grid
       Color: 160; 160; 164
-      Enabled: false
+      Enabled: true
       Line Style:
         Line Width: 0.029999999329447746
         Value: Lines
@@ -55,7 +55,7 @@ Visualization Manager:
       Plane: XY
       Plane Cell Count: 50
       Reference Frame: <Fixed Frame>
-      Value: false
+      Value: true
     - Class: rviz/TF
       Enabled: true
       Filter (blacklist): ""
@@ -136,7 +136,7 @@ Visualization Manager:
           Size (Pixels): 2
           Size (m): 0.009999999776482582
           Style: Points
-          Topic: /cloud_debug
+          Topic: /cloud_registered
           Unreliable: false
           Use Fixed Frame: false
           Use rainbow: true
@@ -337,7 +337,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 234.36117553710938
+      Distance: 148.5749969482422
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -345,17 +345,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -8.143118858337402
-        Y: 14.809317588806152
-        Z: 42.36191177368164
+        X: 0.5517126321792603
+        Y: 19.389068603515625
+        Z: 14.088972091674805
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.085398554801941
+      Pitch: 1.3353986740112305
       Target Frame: global
-      Yaw: 1.7603979110717773
+      Yaw: 1.270398736000061
     Saved: ~
 Window Geometry:
   Displays:
