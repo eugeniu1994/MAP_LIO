@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(map_lio)
 
-SET(CMAKE_BUILD_TYPE "Release") 
+SET(CMAKE_BUILD_TYPE "Release")  #Release Debug
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread ") 
 
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -march=native -DNDEBUG")  #this will make the execution fast and compilation slow 
@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(GCC_COVERAGE_LINK_FLAGS "-lstdc++fs")
 
+# add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+# add_link_options(-fsanitize=address)
 
 find_package(catkin REQUIRED COMPONENTS
   geometry_msgs

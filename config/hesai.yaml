@@ -7,7 +7,7 @@ common:
                                   # This param will take effect no matter what time_sync_en is. So if the time offset is not known exactly, please set as 0.0
 preprocess:
     lidar_type: 0                # 0 for hesai, # 1 for Velodyne, 2 for ouster,
-    point_step : 3 #1               # i+= point_step  
+    point_step : 1               # i+= point_step  
     min_dist: .5 
     max_dist: 100
 

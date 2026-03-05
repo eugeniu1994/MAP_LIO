@@ -236,8 +236,8 @@ void DataHandler::gps_cbk(const gps_common::GPSFix::ConstPtr &msg)
     auto status = msg->status.status;
     if (status != 0)
     {
-        std::cout << "status:" << status << std::endl;
-        std::cout << "Unable to get a fix on the location." << std::endl;
+        std::cout << "GNSS status:" << status << std::endl;
+        std::cout << "GNSS Unable to get a fix on the location." << std::endl;
         return;
     }
 
@@ -333,7 +333,8 @@ void DataHandler::msg2cloud(const sensor_msgs::PointCloud2::ConstPtr &msg, Point
             pcl::fromROSMsg(*msg, pl_orig);
 
             int n = pl_orig.points.size();
-            pcl_out->resize(n / point_step);
+            // pcl_out->resize(n / point_step);
+            pcl_out->resize((n + point_step - 1) / point_step);
             first_point_time = pl_orig.points[0].timestamp;
 
             // std::cout<<"first_point_time:"<<first_point_time<<", last point time:"<<pl_orig.points[n-1].timestamp<<std::endl;
@@ -416,8 +417,8 @@ bool DataHandler::sync_packages(MeasureGroup &meas)
 
     if (!lidar_pushed || meas.imu.empty())
     {
-        std::cout << "\n\nIssue in sync_packages - the data in not synched\n\n"
-                  << std::endl;
+        std::cout << "\n\nIssue in sync_packages - the data in not synched\n\n" << std::endl;
+        std::cout<<"lidar_pushed:"<<lidar_pushed<<", imu:"<<meas.imu.size()<<std::endl;
         // throw std::runtime_error("\n\nIssue in sync_packages - the data in not synched\n\n");
 
         return false;

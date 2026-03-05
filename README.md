@@ -25,9 +25,22 @@ To build and run this project, the following libraries are required:
 
 - [Eigen]([http://eigen.tuxfamily.org](https://libeigen.gitlab.io/))
 - [PCL (Point Cloud Library)](http://pointclouds.org)
-- [Sophus]([https://github.com/strasdat/Sophus](https://github.com/strasdat/Sophus))
+- [Sophus]
 - For prior map usage with ALS data (`.las` files), the [LASTools](https://lastools.github.io/) library is required.
 ---
+
+### Sophus
+
+ Sophus Installation for the non-templated/double-only version.
+
+```bash
+git clone https://github.com/strasdat/Sophus.git
+cd Sophus
+git checkout a621ff
+mkdir build && cd build && cmake ..
+make
+sudo make install
+```
 
 ## 🚀 Build Instructions
 
