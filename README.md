@@ -3,7 +3,7 @@
 ## Work in Progress
 This code was developed as part of the work for the paper:
 
-**Robust Tightly Coupled MLS-ALS Fusion with 2D/3D LiDAR Using Data-Driven Covariances for Accurate 3D Mapping**, submitted to the *ISPRS Journal of Photogrammetry and Remote Sensing*.
+**Robust Tightly Coupled MLS-ALS Fusion with 2D/3D LiDAR Using Data-Driven Covariances for Accurate 3D Mapping**
 <p align="center">
   <img src="https://github.com/eugeniu1994/MAP_LIO/blob/master/demo.png?raw=true" alt="MAP LIO Estimator Demo" width="600"/>
   <br>
