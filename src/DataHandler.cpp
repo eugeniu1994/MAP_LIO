@@ -273,11 +273,9 @@ void DataHandler::imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in)
     imu_buffer.push_back(msg);
 }
 
-void DataHandler::pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in)
+void DataHandler::pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg)
 {
     // std::cout<<"\npcl_cbk msg_in->header.stamp.toSec()->"<<msg_in->header.stamp.toSec()<<", lidar_buffer:"<<lidar_buffer.size()<<std::endl;
-
-    sensor_msgs::PointCloud2::Ptr msg(new sensor_msgs::PointCloud2(*msg_in));
 
     if (msg->header.stamp.toSec() < last_timestamp_lidar)
     {
@@ -312,6 +310,37 @@ void DataHandler::pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg_in)
     time_buffer.push_back(msg->header.stamp.toSec());
 }
 
+/// @brief If `msg` was constructed using `hesai_ros::Point` data, there is no
+/// need to call `pcl::fromROSMsg`.
+static bool msg_is_from_hesai_ros_point(const sensor_msgs::PointCloud2::ConstPtr &msg) {
+    const char *names[6] = { "x", "y", "z", "intensity", "timestamp", "ring" };
+    const uint8_t types[6] = { 7, 7, 7, 7, 8, 4, };
+    const uint32_t offsets[6] = { 0, 4, 8, 16, 24, 32 };
+
+    for (size_t i = 0; i < msg->fields.size(); ++i) {
+        const auto &field = msg->fields[i];
+        
+        const std::string exp_name(names[i]);
+        if (field.name != exp_name) {
+            return false;
+        }
+        if (field.count != 1) {
+            return false;
+        }
+        if (field.datatype != types[i]) {
+            return false;
+        }
+        if (field.offset != offsets[i]) {
+            return false;
+        }
+    }
+
+    if (msg->point_step != sizeof(hesai_ros::Point)) {
+        return false;
+    }
+    return true;
+}
+
 void DataHandler::msg2cloud(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out)
 {
     double first_point_time, range;
@@ -322,19 +351,26 @@ void DataHandler::msg2cloud(const sensor_msgs::PointCloud2::ConstPtr &msg, Point
         // std::cout << "Hesai" << std::endl;
         {
             pcl::PointCloud<hesai_ros::Point> pl_orig;
-            pcl::fromROSMsg(*msg, pl_orig);
+            int n;
+            const hesai_ros::Point *pts;
+            if (msg_is_from_hesai_ros_point(msg)) {
+                pts = reinterpret_cast<const hesai_ros::Point*>(msg->data.data());
+                n = msg->width;
+            } else {
+                pcl::fromROSMsg(*msg, pl_orig);
+                pts = pl_orig.points.data();
+                n = pl_orig.points.size();
+            }
 
-            int n = pl_orig.points.size();
-            // pcl_out->resize(n / point_step);
-            pcl_out->resize((n + point_step - 1) / point_step);
-            first_point_time = pl_orig.points[0].timestamp;
+            pcl_out->resize(n / point_step);
+            first_point_time = pts[0].timestamp;
 
             // std::cout<<"first_point_time:"<<first_point_time<<", last point time:"<<pl_orig.points[n-1].timestamp<<std::endl;
 
             index = 0;
             for (int i = 0; i < n; i += point_step)
             {
-                const auto &point = pl_orig.points[i];
+                const auto &point = pts[i];
                 range = point.x * point.x + point.y * point.y + point.z * point.z;
 
                 if (range < min_dist_sq || range > max_dist_sq)
