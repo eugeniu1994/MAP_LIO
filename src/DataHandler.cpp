@@ -4,6 +4,7 @@
 
 #include "IMU.hpp"
 #include "GNSS.hpp"
+#include "grid.hpp"
 
 #ifdef USE_ALS
 #include "ALS.hpp"
@@ -174,28 +175,9 @@ void DataHandler::local_map_update()
         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
     }
 
-    *laserCloudSurfMap += *feats_down_world;
-
-    pcl::PointCloud<PointType>::Ptr tmpSurf(new pcl::PointCloud<PointType>());
-    double local_map_radius = 75; // 100;
-
-    double x_min = state_point.pos.x() - local_map_radius;
-    double y_min = state_point.pos.y() - local_map_radius;
-    double z_min = state_point.pos.z() - local_map_radius;
-    double x_max = state_point.pos.x() + local_map_radius;
-    double y_max = state_point.pos.y() + local_map_radius;
-    double z_max = state_point.pos.z() + local_map_radius;
-
-    // ROS_INFO("size : %f,%f,%f,%f,%f,%f", x_min, y_min, z_min,x_max, y_max, z_max);
-    cropBoxFilter.setMin(Eigen::Vector4f(x_min, y_min, z_min, 1));
-    cropBoxFilter.setMax(Eigen::Vector4f(x_max, y_max, z_max, 1));
-    cropBoxFilter.setNegative(false);
-
-    cropBoxFilter.setInputCloud(laserCloudSurfMap);
-    cropBoxFilter.filter(*tmpSurf);
-
-    downSizeFilterSurf.setInputCloud(tmpSurf);
-    downSizeFilterSurf.filter(*laserCloudSurfMap);
+    const union voxel_grid::point center = {
+        (float)state_point.pos.x(), (float)state_point.pos.y(), (float)state_point.pos.z(), 0 };
+    voxel_grid::grid_update(filterSearchGrid, center, *feats_down_world);
 }
 
 void DataHandler::pointBodyToWorld(PointType const *const pi, PointType *const po)
@@ -638,7 +620,10 @@ void DataHandler::Subscribe()
                 pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
             }
 
-            *laserCloudSurfMap += *feats_down_world;
+            
+            const union voxel_grid::point center = {
+                (float)state_point.pos.x(), (float)state_point.pos.y(), (float)state_point.pos.z(), 0 };
+            voxel_grid::grid_update(filterSearchGrid, center, *feats_down_world);
             map_init = true;
             timer::end("map_init");
             continue;
@@ -653,7 +638,7 @@ void DataHandler::Subscribe()
         if (!als_obj->refine_als) // als was not setup
         {
             use_als_update = false; // ALS not set yet
-            *featsFromMap = *laserCloudSurfMap;
+            voxel_grid::grid_to_pc(filterSearchGrid, *featsFromMap);
             if (gnss_obj->GNSS_extrinsic_init)
             {
                 als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
@@ -677,14 +662,14 @@ void DataHandler::Subscribe()
             publish_map(pubLaserALSMap);
         }
 
-        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap,
+        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, filterSearchGrid,
                                     use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
                                     use_se3_update, absolute_se3, abs_std_pos_m, abs_std_rot_deg,
                                     use_se3_rel, rel_se3, rel_std_pos_m, rel_std_rot_deg, prev_mls);
 
 #else
         timer::start("estimator-update");
-        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap);
+        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, filterSearchGrid);
         timer::end("estimator-update");
 #endif
 
@@ -706,7 +691,7 @@ void DataHandler::Subscribe()
         }
         if (pubLaserCloudMap.getNumSubscribers() != 0)
         {
-            *featsFromMap = *laserCloudSurfMap;
+            voxel_grid::grid_to_pc(filterSearchGrid, *featsFromMap);
             publish_map(pubLaserCloudMap);
         }
         timer::end("publish");

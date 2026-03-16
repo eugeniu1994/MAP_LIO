@@ -18,6 +18,7 @@
 
 #include <utils.h>
 #include "Estimator.hpp"
+#include "grid.hpp"
 
 class DataHandler
 {
@@ -82,6 +83,7 @@ public:
     PointCloudXYZI::Ptr laserCloudSurfMap, featsFromMap, feats_undistort, feats_down_body, feats_down_world;
     pcl::VoxelGrid<PointType> downSizeFilterSurf;
     pcl::CropBox<PointType> cropBoxFilter;
+    struct voxel_grid::grid filterSearchGrid;
 
     MeasureGroup Measures;
     MAP_ estimator_;
@@ -162,6 +164,12 @@ public:
         std::cout << "bag_file:" << bag_file << std::endl;
 
         downSizeFilterSurf.setLeafSize(filter_size_surf_min, filter_size_surf_min, filter_size_surf_min);
+        {
+            const int res = voxel_grid::grid_init(75.0, filter_size_surf_min, &filterSearchGrid);
+            if (res) {
+                std::cerr << "Failed to init voxel_grid::grid" << std::endl;
+            }
+        }
 
         Lidar_T_wrt_IMU << VEC_FROM_ARRAY(extrinT_LiDAR2IMU);
         Lidar_R_wrt_IMU << MAT_FROM_ARRAY(extrinR_LiDAR2IMU);

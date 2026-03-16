@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include "grid.hpp"
 #include <utils.h>
 
 // pos, rot, extrinsic_R, extrinsic_t, vel, bg, ba, grav
@@ -114,14 +115,14 @@ public:
 
     ~MAP_() {};
 
-    int update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map, 
+    int update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const struct voxel_grid::grid &searchGrid, 
                 const bool use_als, const PointCloudXYZI::Ptr &als_map, const pcl::KdTreeFLANN<PointType>::Ptr &als_tree,       //prior ALS map
                 const bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &se3_std_pos_m, const V3D &se3_std_rot_deg,          //absolute SE3 meas,
                 bool use_se3_rel, const Sophus::SE3 &se3_rel, const V3D &se3_rel_std_pos_m, const V3D &se3_rel_std_rot_deg,     //relative SE3 meas,
                 const Sophus::SE3 &prev_X);
     
     
-    int update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map);
+    int update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const struct voxel_grid::grid &searchGrid);
 
 private:
     int effct_feat_num;

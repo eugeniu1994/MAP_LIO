@@ -41,7 +41,7 @@ find_package(GeographicLib REQUIRED) #required for GNSS stuff
 option(USE_ALS "Enable ALS" OFF)
 
 SET(MAIN_SOURCE_FILES src/IMU.cpp src/GNSS.cpp src/utils.cpp src/estimators/Estimator.cpp 
- src/DataHandler.cpp ) 
+ src/DataHandler.cpp src/grid.cpp) 
 
 if(USE_ALS)
     SET(MAIN_SOURCE_FILES ${MAIN_SOURCE_FILES} src/estimators/ALS.cpp ) 
