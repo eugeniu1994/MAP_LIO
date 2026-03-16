@@ -12,6 +12,7 @@
 
 // #include <GeographicLib/UTMUPS.hpp>
 
+#include "timer.hpp"
 
 #include <chrono>
 
@@ -501,6 +502,8 @@ void DataHandler::Subscribe()
         if (flg_exit || !ros::ok())
             break;
 
+        timer::start("total");
+        timer::start("topic");
         std::string topic = m.getTopic();
         if (topic == imu_topic)
         {
@@ -528,152 +531,171 @@ void DataHandler::Subscribe()
                 pcl_cbk(pcl_msg);
             }
         }
+        timer::end("topic");
 
-        if (sync_packages(Measures))
+        if (!sync_packages(Measures))
+            continue;
+
+        scan_id++;
+
+        timer::start("gnss");
+        gnss_obj->Process(gps_buffer, lidar_end_time, state_point.pos);
+        Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
+        // gnss_pose.so3() = state_point.rot; // use the MLS orientation
+        // if (als_integrated) // if (use_gnss)
+        publish_gnss_odometry(gnss_pose);
+        timer::end("gnss");
+
+        if (flg_first_scan)
         {
-            scan_id++;
+            first_lidar_time = Measures.lidar_beg_time;
+            flg_first_scan = false;
+            curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
+            prev_mls = curr_mls;
+            continue;
+        }
 
-            gnss_obj->Process(gps_buffer, lidar_end_time, state_point.pos);
-            Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
-            // gnss_pose.so3() = state_point.rot; // use the MLS orientation
-            // if (als_integrated) // if (use_gnss)
-            publish_gnss_odometry(gnss_pose);
+        //  undistort and provide initial guess
+        timer::start("imu");
+        imu_obj->Process(Measures, estimator_, feats_undistort);
+        timer::end("imu");
+        if (imu_obj->imu_need_init_)
+        {
+            std::cout << "IMU was not initialised " << std::endl;
+            continue;
+        }
 
-            if (flg_first_scan)
-            {
-                first_lidar_time = Measures.lidar_beg_time;
-                flg_first_scan = false;
-                curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
-                prev_mls = curr_mls;
-                continue;
-            }
+        if (feats_undistort->empty() || (feats_undistort == NULL))
+        {
+            ROS_WARN("No feats_undistort point, skip this scan!\n");
+            std::cout << "feats_undistort:" << feats_undistort->size() << std::endl;
+            // throw std::runtime_error("NO points -> ERROR: check your data");
+            continue;
+        }
+        state_point = estimator_.get_x();
+        flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
 
-            //  undistort and provide initial guess
-            imu_obj->Process(Measures, estimator_, feats_undistort);
-            if (imu_obj->imu_need_init_)
-            {
-                std::cout << "IMU was not initialised " << std::endl;
-                continue;
-            }
+        timer::start("filter");
+        downSizeFilterSurf.setInputCloud(feats_undistort);
+        downSizeFilterSurf.filter(*feats_down_body);
+        timer::end("filter");
 
-            if (feats_undistort->empty() || (feats_undistort == NULL))
-            {
-                ROS_WARN("No feats_undistort point, skip this scan!\n");
-                std::cout << "feats_undistort:" << feats_undistort->size() << std::endl;
-                // throw std::runtime_error("NO points -> ERROR: check your data");
-                continue;
-            }
-            state_point = estimator_.get_x();
-            flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
+        feats_down_size = feats_down_body->points.size();
+        if (feats_down_size < 5)
+        {
+            ROS_WARN("No feats_down_body point, skip this scan!\n");
+            std::cout << "feats_undistort:" << feats_undistort->size() << std::endl;
+            std::cout << "feats_down_body:" << feats_down_size << std::endl;
+            throw std::runtime_error("NO feats_down_body points -> ERROR");
+        }
 
-            downSizeFilterSurf.setInputCloud(feats_undistort);
-            downSizeFilterSurf.filter(*feats_down_body);
+        double t_cloud_voxelization = omp_get_wtime();
 
-            feats_down_size = feats_down_body->points.size();
-            if (feats_down_size < 5)
-            {
-                ROS_WARN("No feats_down_body point, skip this scan!\n");
-                std::cout << "feats_undistort:" << feats_undistort->size() << std::endl;
-                std::cout << "feats_down_body:" << feats_down_size << std::endl;
-                throw std::runtime_error("NO feats_down_body points -> ERROR");
-            }
+        if (!map_init)
+        {
+            timer::start("map_init");
+            feats_down_size = feats_undistort->size();
+            feats_down_world->resize(feats_down_size);
 
-            double t_cloud_voxelization = omp_get_wtime();
-
-            if (!map_init)
-            {
-                feats_down_size = feats_undistort->size();
-                feats_down_world->resize(feats_down_size);
-
-                // tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
-                //                   [&](tbb::blocked_range<int> r)
-                //                   {
-                //                       for (int i = r.begin(); i < r.end(); i++)
-                //                       {
-                //                           pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
-                //                       }
-                //                   });
+            // tbb::parallel_for(tbb::blocked_range<int>(0, feats_down_size),
+            //                   [&](tbb::blocked_range<int> r)
+            //                   {
+            //                       for (int i = r.begin(); i < r.end(); i++)
+            //                       {
+            //                           pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
+            //                       }
+            //                   });
 
 #ifdef MP_EN
 #pragma omp parallel for
 #endif
-                for (int i = 0; i < feats_down_size; i++)
-                {
-                    pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
-                }
-
-                *laserCloudSurfMap += *feats_down_world;
-                map_init = true;
-                continue;
+            for (int i = 0; i < feats_down_size; i++)
+            {
+                pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
             }
+
+            *laserCloudSurfMap += *feats_down_world;
+            map_init = true;
+            timer::end("map_init");
+            continue;
+        }
 
 #ifdef USE_ALS
-            bool use_als_update = false;
-            bool use_se3_update = false, use_se3_rel = false;
-            Sophus::SE3 absolute_se3, rel_se3;
-            V3D abs_std_pos_m, abs_std_rot_deg, rel_std_pos_m, rel_std_rot_deg;
+        bool use_als_update = false;
+        bool use_se3_update = false, use_se3_rel = false;
+        Sophus::SE3 absolute_se3, rel_se3;
+        V3D abs_std_pos_m, abs_std_rot_deg, rel_std_pos_m, rel_std_rot_deg;
 
-            if (!als_obj->refine_als) // als was not setup
+        if (!als_obj->refine_als) // als was not setup
+        {
+            use_als_update = false; // ALS not set yet
+            *featsFromMap = *laserCloudSurfMap;
+            if (gnss_obj->GNSS_extrinsic_init)
             {
-                use_als_update = false; // ALS not set yet
-                *featsFromMap = *laserCloudSurfMap;
-                if (gnss_obj->GNSS_extrinsic_init)
-                {
-                    als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
+                als_obj->init(gnss_obj->origin_enu, gnss_obj->R_GNSS_to_MLS, featsFromMap);
 
-                    gnss_obj->updateExtrinsic(als_obj->R_to_mls); // use the scan-based refined rotation for GNSS
-                    als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
-                    gnss_obj->als2mls_T = als_obj->als_to_mls;
-                }
-            }
-            else // als was set up
-            {
+                gnss_obj->updateExtrinsic(als_obj->R_to_mls); // use the scan-based refined rotation for GNSS
                 als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
-                als_integrated = true;
-
-                use_als_update = true; // use ALS now
+                gnss_obj->als2mls_T = als_obj->als_to_mls;
             }
+        }
+        else // als was set up
+        {
+            als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
+            als_integrated = true;
 
-            if (pubLaserALSMap.getNumSubscribers() != 0)
-            {
-                als_obj->getCloud(featsFromMap);
-                publish_map(pubLaserALSMap);
-            }
+            use_als_update = true; // use ALS now
+        }
 
-            iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap,
-                                      use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
-                                      use_se3_update, absolute_se3, abs_std_pos_m, abs_std_rot_deg,
-                                      use_se3_rel, rel_se3, rel_std_pos_m, rel_std_rot_deg, prev_mls);
+        if (pubLaserALSMap.getNumSubscribers() != 0)
+        {
+            als_obj->getCloud(featsFromMap);
+            publish_map(pubLaserALSMap);
+        }
+
+        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap,
+                                    use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
+                                    use_se3_update, absolute_se3, abs_std_pos_m, abs_std_rot_deg,
+                                    use_se3_rel, rel_se3, rel_std_pos_m, rel_std_rot_deg, prev_mls);
 
 #else
-            iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap);
+        timer::start("estimator-update");
+        iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, laserCloudSurfMap);
+        timer::end("estimator-update");
 #endif
 
-            state_point = estimator_.get_x();
-            curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
+        state_point = estimator_.get_x();
+        curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
 
-            // Update the local map--------------------------------------------------
-            feats_down_world->resize(feats_down_size);
-            local_map_update();
+        // Update the local map--------------------------------------------------
+        timer::start("local-map-update");
+        feats_down_world->resize(feats_down_size);
+        local_map_update();
+        timer::end("local-map-update");
 
-            publish_odometry(pubOdomAftMapped);
-            if (scan_pub_en)
-            {
-                if (pubLaserCloudFull.getNumSubscribers() != 0)
-                    publish_frame_world(pubLaserCloudFull);
-            }
-            if (pubLaserCloudMap.getNumSubscribers() != 0)
-            {
-                *featsFromMap = *laserCloudSurfMap;
-                publish_map(pubLaserCloudMap);
-            }
-
-            prev_mls = curr_mls;
-
-            // std::cout<<"System extrinsic orientaion:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
+        timer::start("publish");
+        publish_odometry(pubOdomAftMapped);
+        if (scan_pub_en)
+        {
+            if (pubLaserCloudFull.getNumSubscribers() != 0)
+                publish_frame_world(pubLaserCloudFull);
         }
+        if (pubLaserCloudMap.getNumSubscribers() != 0)
+        {
+            *featsFromMap = *laserCloudSurfMap;
+            publish_map(pubLaserCloudMap);
+        }
+        timer::end("publish");
+
+        prev_mls = curr_mls;
+        timer::end("total");
+
+        // std::cout<<"System extrinsic orientaion:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
     }
     std::cout << "End of the bag file" << std::endl;
     for (auto &b : bags)
         b->close();
+    
+    timer::print();
+    timer::print("runtimes.csv");
 }
