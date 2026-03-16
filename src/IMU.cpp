@@ -165,6 +165,49 @@ void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
     Q.block<3, 3>(BA_VAR_ID, BA_VAR_ID).diagonal() = cov_bias_acc;
 }
 
+
+
+/// @brief Inlined version of `Sophus::SO3::exp(v).matrix()`.
+static inline M3D sophus_exp_mat(const V3D &v) {
+    const double vx = v.x();
+    const double vy = v.y();
+    const double vz = v.z();
+    const double norm_squared = vx * vx + vy * vy + vz * vz;
+    const double norm = std::sqrt(norm_squared);
+    const double half_norm = norm * 0.5;
+
+    const double real_factor = std::cos(half_norm);
+    double imag_factor;
+    if (norm < 1e-10) {
+        imag_factor = 0.5 - 0.0208333 * norm_squared + 0.000260417 * norm_squared * norm_squared;
+    } else {
+        imag_factor = std::sin(half_norm) / norm;
+    }
+
+    const double w = real_factor;
+    const double x = imag_factor * vx;
+    const double y = imag_factor * vy;
+    const double z = imag_factor * vz;
+    const double tx = 2.0 * x;
+    const double ty = 2.0 * y;
+    const double tz = 2.0 * z;
+
+    M3D m = {};
+    double *data = m.data();
+    data[0] = 1.0 - (ty * y + tz * z);
+    data[3] = tx * y - tz * w;
+    data[6] = tx * z + ty * w;
+
+    data[1] = tx * y + tz * w;
+    data[4] = 1.0 - (tx * x + tz * z);
+    data[7] = ty * z - tx * w;
+
+    data[2] = tx * z - ty * w;
+    data[5] = ty * z + tx * w;
+    data[8] = 1.0 - (tx * x + ty * y);
+    return m;
+}
+
 void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCloudXYZI &pcl_out)
 {
     auto v_imu = meas.imu;
@@ -243,12 +286,15 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
     last_imu_ = meas.imu.back();
     last_lidar_end_time_ = pcl_end_time;
 
-    auto it_pcl = pcl_out.points.end() - 1;
-    auto begin_pcl = pcl_out.points.begin();
+    auto iter_start = pcl_out.points.end() - 1;
+    auto iter_end = pcl_out.points.end();
 
     const auto &end_R_T = imu_state.rot.matrix().transpose();
     const auto &R_L2I = imu_state.offset_R_L_I.matrix();
     const auto &R_I2L = imu_state.offset_R_L_I.matrix().transpose();
+
+    const M3D R_I2L_end_T = R_I2L * end_R_T;
+    const V3D t_offset_T_L_I_R_I2L = R_I2L * imu_state.offset_T_L_I;
 
     for (auto it_kp = IMU_Buffer.end() - 1; it_kp != IMU_Buffer.begin(); it_kp--)
     {
@@ -260,23 +306,28 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
         acc_imu << VEC_FROM_ARRAY(tail->acc);
         angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
-        // TODO: rewrite the code to do this in parallel
-        for (; it_pcl->time > head->offset_time; it_pcl--)
-        {
-            dt = it_pcl->time - head->offset_time;
-
-            M3D R_i(R_imu * Sophus::SO3::exp(angvel_avr * dt).matrix());
-            V3D P_i(it_pcl->x, it_pcl->y, it_pcl->z);
-            V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt - imu_state.pos);
-            V3D P_compensate = R_I2L * (end_R_T * (R_i * (R_L2I * P_i + imu_state.offset_T_L_I) + T_ei) - imu_state.offset_T_L_I);
-
-            it_pcl->x = P_compensate(0);
-            it_pcl->y = P_compensate(1);
-            it_pcl->z = P_compensate(2);
-
-            if (it_pcl == begin_pcl)
+        while (iter_start != pcl_out.points.begin()) {
+            if (iter_start->time <= head->offset_time) {
                 break;
+            }
+            --iter_start;
         }
+
+        for (auto iter = iter_start; iter < iter_end; ++iter)
+        {
+            const double pdt = iter->time - head->offset_time;
+
+            M3D R_i(R_imu * sophus_exp_mat(angvel_avr * pdt));
+            V3D P_i(iter->x, iter->y, iter->z);
+            V3D T_ei(pos_imu + vel_imu * pdt + 0.5 * acc_imu * pdt * pdt - imu_state.pos);
+            V3D P_compensate = R_I2L_end_T * (R_i * (R_L2I * P_i + imu_state.offset_T_L_I) + T_ei) - t_offset_T_L_I_R_I2L;
+
+            iter->x = P_compensate(0);
+            iter->y = P_compensate(1);
+            iter->z = P_compensate(2);
+        }
+
+        iter_end = iter_start;
     }
 }
 
