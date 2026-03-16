@@ -637,6 +637,7 @@ void DataHandler::Subscribe()
 
         if (!als_obj->refine_als) // als was not setup
         {
+            timer::start("als-setup");
             use_als_update = false; // ALS not set yet
             voxel_grid::grid_to_pc(filterSearchGrid, *featsFromMap);
             if (gnss_obj->GNSS_extrinsic_init)
@@ -647,13 +648,16 @@ void DataHandler::Subscribe()
                 als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
                 gnss_obj->als2mls_T = als_obj->als_to_mls;
             }
+            timer::end("als-setup");
         }
         else // als was set up
         {
+            timer::start("als-update");
             als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
             als_integrated = true;
 
             use_als_update = true; // use ALS now
+            timer::end("als-update");
         }
 
         if (pubLaserALSMap.getNumSubscribers() != 0)
@@ -662,10 +666,12 @@ void DataHandler::Subscribe()
             publish_map(pubLaserALSMap);
         }
 
+        timer::start("estimator-update");
         iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, filterSearchGrid,
                                     use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
                                     use_se3_update, absolute_se3, abs_std_pos_m, abs_std_rot_deg,
                                     use_se3_rel, rel_se3, rel_std_pos_m, rel_std_rot_deg, prev_mls);
+        timer::end("estimator-update");
 
 #else
         timer::start("estimator-update");
