@@ -100,9 +100,6 @@ void DataHandler::publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
     //                                     &laserCloudWorld->points[i]);
     //                 } });
 
-#ifdef MP_EN
-#pragma omp parallel for
-#endif
     for (int i = 0; i < size; i++)
     {
         pointBodyToWorld(&laserCloudFullRes->points[i],
@@ -131,9 +128,6 @@ void DataHandler::publish_frame_body(const ros::Publisher &pubLaserCloudFull_bod
     //                      //laserCloudWorld->points[i] = laserCloudFullRes->points[i];
     //                 } });
 
-#ifdef MP_EN
-#pragma omp parallel for
-#endif
     for (int i = 0; i < size; i++)
     {
         pointBodyLidarToIMU(&laserCloudFullRes->points[i],
@@ -175,9 +169,6 @@ void DataHandler::local_map_update()
 //                           pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
 //                       }
 //                   });
-#ifdef MP_EN
-#pragma omp parallel for
-#endif
     for (int i = 0; i < feats_down_size; ++i)
     {
         pointBodyToWorld(&(feats_down_body->points[i]), &(feats_down_world->points[i]));
@@ -606,9 +597,6 @@ void DataHandler::Subscribe()
             //                       }
             //                   });
 
-#ifdef MP_EN
-#pragma omp parallel for
-#endif
             for (int i = 0; i < feats_down_size; i++)
             {
                 pointBodyToWorld(&(feats_undistort->points[i]), &(feats_down_world->points[i])); // transform to world coordinates
