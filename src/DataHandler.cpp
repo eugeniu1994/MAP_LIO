@@ -101,6 +101,9 @@ void DataHandler::publish_frame_world(const ros::Publisher &pubLaserCloudFull_)
     //                                     &laserCloudWorld->points[i]);
     //                 } });
 
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
     for (int i = 0; i < size; i++)
     {
         pointBodyToWorld(&laserCloudFullRes->points[i],
@@ -129,6 +132,9 @@ void DataHandler::publish_frame_body(const ros::Publisher &pubLaserCloudFull_bod
     //                      //laserCloudWorld->points[i] = laserCloudFullRes->points[i];
     //                 } });
 
+#ifdef MP_EN
+#pragma omp parallel for
+#endif
     for (int i = 0; i < size; i++)
     {
         pointBodyLidarToIMU(&laserCloudFullRes->points[i],
