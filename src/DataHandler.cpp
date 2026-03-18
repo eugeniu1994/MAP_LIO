@@ -13,8 +13,6 @@
 
 // #include <GeographicLib/UTMUPS.hpp>
 
-#include "timer.hpp"
-
 #include <chrono>
 
 void DataHandler::publish_odometry(const ros::Publisher &pubOdomAftMapped)
@@ -517,8 +515,6 @@ void DataHandler::Subscribe()
         if (flg_exit || !ros::ok())
             break;
 
-        timer::start("total");
-        timer::start("topic");
         std::string topic = m.getTopic();
         if (topic == imu_topic)
         {
@@ -546,20 +542,17 @@ void DataHandler::Subscribe()
                 pcl_cbk(pcl_msg);
             }
         }
-        timer::end("topic");
 
         if (!sync_packages(Measures))
             continue;
 
         scan_id++;
 
-        timer::start("gnss");
         gnss_obj->Process(gps_buffer, lidar_end_time, state_point.pos);
         Sophus::SE3 gnss_pose = (gnss_obj->use_postprocessed_gnss) ? gnss_obj->postprocessed_gps_pose : gnss_obj->gps_pose;
         // gnss_pose.so3() = state_point.rot; // use the MLS orientation
         // if (als_integrated) // if (use_gnss)
         publish_gnss_odometry(gnss_pose);
-        timer::end("gnss");
 
         if (flg_first_scan)
         {
@@ -571,9 +564,7 @@ void DataHandler::Subscribe()
         }
 
         //  undistort and provide initial guess
-        timer::start("imu");
         imu_obj->Process(Measures, estimator_, feats_undistort);
-        timer::end("imu");
         if (imu_obj->imu_need_init_)
         {
             std::cout << "IMU was not initialised " << std::endl;
@@ -590,10 +581,8 @@ void DataHandler::Subscribe()
         state_point = estimator_.get_x();
         flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME ? false : true;
 
-        timer::start("filter");
         downSizeFilterSurf.setInputCloud(feats_undistort);
         downSizeFilterSurf.filter(*feats_down_body);
-        timer::end("filter");
 
         feats_down_size = feats_down_body->points.size();
         if (feats_down_size < 5)
@@ -608,7 +597,6 @@ void DataHandler::Subscribe()
 
         if (!map_init)
         {
-            timer::start("map_init");
             feats_down_size = feats_undistort->size();
             feats_down_world->resize(feats_down_size);
 
@@ -631,7 +619,6 @@ void DataHandler::Subscribe()
                 (float)state_point.pos.x(), (float)state_point.pos.y(), (float)state_point.pos.z(), 0 };
             voxel_grid::grid_update(filterSearchGrid, center, *feats_down_world);
             map_init = true;
-            timer::end("map_init");
             continue;
         }
 
@@ -643,7 +630,6 @@ void DataHandler::Subscribe()
 
         if (!als_obj->refine_als) // als was not setup
         {
-            timer::start("als-setup");
             use_als_update = false; // ALS not set yet
             voxel_grid::grid_to_pc(filterSearchGrid, *featsFromMap);
             if (gnss_obj->GNSS_extrinsic_init)
@@ -654,16 +640,13 @@ void DataHandler::Subscribe()
                 als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
                 gnss_obj->als2mls_T = als_obj->als_to_mls;
             }
-            timer::end("als-setup");
         }
         else // als was set up
         {
-            timer::start("als-update");
             als_obj->Update(Sophus::SE3(state_point.rot, state_point.pos));
             als_integrated = true;
 
             use_als_update = true; // use ALS now
-            timer::end("als-update");
         }
 
         if (pubLaserALSMap.getNumSubscribers() != 0)
@@ -672,29 +655,22 @@ void DataHandler::Subscribe()
             publish_map(pubLaserALSMap);
         }
 
-        timer::start("estimator-update");
         iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, filterSearchGrid,
                                     use_als_update, als_obj->als_cloud, als_obj->localKdTree_map_als,
                                     use_se3_update, absolute_se3, abs_std_pos_m, abs_std_rot_deg,
                                     use_se3_rel, rel_se3, rel_std_pos_m, rel_std_rot_deg, prev_mls);
-        timer::end("estimator-update");
 
 #else
-        timer::start("estimator-update");
         iters = estimator_.update(NUM_MAX_ITERATIONS, extrinsic_est_en, feats_down_body, filterSearchGrid);
-        timer::end("estimator-update");
 #endif
 
         state_point = estimator_.get_x();
         curr_mls = Sophus::SE3(state_point.rot, state_point.pos);
 
         // Update the local map--------------------------------------------------
-        timer::start("local-map-update");
         feats_down_world->resize(feats_down_size);
         local_map_update();
-        timer::end("local-map-update");
 
-        timer::start("publish");
         publish_odometry(pubOdomAftMapped);
         if (scan_pub_en)
         {
@@ -706,17 +682,12 @@ void DataHandler::Subscribe()
             voxel_grid::grid_to_pc(filterSearchGrid, *featsFromMap);
             publish_map(pubLaserCloudMap);
         }
-        timer::end("publish");
 
         prev_mls = curr_mls;
-        timer::end("total");
 
         // std::cout<<"System extrinsic orientaion:\n"<<state_point.offset_R_L_I.matrix()<<std::endl;
     }
     std::cout << "End of the bag file" << std::endl;
     for (auto &b : bags)
         b->close();
-    
-    timer::print();
-    timer::print("runtimes.csv");
 }
