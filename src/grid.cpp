@@ -22,6 +22,7 @@ struct grid_index {
 struct dist_ind {
   double dist_squared;
   i64 vi;
+  int gi;
 };
 
 static struct grid_index point_to_index(const union point p,
@@ -242,47 +243,54 @@ void grid_search_knn(const struct grid &grid, const PointType &ptp,
   }
 
   const union point p = { ptp.x, ptp.y, ptp.z, 0 };
-  const struct grid_index index = point_to_index(p, grid);
-  if (index.ci == -1) {
-    return;
-  }
-  const struct subgrid &subgrid = *grid.subgrids[index.ci];
+  for (int gx = 0; gx < 3; ++gx) {
+    for (int gy = 0; gy < 3; ++gy) {
+      const int gi = gx + gy * 3;
+      const struct subgrid &subgrid = *grid.subgrids[gi];
+      struct grid_index index = {};
+      index.vidx.x =
+          (i64)((p.x - grid.xmin - gx * grid.subgrid_width) / grid.voxel_width);
+      index.vidx.y =
+          (i64)((p.y - grid.ymin - gy * grid.subgrid_width) / grid.voxel_width);
+      index.vidx.z = (i64)((p.z - subgrid.zmin) / grid.voxel_width);
 
-  union vidx vmin, vmax;
-  const int n_dvidx = (int)std::ceil(max_radius / grid.voxel_width);
-  {
-    for (int k = 0; k < 3; ++k) {
-      vmin.data[k] = std::max((i64)0, index.vidx.data[k] - n_dvidx);
-      vmax.data[k] = std::min((i64)grid.n_voxels_per_axis,
-                              index.vidx.data[k] + n_dvidx + 1);
-    }
-  }
-
-  for (i64 vz = vmin.z; vz < vmax.z; ++vz) {
-    for (i64 vy = vmin.y; vy < vmax.y; ++vy) {
-      for (i64 vx = vmin.x; vx < vmax.x; ++vx) {
-        const union vidx vidx = { vx, vy, vz };
-        const i64 vi = vidx_to_vi(vidx, grid.n_voxels_per_axis);
-        if (subgrid.ids[vi] != subgrid.id) {
-          continue;
+      union vidx vmin, vmax;
+      const int n_dvidx = (int)std::ceil(max_radius / grid.voxel_width);
+      {
+        for (int k = 0; k < 3; ++k) {
+          vmin.data[k] = std::max((i64)0, index.vidx.data[k] - n_dvidx);
+          vmax.data[k] = std::min((i64)grid.n_voxels_per_axis,
+                                  index.vidx.data[k] + n_dvidx + 1);
         }
-        assert(subgrid.counts[vi] > 0);
+      }
 
-        const union point q = subgrid.points[vi];
-        const double dx = q.x - p.x;
-        const double dy = q.y - p.y;
-        const double dz = q.z - p.z;
-        const double dist_squared = dx * dx + dy * dy + dz * dz;
-        assert(dist_squared <= 12 * radius_squared);
-        assert(dist_squared <=
-               3 * grid.voxel_width * (n_dvidx + 1) * (n_dvidx + 1));
+      for (i64 vz = vmin.z; vz < vmax.z; ++vz) {
+        for (i64 vy = vmin.y; vy < vmax.y; ++vy) {
+          for (i64 vx = vmin.x; vx < vmax.x; ++vx) {
+            const union vidx vidx = { vx, vy, vz };
+            const i64 vi = vidx_to_vi(vidx, grid.n_voxels_per_axis);
+            if (subgrid.ids[vi] != subgrid.id) {
+              continue;
+            }
+            assert(subgrid.counts[vi] > 0);
 
-        if (dist_squared > radius_squared) {
-          continue;
+            const union point q = subgrid.points[vi];
+            const double dx = q.x - p.x;
+            const double dy = q.y - p.y;
+            const double dz = q.z - p.z;
+            const double dist_squared = dx * dx + dy * dy + dz * dz;
+            assert(dist_squared <= 12 * radius_squared);
+            assert(dist_squared <=
+                   3 * grid.voxel_width * (n_dvidx + 1) * (n_dvidx + 1));
+
+            if (dist_squared > radius_squared) {
+              continue;
+            }
+
+            const struct dist_ind elem = { dist_squared, vi, gi };
+            insert_keep_sorted(di_neighbors.data(), k_nn, elem);
+          }
         }
-
-        const struct dist_ind elem = { dist_squared, vi };
-        insert_keep_sorted(di_neighbors.data(), k_nn, elem);
       }
     }
   }
@@ -293,6 +301,8 @@ void grid_search_knn(const struct grid &grid, const PointType &ptp,
     }
 
     const i64 vi = di_neighbors[i].vi;
+    const int gi = di_neighbors[i].gi;
+    const struct subgrid &subgrid = *grid.subgrids[gi];
     assert(subgrid.ids[vi] == subgrid.id && subgrid.counts[vi] > 0);
 
     const union point p = subgrid.points[vi];
