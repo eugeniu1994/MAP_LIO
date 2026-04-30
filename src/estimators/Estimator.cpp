@@ -1,5 +1,7 @@
 #include "Estimator.hpp"
 
+#include "grid.hpp"
+
 // Initialization of noise covariance Q
 Eigen::Matrix<double, noise_size, noise_size> process_noise_cov()
 {
@@ -167,7 +169,7 @@ double huber(double residual, double threshold = 1.0)
 }
 
 void establishCorrespondences(const double R, const state &x_, const bool &update_neighbours, PointCloudXYZI::Ptr &src_frame,
-                              const PointCloudXYZI::Ptr &map, const pcl::KdTreeFLANN<PointType>::Ptr &tree,
+                              const struct voxel_grid::grid &searchGrid,
                               std::vector<bool> &global_valid, std::vector<landmark> &global_landmarks, std::vector<PointVector> &global_Neighbours)
 {
     int feats_down_size = src_frame->size();
@@ -198,20 +200,8 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
         std::vector<double> point_weights;
         if (update_neighbours)
         {
-            if (tree->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd, pointSearchSqDis) >= NUM_MATCH_POINTS)
-            {
-                global_valid[i] = pointSearchSqDis[NUM_MATCH_POINTS - 1] > 1 ? false : true; // true if distance smaller than 1
-                points_near.clear();
-                for (int j = 0; j < pointSearchInd.size(); j++)
-                {
-                    // points_near.push_back(map->points[pointSearchInd[j]]);
-                    points_near.insert(points_near.begin(), map->points[pointSearchInd[j]]);
-                }
-            }
-            else
-            {
-                global_valid[i] = false;
-            }
+            voxel_grid::grid_search_knn(searchGrid, point_world, NUM_MATCH_POINTS, 1.0, points_near);
+            global_valid[i] = points_near.size() == NUM_MATCH_POINTS;
         }
 
         if (!global_valid[i])
@@ -251,7 +241,7 @@ void establishCorrespondences(const double R, const state &x_, const bool &updat
 }
 
 void establishCorrespondences_2maps(const double R, const state &x_, const bool &update_neighbours, PointCloudXYZI::Ptr &src_frame,
-                                    const PointCloudXYZI::Ptr &map1, const pcl::KdTreeFLANN<PointType>::Ptr &tree1,
+                                    const struct voxel_grid::grid &searchGrid,
                                     std::vector<bool> &global_valid1, std::vector<landmark> &global_landmarks1, std::vector<PointVector> &global_Neighbours1,
                                     const PointCloudXYZI::Ptr &map2, const pcl::KdTreeFLANN<PointType>::Ptr &tree2,
                                     std::vector<bool> &global_valid2, std::vector<landmark> &global_landmarks2, std::vector<PointVector> &global_Neighbours2)
@@ -285,32 +275,18 @@ void establishCorrespondences_2maps(const double R, const state &x_, const bool 
         std::vector<double> point_weights;
         if (update_neighbours)
         {
-            if (tree1->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd1, pointSearchSqDis1) >= NUM_MATCH_POINTS)
-            {
-                global_valid1[i] = pointSearchSqDis1[NUM_MATCH_POINTS - 1] > 1 ? false : true; 
-                points_near1.clear();
-                for (int j = 0; j < pointSearchInd1.size(); j++)
-                {
-                    points_near1.insert(points_near1.begin(), map1->points[pointSearchInd1[j]]);
-                }
-            }
-            else
-            {
-                global_valid1[i] = false;
-            }
+            voxel_grid::grid_search_knn(searchGrid, point_world, NUM_MATCH_POINTS, 1.0, points_near1);
+            global_valid1[i] = points_near1.size() == NUM_MATCH_POINTS;
 
-            if (tree2->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd2, pointSearchSqDis2) >= NUM_MATCH_POINTS)
-            {
-                global_valid2[i] = pointSearchSqDis2[NUM_MATCH_POINTS - 1] > 1 ? false : true; 
+            if (map2->size() < (size_t)NUM_MATCH_POINTS) {
+                global_valid2[i] = false;
+            } else {
+                (void)tree2->nearestKSearch(point_world, NUM_MATCH_POINTS, pointSearchInd2, pointSearchSqDis2);
+                global_valid2[i] = pointSearchSqDis2[NUM_MATCH_POINTS - 1] <= 1.0;
                 points_near2.clear();
-                for (int j = 0; j < pointSearchInd2.size(); j++)
-                {
+                for (int j = 0; j < NUM_MATCH_POINTS; ++j) {
                     points_near2.insert(points_near2.begin(), map2->points[pointSearchInd2[j]]);
                 }
-            }
-            else
-            {
-                global_valid2[i] = false;
             }
         }
 
@@ -453,7 +429,7 @@ std::tuple<cov, vectorized_state, int> BuildLinearSystem_openMP(
     return {Hs[0], bs[0], da};
 }
 
-int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map)
+int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const struct voxel_grid::grid &searchGrid)
 {
     // std::cout<<"NUM_THREADS:"<<NUM_THREADS<<std::endl;
     obj_struct status;
@@ -461,16 +437,6 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
     status.converge = true;
 
     int converged_times = 0;
-
-    if (map->points.size() < 5)
-    {
-        std::cerr << "Error: map Point cloud is empty! : " << map->points.size() << std::endl;
-        status.valid = false;
-        status.converge = false;
-        return 0;
-    }
-
-    localKdTree_map->setInputCloud(map);
 
     state x = x_;            // Current estimate
     state x_prop = x_;       // Prior mean
@@ -487,8 +453,8 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
         cov JTJ = cov::Zero();
         vectorized_state JTr = vectorized_state::Zero();
         establishCorrespondences(LASER_POINT_COV, x, status.converge,
-                                     feats_down_body, map,
-                                     localKdTree_map,
+                                     feats_down_body,
+                                     searchGrid,
                                      MLS_valid, MLS_landmarks, MLS_Neighbours);
 
         const auto &[JTJ_mls, JTr_mls, da_mls] = BuildLinearSystem_openMP(x, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);
@@ -597,7 +563,7 @@ std::tuple<cov, vectorized_state> BuildLinearSystem_SE3(const Sophus::SE3 &predi
     return {H, b};
 }
 
-int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const PointCloudXYZI::Ptr &map,
+int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feats_down_body, const struct voxel_grid::grid &searchGrid,
                  const bool use_als, const PointCloudXYZI::Ptr &als_map, const pcl::KdTreeFLANN<PointType>::Ptr &als_tree,   // prior ALS map
                  const bool use_se3, const Sophus::SE3 &gnss_se3, const V3D &se3_std_pos_m, const V3D &se3_std_rot_deg,      // absolute SE3 meas,
                  bool use_se3_rel, const Sophus::SE3 &se3_rel, const V3D &se3_rel_std_pos_m, const V3D &se3_rel_std_rot_deg, // relative SE3 meas,
@@ -608,16 +574,6 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
     status.converge = true;
 
     int converged_times = 0;
-
-    if (map->points.size() < 5)
-    {
-        std::cerr << "Error: map Point cloud is empty! : " << map->points.size() << std::endl;
-        status.valid = false;
-        status.converge = false;
-        return 0;
-    }
-
-    localKdTree_map->setInputCloud(map);
 
     if (use_als)
     {
@@ -643,7 +599,7 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
         if (use_als)
         {
             establishCorrespondences_2maps(LASER_POINT_COV, x, status.converge, feats_down_body,
-                                           map, localKdTree_map,
+                                           searchGrid,
                                            MLS_valid, MLS_landmarks, MLS_Neighbours,
                                            als_map, als_tree,
                                            ALS_valid, ALS_landmarks, ALS_Neighbours);
@@ -666,8 +622,8 @@ int MAP_::update(int maximum_iter, bool extrinsic_est, PointCloudXYZI::Ptr &feat
         else
         {
             establishCorrespondences(LASER_POINT_COV, x, status.converge,
-                                     feats_down_body, map,
-                                     localKdTree_map,
+                                     feats_down_body,
+                                     searchGrid,
                                      MLS_valid, MLS_landmarks, MLS_Neighbours);
 
             const auto &[JTJ_mls, JTr_mls, da_mls] = BuildLinearSystem_openMP(x, feats_down_body, extrinsic_est, MLS_valid, MLS_landmarks);

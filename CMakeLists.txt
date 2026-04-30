@@ -10,6 +10,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 SET(GCC_COVERAGE_LINK_FLAGS "-lstdc++fs")
 
+set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};/usr/share/cmake/geographiclib")
+
 # add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
 # add_link_options(-fsanitize=address)
 
@@ -39,7 +41,7 @@ find_package(GeographicLib REQUIRED) #required for GNSS stuff
 option(USE_ALS "Enable ALS" OFF)
 
 SET(MAIN_SOURCE_FILES src/IMU.cpp src/GNSS.cpp src/utils.cpp src/estimators/Estimator.cpp 
- src/DataHandler.cpp ) 
+ src/DataHandler.cpp src/grid.cpp) 
 
 if(USE_ALS)
     SET(MAIN_SOURCE_FILES ${MAIN_SOURCE_FILES} src/estimators/ALS.cpp ) 
