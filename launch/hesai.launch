@@ -6,7 +6,7 @@
     <arg name="rviz_car" default="true" />
 
     <rosparam command="load" file="$(find map_lio)/config/hesai.yaml" />
-<!-- 3 -->
+    <param name="max_iteration" type="int" value="5" /> 
     <param name="Bag" type="string" value="$(arg bag_file)" />
     <param name="filter_size_surf" type="double" value=".5" />  
     <param name="filter_size_map" type="double" value=".5" />   
