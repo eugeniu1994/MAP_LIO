@@ -144,7 +144,7 @@ void IMU_Class::IMU_init(const MeasureGroup &meas, Estimator &kf_state, int &N)
         init_state.grav = -mean_acc / mean_acc.norm() * G_m_s2;
     }
 
-    init_state.bg = mean_gyr;
+   // init_state.bg = mean_gyr;
     init_state.offset_T_L_I = Lidar_T_wrt_IMU;
     init_state.offset_R_L_I = Sophus::SO3(Lidar_R_wrt_IMU);
     kf_state.set_x(init_state);
