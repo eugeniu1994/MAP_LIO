@@ -278,10 +278,21 @@ void IMU_Class::Propagate(const MeasureGroup &meas, Estimator &kf_state, PointCl
         IMU_Buffer.push_back(set_pose6d(offs_t, acc_s_last, angvel_last, imu_state.vel, imu_state.pos, imu_state.rot.matrix()));
     }
 
-    dt = abs(pcl_end_time - imu_end_time);
 
-    kf_state.predict(dt, Q, in); // Predict the IMU state at the end of the scan
-    imu_state = kf_state.get_x();
+ // dt = abs(pcl_end_time - imu_end_time); 
+    dt = pcl_end_time - imu_end_time;
+
+    if (dt > 0)
+    {
+        //extrapolate forward with last known input
+        kf_state.predict(dt, Q, in); // Predict the IMU state at the end of the scan
+        imu_state = kf_state.get_x();
+    }
+    else
+    {
+        imu_state = kf_state.get_x();
+    }
+
 
     last_imu_ = meas.imu.back();
     last_lidar_end_time_ = pcl_end_time;
