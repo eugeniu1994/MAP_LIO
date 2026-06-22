@@ -19,6 +19,20 @@ This code was developed as part of the work for the paper:
 
 ---
 
+## Build and Run 
+
+```bash
+./Build_Run.sh  #from /catkin_ws/docker
+source /opt/ros/noetic/setup.bash
+source /root/catkin_ws/devel/setup.bash
+
+roslaunch map_lio hesai_register.launch bag_file:=/media/eugeniu/T7/evo-bags/1_hesai-CPT_2024-07-25-12-48-43.bag
+
+roslaunch map_lio hesai_save.launch bag_file:=/media/eugeniu/T7/evo-bags/1_hesai-CPT_2024-07-25-12-48-43.bag
+```
+
+---
+
 ## Requirements
 
 To build and run this project, the following libraries are required:
