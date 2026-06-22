@@ -19,16 +19,14 @@ This code was developed as part of the work for the paper:
 
 ---
 
-## Build and Run 
+## Docker Build and Run 
 
 ```bash
 ./Build_Run.sh  #from /catkin_ws/docker
 source /opt/ros/noetic/setup.bash
 source /root/catkin_ws/devel/setup.bash
 
-roslaunch map_lio hesai_register.launch bag_file:=/media/eugeniu/T7/evo-bags/1_hesai-CPT_2024-07-25-12-48-43.bag
-
-roslaunch map_lio hesai_save.launch bag_file:=/media/eugeniu/T7/evo-bags/1_hesai-CPT_2024-07-25-12-48-43.bag
+roslaunch map_lio hesai.launch bag_file:=bag file here.bag
 ```
 
 ---
@@ -43,19 +41,6 @@ To build and run this project, the following libraries are required:
 - For prior map usage with ALS data (`.las` files), the [LASTools](https://lastools.github.io/) library is required.
 ---
 
-### Sophus
-
- Sophus Installation for the non-templated/double-only version.
-
-```bash
-git clone https://github.com/strasdat/Sophus.git
-cd Sophus
-git checkout a621ff
-mkdir build && cd build && cmake ..
-make
-sudo make install
-```
-
 ## 🚀 Build Instructions
 
 ```sh
@@ -63,6 +48,56 @@ cd ~/catkin_ws/src/ #change this according to your system
 git clone https://github.com/eugeniu1994/MAP_LIO.git
 cd ..
 ```
+
+### Dependencies
+
+```bash
+sudo apt-get update && sudo apt-get install -y \
+    ros-noetic-pcl-ros ros-noetic-gps-common ros-noetic-geodesy \
+    ros-noetic-robot-state-publisher \
+    ros-noetic-joint-state-publisher \
+    ros-noetic-hector-trajectory-server ros-noetic-hector-map-server \
+    libyaml-cpp-dev libeigen3-dev libpcl-dev \
+    libgeographic-dev geographiclib-tools \
+    libgoogle-glog-dev libgflags-dev libsuitesparse-dev \
+ && echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+```
+```bash
+# ===== Build Sophus (from third_party) =====
+cd third_party/Sophus
+rm -rf build
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+cd ../../..
+```
+```bash #YOU CAN SKIP THESE IF NOT PRIOR ALS MAP IS USED
+# ===== Build LASzip (from third_party) =====
+cd third_party/LASzip
+rm -rf build
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+cd ../../..
+
+# ===== Build libLAS (from third_party) =====
+cd third_party/libLAS
+rm -rf build
+mkdir build && cd build
+cmake .. \
+    -DWITH_GDAL=OFF \
+    -DWITH_GEOTIFF=ON \
+    -DBUILD_TESTS=OFF
+make -j$(nproc)
+sudo make install
+sudo ldconfig
+cd ../../..
+```
+
 
 ### Lidar-Inertial Navigation only (no prior map / ALS)
 ```bash
