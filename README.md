@@ -72,6 +72,17 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 ```
 
 
+If you use this work in your research or software, please cite the following papers:
+
+Vezeteu, E., El Issaoui, A., Hyyti, H., Hakala, T., Muhojoki, J., Hyyppä, E., et al. (2025). Direct integration of ALS and MLS for real-time localization and mapping. ISPRS Open Journal of Photogrammetry and Remote Sensing, 16, 100088.
+Vezeteu, E., El Issaoui, A., Hyyti, H., Muhojoki, J., Manninen, P., Hakala, T., et al. (2025). Direct 3D mapping with a 2D LiDAR using sparse reference maps. ISPRS Open Journal of Photogrammetry and Remote Sensing, 100109.
+Vezeteu, E., El Issaoui, A., Hyyti, H., Muhojoki, J., Hyyppä, E., Manninen, P., et al. (2026). Robust tightly coupled MLS–ALS fusion with 2D and 3D LiDAR using local geometric uncertainty for accurate 3D mapping. Science of Remote Sensing, 13, 100449.
+
+If you use this repository, please ensure you reference the above work appropriately.
+
+
+
+
 🛠️ TODO
 
 -Add support for different LiDARs (currently only Hesai is supported)
