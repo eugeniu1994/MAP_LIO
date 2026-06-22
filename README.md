@@ -35,7 +35,7 @@ To build and run this project, the following libraries are required:
 
 ```sh
 cd ~/catkin_ws/src/ #change this according to your system
-git clone https://github.com/eugeniu1994/MAP_LIO.git
+git clone --recurse-submodules https://github.com/eugeniu1994/MAP_LIO.git
 cd ..
 ```
 
