@@ -19,16 +19,6 @@ This code was developed as part of the work for the paper:
 
 ---
 
-## Docker Build and Run 
-
-```bash
-./Build_Run.sh  #from /catkin_ws/docker
-source /opt/ros/noetic/setup.bash
-source /root/catkin_ws/devel/setup.bash
-
-roslaunch map_lio hesai.launch bag_file:=bag file here.bag
-```
-
 ---
 
 ## Requirements
@@ -52,15 +42,29 @@ cd ..
 ### Dependencies
 
 ```bash
+# Detect ROS version automatically
+ROS_DISTRO=$(. /opt/ros/*/setup.bash 2>/dev/null && echo $ROS_DISTRO)
+
+if [ -z "$ROS_DISTRO" ]; then
+    echo "ROS not found. Please install ROS first."
+    exit 1
+fi
+
+echo "Detected ROS distro: $ROS_DISTRO"
+
 sudo apt-get update && sudo apt-get install -y \
-    ros-noetic-pcl-ros ros-noetic-gps-common ros-noetic-geodesy \
-    ros-noetic-robot-state-publisher \
-    ros-noetic-joint-state-publisher \
-    ros-noetic-hector-trajectory-server ros-noetic-hector-map-server \
+    ros-$ROS_DISTRO-pcl-ros \
+    ros-$ROS_DISTRO-gps-common \
+    ros-$ROS_DISTRO-geodesy \
+    ros-$ROS_DISTRO-robot-state-publisher \
+    ros-$ROS_DISTRO-joint-state-publisher \
+    ros-$ROS_DISTRO-hector-trajectory-server \
+    ros-$ROS_DISTRO-hector-map-server \
     libyaml-cpp-dev libeigen3-dev libpcl-dev \
     libgeographic-dev geographiclib-tools \
-    libgoogle-glog-dev libgflags-dev libsuitesparse-dev \
- && echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc
+    libgoogle-glog-dev libgflags-dev libsuitesparse-dev
+
+echo "source /opt/ros/$ROS_DISTRO/setup.bash" >> ~/.bashrc
 ```
 ```bash
 # ===== Build Sophus (from third_party) =====
@@ -121,6 +125,15 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 ```
 
 
+## Docker Build and Run 
+
+```bash
+./Build_Run.sh  #from /docker_map
+source /opt/ros/noetic/setup.bash
+source /root/catkin_ws/devel/setup.bash
+
+roslaunch map_lio hesai.launch bag_file:=bag file here.bag
+```
 
 ## :pencil: Citation
 
