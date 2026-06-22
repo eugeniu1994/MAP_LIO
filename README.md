@@ -5,10 +5,14 @@ This code was developed as part of the work for the paper:
 
 **Robust Tightly Coupled MLS-ALS Fusion with 2D/3D LiDAR Using Local Geometric Uncertainty for Accurate 3D Mapping**
 <p align="center">
-  <img src="https://github.com/eugeniu1994/MAP_LIO/blob/master/demo.png?raw=true" alt="MAP LIO Estimator Demo" width="600"/>
+  <a href="https://www.linkedin.com/posts/eugeniu-vezeteu-b4082a194_lidar-3dmapping-sensorfusion-activity-7473024586071261184-a6bR">
+    <img src="https://github.com/eugeniu1994/MAP_LIO/blob/master/demo.png?raw=true" alt="MAP LIO Estimator Demo" width="600"/>
+  </a>
   <br>
   <em>Example output</em>
 </p>
+
+👉 [View LinkedIn post](https://www.linkedin.com/posts/eugeniu-vezeteu-b4082a194_lidar-3dmapping-sensorfusion-activity-7473024586071261184-a6bR)
 
 ##  ✨ Features
 
@@ -16,7 +20,6 @@ This code was developed as part of the work for the paper:
 - **Robust data-driven covariances**   
 - **Tightly fusion with prior map**:  Airborn laser data was used in the paper
 - **Absolute and relative SE(3) integrations**:  provided from GNSS-INS 
-
 ---
 
 ---
@@ -174,7 +177,7 @@ If you use this work in your research or software, see the following papers:
 
 
 
-🛠️# TODO
+🛠️ # TODO
 
 -Add support for different LiDARs (currently only Hesai is supported)
 
