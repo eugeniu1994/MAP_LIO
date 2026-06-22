@@ -77,7 +77,8 @@ sudo make install
 sudo ldconfig
 cd ../../..
 ```
-```bash #YOU CAN SKIP THESE IF NOT PRIOR ALS MAP IS USED
+```bash
+#YOU CAN SKIP THESE IF NOT PRIOR ALS MAP IS USED
 # ===== Build LASzip (from third_party) =====
 cd third_party/LASzip
 rm -rf build
