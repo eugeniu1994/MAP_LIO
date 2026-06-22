@@ -23,8 +23,14 @@ This code was developed as part of the work for the paper:
 ---
 
 ---
+## 🚀 Build Instructions
 
-## Requirements
+```sh
+cd ~/catkin_ws/src/ #change this according to your system
+git clone --recurse-submodules https://github.com/eugeniu1994/MAP_LIO.git
+cd ..
+```
+## Dependencies
 
 To build and run this project, the following libraries are required:
 
@@ -34,15 +40,7 @@ To build and run this project, the following libraries are required:
 - For prior map usage with ALS data (`.las` files), the [LASTools](https://lastools.github.io/) library is required.
 ---
 
-## 🚀 Build Instructions
-
-```sh
-cd ~/catkin_ws/src/ #change this according to your system
-git clone --recurse-submodules https://github.com/eugeniu1994/MAP_LIO.git
-cd ..
-```
-
-### Dependencies
+### ROS - Dependencies
 
 ```bash
 # Detect ROS version automatically
