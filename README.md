@@ -75,7 +75,7 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 
 ## :pencil: Citation
 
-If you use this work in your research or software, please cite the following papers:
+If you use this work in your research or software, see the following papers:
 ```
 @article{vezeteu2026robust,
   title={Robust tightly coupled MLS--ALS fusion with 2D and 3D LiDAR using local geometric uncertainty for accurate 3D mapping},
