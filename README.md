@@ -72,18 +72,46 @@ roslaunch map_lio hesai.launch bag_file:=bag_file_path/example.bag
 ```
 
 
+
+## :pencil: Citation
+
 If you use this work in your research or software, please cite the following papers:
+```
+@article{vezeteu2026robust,
+  title={Robust tightly coupled MLS--ALS fusion with 2D and 3D LiDAR using local geometric uncertainty for accurate 3D mapping},
+  author={Vezeteu, Eugeniu and El Issaoui, Aimad and Hyyti, Heikki and Muhojoki, Jesse and Hyypp{\"a}, Eric and Manninen, Petri and Hakala, Teemu and Kukko, Antero and Kaartinen, Harri and Kyrki, Ville and others},
+  journal={Science of Remote Sensing},
+  volume={13},
+  pages={100449},
+  year={2026},
+  publisher={Elsevier}
+}
+```
+```
+@article{vezeteu2025direct,
+  title={Direct 3D mapping with a 2D LiDAR using sparse reference maps},
+  author={Vezeteu, Eugeniu and El Issaoui, Aimad and Hyyti, Heikki and Muhojoki, Jesse and Manninen, Petri and Hakala, Teemu and Hyypp{\"a}, Eric and Kukko, Antero and Kaartinen, Harri and Kyrki, Ville and others},
+  journal={ISPRS Open Journal of Photogrammetry and Remote Sensing},
+  pages={100109},
+  year={2025},
+  publisher={Elsevier}
+}
+```
+```
+@article{vezeteu2025direct,
+  title={Direct integration of ALS and MLS for real-time localization and mapping},
+  author={Vezeteu, Eugeniu and El Issaoui, Aimad and Hyyti, Heikki and Hakala, Teemu and Muhojoki, Jesse and Hyypp{\"a}, Eric and Kukko, Antero and Kaartinen, Harri and Kyrki, Ville and Hyypp{\"a}, Juha},
+  journal={ISPRS Open Journal of Photogrammetry and Remote Sensing},
+  volume={16},
+  pages={100088},
+  year={2025},
+  publisher={Elsevier}
+}
+```
 
-Vezeteu, E., El Issaoui, A., Hyyti, H., Hakala, T., Muhojoki, J., Hyyppä, E., et al. (2025). Direct integration of ALS and MLS for real-time localization and mapping. ISPRS Open Journal of Photogrammetry and Remote Sensing, 16, 100088.
-Vezeteu, E., El Issaoui, A., Hyyti, H., Muhojoki, J., Manninen, P., Hakala, T., et al. (2025). Direct 3D mapping with a 2D LiDAR using sparse reference maps. ISPRS Open Journal of Photogrammetry and Remote Sensing, 100109.
-Vezeteu, E., El Issaoui, A., Hyyti, H., Muhojoki, J., Hyyppä, E., Manninen, P., et al. (2026). Robust tightly coupled MLS–ALS fusion with 2D and 3D LiDAR using local geometric uncertainty for accurate 3D mapping. Science of Remote Sensing, 13, 100449.
-
-If you use this repository, please ensure you reference the above work appropriately.
 
 
-
-
-🛠️ TODO
+🛠️# TODO
 
 -Add support for different LiDARs (currently only Hesai is supported)
 
