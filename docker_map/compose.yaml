@@ -1,0 +1,32 @@
+services:
+  ros:
+    build: .
+    container_name: map_lio_ros
+    network_mode: host
+    tty: true
+    stdin_open: true
+    environment:
+      - DISPLAY=${DISPLAY}
+    privileged: true
+    volumes:
+      # FIXED: mount the package folder
+      - ./map_lio:/root/catkin_ws/src/map_lio
+
+      # Datasets (adjust host paths as needed)
+      - /media/eugeniu/T7:/media/eugeniu/T7
+      - /media/eugeniu/T71:/media/eugeniu/T71
+
+      # GUI (RViz)
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+      # Persist build artifacts across container restarts
+      - catkin-build:/root/catkin_ws/build
+      - catkin-devel:/root/catkin_ws/devel
+
+    working_dir: /root/catkin_ws
+  environment:
+      - XDG_RUNTIME_DIR=/tmp/runtime-root
+
+volumes:
+  catkin-build:
+  catkin-devel:
